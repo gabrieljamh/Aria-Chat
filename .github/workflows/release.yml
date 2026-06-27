@@ -1,0 +1,57 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install monorepo deps
+        run: bun install
+
+      - name: Install desktop deps
+        run: npm install
+        working-directory: desktop
+
+      - name: Build server binary
+        run: bun run script/build.ts --single
+        working-directory: packages/opencode
+
+      - name: Build Electron app
+        run: npx electron-vite build
+        working-directory: desktop
+
+      - name: Assemble portable package
+        run: pwsh -File script/pack-portable.ps1 -SkipBuild
+        working-directory: desktop
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/mimo-tasker-portable-win32-x64.zip
