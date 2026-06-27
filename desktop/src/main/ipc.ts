@@ -279,7 +279,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
     await mutateGlobalConfig((cfg) => {
       if (!cfg.agent || typeof cfg.agent !== "object") cfg.agent = {} as any
       if (model) {
-        ;(cfg.agent as any).compaction = { model }
+        ;(cfg.agent as any).compaction = { model: `${model.providerID}/${model.modelID}` }
       } else {
         delete (cfg.agent as any).compaction
       }
