@@ -1,7 +1,7 @@
 {
   "name": "mimocode-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MiMo Tasker — an AI coding assistant with Claude-desktop-style Electron UI for the MiMo Code local server",
   "type": "module",
   "main": "./out/main/index.js",
