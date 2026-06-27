@@ -219,7 +219,7 @@ export function MessageView({ message, showDots, ...actions }: MsgActions & { me
   return (
     <>
       <div className="msg assistant">
-        <div className="role">MiMo</div>
+        <div className="role">Aria</div>
         {!hasContent ? (
           showDots ? (
             <div className="dots">

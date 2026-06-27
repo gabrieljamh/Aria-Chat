@@ -104,7 +104,11 @@ New-Item -ItemType Directory -Path $appDir -Force | Out-Null
 # is a standalone Vite bundle.
 Copy-Item (Join-Path $root "package.json") $appDir
 Copy-Item (Join-Path $root "out") (Join-Path $appDir "out") -Recurse
-Write-Host "  Copied app files (out/ + package.json)"
+# Shared assets (app icon etc.) — the main process looks for these at out/shared/img/.
+$sharedTargetDir = Join-Path $appDir "out\shared\img"
+New-Item -ItemType Directory -Path $sharedTargetDir -Force | Out-Null
+Copy-Item (Join-Path $root "src\shared\img\aria-icon.png") $sharedTargetDir -Force
+Write-Host "  Copied app files (out/ + package.json + shared assets)"
 
 Write-Host "Portable package assembled at $distDir" -ForegroundColor Green
 

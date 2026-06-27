@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react"
 import type { ServerStatus } from "@shared/types"
-import xiaomiLogo from "@shared/img/xiaomi-logo.png"
-import mimoLogo from "@shared/img/mimo-logo.png"
+import ariaLogo from "@shared/img/aria-logo.png"
+import ariaText from "@shared/img/aria-text.png"
 
 interface Props {
   status: ServerStatus
@@ -36,14 +36,14 @@ export function Splash({ status, ready, onCustomServer }: Props) {
       ? "Loading your chats…"
       : status.state === "stopped"
         ? "Connecting…"
-        : "Starting MiMo Tasker…"
+        : "Starting Aria Chat…"
 
   return (
     <div className={"splash" + (ready ? " splash-hide" : "") + (isError ? " splash-error" : "")}>
       <div className="splash-inner">
         <div className="splash-logos">
-          <img className="splash-logo" src={xiaomiLogo} alt="Xiaomi" />
-          <img className="splash-logo splash-logo-mimo" src={mimoLogo} alt="MiMo Tasker" />
+          <img className="splash-logo" src={ariaLogo} alt="Aria" />
+          <img className="splash-logo splash-logo-aria-text" src={ariaText} alt="Aria Chat" />
         </div>
         {!isError && <div className="splash-spinner" aria-hidden />}
         <div className={"splash-message" + (isError ? " err" : "")}>{message}</div>

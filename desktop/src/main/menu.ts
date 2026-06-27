@@ -63,7 +63,7 @@ export function buildMenu(win: BrowserWindow) {
     {
       label: "Help",
       submenu: [
-        { label: "MiMo Code on GitHub", click: () => shell.openExternal("https://github.com/XiaomiMiMo/MiMo-Code") },
+        { label: "Aria Chat on GitHub", click: () => shell.openExternal("https://github.com/XiaomiMiMo/MiMo-Code") },
         { label: "Server API Notes", click: () => send("show-api-notes") },
       ],
     },

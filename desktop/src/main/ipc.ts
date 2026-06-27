@@ -479,7 +479,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
   ipcMain.handle("set-setting", (_e, key: string, value: unknown) => getStore().set(key, value))
 
   ipcMain.handle("get-app-info", () => ({
-    appName: "MiMo Tasker",
+    appName: "Aria Chat",
     appVersion: app.getVersion(),
     electronVersion: process.versions.electron,
     chromeVersion: process.versions.chrome,

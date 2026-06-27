@@ -9,9 +9,9 @@
   --text: #f2ece3; /* cream / off-white */
   --text-dim: #b6b0a6;
   --text-faint: #807a71;
-  --accent: #d97757; /* single warm accent (clay/terracotta) */
-  --accent-hover: #e08a6e;
-  --accent-soft: rgba(217, 119, 87, 0.14);
+  --accent: #8B5CF6; /* warm violet (Aria brand) */
+  --accent-hover: #9D6FF8;
+  --accent-soft: rgba(139, 92, 246, 0.14);
   --danger: #d96a5a;
   --good: #8bb88f;
   --serif: "Georgia", "Iowan Old Style", "Apple Color Emoji", "Segoe UI Emoji", "Times New Roman", serif;
@@ -93,9 +93,9 @@ button {
   width: auto;
   display: block;
 }
-.topbar .brand img.brand-logo-mimo {
-  height: 20px;
-  margin-right: 2px;
+.topbar .brand img.brand-logo-aria-text {
+  height: 22px;
+  margin-right: 4px;
 }
 .brand-menu-overlay {
   position: fixed;
@@ -2306,8 +2306,8 @@ button {
   height: 40px;
   width: auto;
 }
-.splash-logo-mimo {
-  height: 26px;
+.splash-logo-aria-text {
+  height: 28px;
   opacity: 0.95;
 }
 .splash-spinner {
@@ -2699,10 +2699,25 @@ button {
 }
 
 .about-name {
-  font-family: var(--serif);
-  font-weight: 500;
-  font-size: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 4px;
+}
+.about-name-logo {
+  height: 28px;
+  width: auto;
+}
+.about-name-pill {
+  display: inline-block;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 .about-version {
   color: var(--text-dim);

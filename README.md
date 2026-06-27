@@ -1,8 +1,11 @@
-# MiMo Tasker
+<div align="center">
+  <img src="desktop/src/shared/img/aria-logo.png" alt="Aria" width="96" />
+  <img src="desktop/src/shared/img/aria-text.png" alt="Aria Chat" height="40" />
+</div>
 
-A desktop AI coding assistant built with Electron, powered by [MiMo Code](https://github.com/XiaomiMiMo/MiMo-Code).
+A desktop AI assistant built with Electron, powered by [MiMo Code](https://github.com/XiaomiMiMo/MiMo-Code).
 
-MiMo Tasker wraps the MiMo Code local server in a clean, Claude-desktop-style UI — two modes, real-time streaming, inline approvals, and a live workspace panel. No cloud dependencies; everything runs locally.
+Aria Chat wraps the MiMo Code local server in a clean, Claude-desktop-style UI — two modes, real-time streaming, inline approvals, and a live workspace panel. No cloud dependencies; everything runs locally.
 
 Built by [Junji at Project BomberCraft](https://github.com/gabrieljamh/MiMo-Tasker).
 
@@ -70,11 +73,11 @@ cd desktop
 npm run pack
 ```
 
-This produces `dist-portable/` with `mimo-tasker.exe`, the Electron runtime, and the compiled server binary — no install needed. A zip archive is created alongside it.
+This produces `dist-portable/` with `aria-chat.exe`, the Electron runtime, and the compiled server binary — no install needed. A zip archive is created alongside it.
 
 ## Architecture
 
-MiMo Tasker follows a strict three-layer Electron architecture:
+Aria Chat follows a strict three-layer Electron architecture:
 
 ```
 Main Process (Node)          → spawns server, runs HTTP/SSE client, IPC bridge
@@ -93,7 +96,7 @@ See [`desktop/ARCHITECTURE.md`](./desktop/ARCHITECTURE.md) for the full module m
 
 ## Server patches (required for the desktop app)
 
-The upstream MiMo Code server is designed for a single TUI client. MiMo Tasker patches the server in a few places so that multi-instance desktop sessions work correctly. These changes live in `packages/opencode/` and must be preserved when merging upstream:
+The upstream MiMo Code server is designed for a single TUI client. Aria Chat patches the server in a few places so that multi-instance desktop sessions work correctly. These changes live in `packages/opencode/` and must be preserved when merging upstream:
 
 ### 1. GlobalBus SSE subscription — `src/server/routes/instance/event.ts`
 
@@ -152,6 +155,6 @@ Both under the MIT License. See [LICENSE](./LICENSE) for details.
 
 ## Support
 
-If you find MiMo Tasker useful, consider supporting its development:
+If you find Aria Chat useful, consider supporting its development:
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/gabrieljamh) [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue)](https://www.paypal.com/donate/?business=8Y2R4BCT7XF6E&no_recurring=0&currency_code=USD)

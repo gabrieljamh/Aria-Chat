@@ -19,8 +19,8 @@ import { CustomServerModal } from "./CustomServerModal"
 import { generateGreeting, generateSuggestions, type Suggestion } from "./generate"
 import type { FileAttachment } from "@shared/types"
 
-import xiaomiLogo from "@shared/img/xiaomi-logo.png"
-import mimoLogo from "@shared/img/mimo-logo.png"
+import ariaLogo from "@shared/img/aria-logo.png"
+import ariaText from "@shared/img/aria-text.png"
 
 type Tab = "chat" | "cowork" // "cowork" = Tasker mode internal key
 
@@ -541,7 +541,7 @@ export function App() {
               setBrandMenuOpen((v) => !v)
             }}
           >
-            <img className="brand-logo" src={xiaomiLogo} alt="Xiaomi" />
+            <img className="brand-logo" src={ariaLogo} alt="Aria" />
           </button>
           {brandMenuOpen && (
             <div className="brand-menu-overlay" onClick={() => setBrandMenuOpen(false)} />
@@ -553,7 +553,7 @@ export function App() {
               <button onClick={() => window.close()}>Quit</button>
             </div>
           )}
-          <img className="brand-logo brand-logo-mimo" src={mimoLogo} alt="MiMo" />
+          <img className="brand-logo brand-logo-aria-text" src={ariaText} alt="Aria" />
           <div className="tabs-pill">
             {(["chat", "cowork"] as Tab[]).map((t) => (
               <button

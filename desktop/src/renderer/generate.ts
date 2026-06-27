@@ -60,7 +60,7 @@ export async function generateGreeting(
     ? "Casual, warm and chatty — like greeting a friend you haven't seen in a bit (e.g. \"Hey, how's it going?\", \"What's on your mind?\", \"Hey there! Ready to chat?\"). Keep it light and open-ended; no coding or work references, no corporate tone."
     : "Warm, lightly playful but focused, since the user is about to kick off real work."
   const raw = await oneShot(
-    `You write UI microcopy. Produce ONE short greeting headline (max 8 words) for the home screen of MiMo, an AI assistant, addressed to ${ctx}. Tone: ${tone} No quotes, no emoji, no preamble, no trailing punctuation beyond a single ? or .. Output only the headline.`,
+    `You write UI microcopy. Produce ONE short greeting headline (max 8 words) for the home screen of Aria, an AI assistant, addressed to ${ctx}. Tone: ${tone} No quotes, no emoji, no preamble, no trailing punctuation beyond a single ? or .. Output only the headline.`,
     model,
     agent,
     overrideModel,

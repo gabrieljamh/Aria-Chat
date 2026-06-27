@@ -1,5 +1,5 @@
-// Shared types for the MiMo Code Desktop IPC contract.
-// These mirror the relevant subset of the MiMo Code server schema
+// Shared types for the Aria Chat Desktop IPC contract.
+// These mirror the relevant subset of the Aria server schema
 // (see ../../API_NOTES.md). They are intentionally permissive where the
 // server payload is open-ended (metadata bags, unknown part types).
 

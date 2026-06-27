@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, shell } from "electron"
+import { app, BrowserWindow, nativeImage, session, shell } from "electron"
 import { join } from "node:path"
 import { registerIpc } from "./ipc"
 import { registerPreviewScheme, registerPreviewProtocol } from "./preview"
@@ -9,6 +9,13 @@ registerPreviewScheme()
 let mainWindow: BrowserWindow | null = null
 let ipc: { dispose(): void } | null = null
 
+function resolveIcon() {
+  const rel = app.isPackaged
+    ? join(__dirname, "../shared/img/aria-icon.png")
+    : join(__dirname, "../../src/shared/img/aria-icon.png")
+  return nativeImage.createFromPath(rel)
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -17,6 +24,7 @@ function createWindow() {
     minHeight: 600,
     show: false,
     frame: false,
+    icon: resolveIcon(),
     backgroundColor: "#1e2327",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : undefined,
     webPreferences: {

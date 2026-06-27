@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react"
 import type { AppInfo, CustomModel, ModelRef, ProviderConfigInput, ProvidersResponse, SkillInfo } from "@shared/types"
 import { useCustomModels, saveCustomModels, loadCustomModels } from "./customModels"
+import ariaTextImg from "@shared/img/aria-text.png"
 
 interface Props {
   initialPage?: string
@@ -183,7 +184,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [baseURL, setBaseURL] = useState("")
   const [apiKey, setApiKey] = useState("")
   const [npm, setNpm] = useState("")
-  // Declared input modalities for the model being added. Without these, MiMo
+  // Declared input modalities for the model being added. Without these, Aria
   // defaults a custom model to text-only and strips images before the provider.
   const [mImage, setMImage] = useState(true)
   const [mAudio, setMAudio] = useState(false)
@@ -475,7 +476,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       const name = userName.trim()
       await window.mimo.setSetting("userName", name)
       await window.mimo.setUserName(name)
-      setUserStatus({ kind: "ok", msg: name ? `Saved — MiMo will address you as ${name}.` : "Cleared." })
+      setUserStatus({ kind: "ok", msg: name ? `Saved — Aria will address you as ${name}.` : "Cleared." })
     } catch (e: any) {
       setUserStatus({ kind: "error", msg: String(e?.message ?? e) })
     }
@@ -638,7 +639,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
                   onKeyDown={(e) => { if (e.key === "Enter") saveUserName() }}
                 />
                 <div className="hint">
-                  How MiMo should address you. Saved into the server's global AGENTS.md, so it applies to every
+                  How Aria should address you. Saved into the server's global AGENTS.md, so it applies to every
                   conversation.
                 </div>
                 {userStatus.kind === "ok" && <div className="form-msg ok">{userStatus.msg}</div>}
@@ -1103,7 +1104,10 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
 
               {appInfo ? (
                 <div className="settings-field">
-                  <div className="about-name">{appInfo.appName}</div>
+                  <div className="about-name">
+                    <img className="about-name-logo" src={ariaTextImg} alt="Aria" />
+                    <span className="about-name-pill">Chat</span>
+                  </div>
                   <div className="about-version">Version {appInfo.appVersion}</div>
 
                   <div className="settings-divider" />
