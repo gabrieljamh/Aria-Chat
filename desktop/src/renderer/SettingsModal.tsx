@@ -417,7 +417,10 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       if (apiKey.trim()) {
         await window.mimo.setAuth(providerID, { type: "api", key: apiKey.trim() }).catch(() => {})
       }
-      await window.mimo.updateGlobalConfig({ provider: { [providerID]: entry } })
+      // Use setGlobalProvider (not updateGlobalConfig) so that stale per-directory
+      // copies of this provider get purged (removeProviderFromConfigs) — otherwise
+      // cached instances shadow the global entry and cause "Model not found".
+      await window.mimo.setGlobalProvider(providerID, entry)
       // Force re-read the provider list so the model selector updates
       await onRefreshProviders()
 

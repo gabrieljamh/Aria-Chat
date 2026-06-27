@@ -53,16 +53,14 @@ export async function generateGreeting(
   agent: string | null,
   overrideModel?: ModelRef | null,
 ): Promise<string> {
-  const ctx =
-    kind === "chat"
-      ? "a user about to start a new coding chat"
-      : "a user about to start a new agentic task that works inside a project folder"
-  const tone =
-    kind === "chat"
-      ? "Casual, relaxed and friendly — like greeting a friend (e.g. \"Hey, what's up?\", \"What are we hacking on?\", \"Yo — what's the plan?\"). A little playful is great; avoid anything stiff or corporate."
-      : "Warm, lightly playful but focused, since the user is about to kick off real work."
+  const ctx = kind === "chat"
+    ? "a user opening a new casual conversation"
+    : "a user about to start a new agentic task that works inside a project folder"
+  const tone = kind === "chat"
+    ? "Casual, warm and chatty — like greeting a friend you haven't seen in a bit (e.g. \"Hey, how's it going?\", \"What's on your mind?\", \"Hey there! Ready to chat?\"). Keep it light and open-ended; no coding or work references, no corporate tone."
+    : "Warm, lightly playful but focused, since the user is about to kick off real work."
   const raw = await oneShot(
-    `You write UI microcopy. Produce ONE short greeting headline (max 8 words) for the home screen of MiMo, an AI coding assistant, addressed to ${ctx}. Tone: ${tone} No quotes, no emoji, no preamble, no trailing punctuation beyond a single ? or .. Output only the headline.`,
+    `You write UI microcopy. Produce ONE short greeting headline (max 8 words) for the home screen of MiMo, an AI assistant, addressed to ${ctx}. Tone: ${tone} No quotes, no emoji, no preamble, no trailing punctuation beyond a single ? or .. Output only the headline.`,
     model,
     agent,
     overrideModel,
@@ -82,12 +80,11 @@ export async function generateSuggestions(
   agent: string | null,
   overrideModel?: ModelRef | null,
 ): Promise<Suggestion[]> {
-  const ctx =
-    kind === "chat"
-      ? "an AI coding assistant chat"
-      : "an agentic coding assistant that performs tasks inside a chosen project folder"
+  const ctx = kind === "chat"
+    ? "a general-purpose AI assistant chat (not just coding — can talk about anything)"
+    : "an agentic coding assistant that performs tasks inside a chosen project folder"
   const raw = await oneShot(
-    `Produce exactly 4 home-screen suggestion chips for ${ctx}. Respond with ONLY a JSON array (no markdown fences, no commentary): ` +
+    `Produce exactly 4 home-screen suggestion chips for ${ctx}. The suggestions should be casual, fun, and varied — mix creative, helpful, curious, and everyday topics (e.g. brainstorming ideas, telling a story, planning something, answering a random question, getting advice). Avoid making all four coding-related. Respond with ONLY a JSON array (no markdown fences, no commentary): ` +
       `[{"label":"2 to 5 word button label","text":"the full prompt to insert into the input when the chip is clicked"}, ...]. ` +
       `Make the four varied and genuinely useful.`,
     model,
