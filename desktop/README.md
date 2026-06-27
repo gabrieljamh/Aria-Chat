@@ -4,7 +4,7 @@ A desktop AI coding assistant built with Electron, powered by [MiMo Code](https:
 
 MiMo Tasker wraps the MiMo Code local server in a clean, Claude-desktop-style UI — two modes, real-time streaming, inline approvals, and a live workspace panel. No cloud dependencies; everything runs locally.
 
-Built by [Junji at Project BomberCraft](https://github.com/gabrieljamh/MiMo-Tasker).
+Built by [Junji at Project BomberCraft](https://github.com/XiaomiMiMo/MiMo-Code).
 
 ---
 
@@ -27,13 +27,14 @@ Built by [Junji at Project BomberCraft](https://github.com/gabrieljamh/MiMo-Task
 
 - **Node.js 18+** and **npm**
 - **Bun** (used to launch the MiMo Code server)
+- The **MiMo Code repo** checked out — the app lives at the repo root in `desktop/`
 
 ### Install & run (dev)
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/gabrieljamh/MiMo-Tasker.git
-cd MiMo-Tasker
+git clone https://github.com/XiaomiMiMo/MiMo-Code.git
+cd MiMo-Code
 
 # 2. Install monorepo deps (Bun)
 bun install
@@ -89,7 +90,7 @@ Renderer (React)             → UI only, never talks to the server directly
 2. `src/preload/index.ts` — wire it to `ipcRenderer.invoke`
 3. `src/main/ipc.ts` — register the `ipcMain.handle` handler
 
-See [`desktop/ARCHITECTURE.md`](./desktop/ARCHITECTURE.md) for the full module map, data flow, and state model.
+See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full module map, data flow, and state model.
 
 ## Server patches (required for the desktop app)
 
@@ -123,19 +124,17 @@ When a `message.part.updated` event arrives with text that's shorter than what d
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start dev server with hot reload (from `desktop/`) |
-| `npm run build` | Production build to `out/` (from `desktop/`) |
-| `npm run typecheck` | Type-check both main (Node) and renderer (web) (from `desktop/`) |
-| `npm run pack` | Build portable exe + zip (from `desktop/`) |
-| `bun run typecheck` | Type-check all monorepo packages (from root) |
-| `bun run lint` | Run oxlint (from root) |
+| `npm run dev` | Start dev server with hot reload |
+| `npm run build` | Production build to `out/` |
+| `npm run typecheck` | Type-check both main (Node) and renderer (web) |
+| `npm run pack` | Build portable exe + zip |
 
-Single CSS file: `desktop/src/renderer/styles.css`. CSS variables for theming. No CSS-in-JS or Tailwind.
+Single CSS file: `src/renderer/styles.css`. CSS variables for theming. No CSS-in-JS or Tailwind.
 
 ## Troubleshooting
 
 **"Server not starting" / "Could not find repo root"**
-→ The server launcher walks up from `desktop/` to find `packages/opencode`. Alternatively, set `MIMO_SERVER_URL`.
+→ Run the app from inside the MiMo-Code monorepo. The server launcher walks up from `desktop/` to find `packages/opencode`. Alternatively, set `MIMO_SERVER_URL`.
 
 **Blank conversation / no streaming**
 → Ensure the server's SSE endpoint includes the `GlobalBus` subscription (see `packages/opencode/src/server/routes/instance/event.ts`). Restart the server after changes.
@@ -148,7 +147,7 @@ Single CSS file: `desktop/src/renderer/styles.css`. CSS variables for theming. N
 Copyright &copy; 2026 MiMo Code, Xiaomi Corporation  
 Copyright &copy; 2025 opencode
 
-Both under the MIT License. See [LICENSE](./LICENSE) for details.
+Both under the MIT License. See [LICENSE](../LICENSE) for details.
 
 ## Support
 

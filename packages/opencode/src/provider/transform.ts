@@ -992,7 +992,14 @@ export function options(input: {
     }
   }
 
-  if (input.model.providerID === "openai" || input.providerOptions?.setCacheKey) {
+  const supportsPromptCacheKey =
+    input.model.providerID === "venice" ||
+    input.model.providerID === "openrouter" ||
+    input.model.providerID.startsWith("opencode") ||
+    input.model.api.npm === "@ai-sdk/azure" ||
+    (input.model.providerID === "openai" && input.model.api.id.includes("gpt-5"))
+
+  if (input.providerOptions?.setCacheKey && supportsPromptCacheKey) {
     result["promptCacheKey"] = input.sessionID
   }
 
@@ -1059,7 +1066,10 @@ export function options(input: {
       result["textVerbosity"] = "low"
     }
 
-    if (input.model.providerID.startsWith("opencode")) {
+    if (
+      input.model.providerID.startsWith("opencode") &&
+      input.model.api.npm !== "@ai-sdk/openai-compatible"
+    ) {
       result["promptCacheKey"] = input.sessionID
       result["include"] = ["reasoning.encrypted_content"]
       result["reasoningSummary"] = "auto"

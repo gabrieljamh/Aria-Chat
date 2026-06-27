@@ -37,9 +37,18 @@ describe("ProviderTransform.options - setCacheKey", () => {
     headers: {},
   } as any
 
-  test("should set promptCacheKey when providerOptions.setCacheKey is true", () => {
+  test("should set promptCacheKey when providerOptions.setCacheKey is true and provider supports it", () => {
+    const veniceModel = {
+      ...mockModel,
+      providerID: "venice",
+      api: {
+        id: "venice-model",
+        url: "https://api.venice.ai",
+        npm: "@ai-sdk/venice",
+      },
+    }
     const result = ProviderTransform.options({
-      model: mockModel,
+      model: veniceModel,
       sessionID,
       providerOptions: { setCacheKey: true },
     })
@@ -69,7 +78,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
     expect(result.promptCacheKey).toBeUndefined()
   })
 
-  test("should set promptCacheKey for openai provider regardless of setCacheKey", () => {
+  test("should not set promptCacheKey for openai provider unless providerOptions.setCacheKey is true", () => {
     const openaiModel = {
       ...mockModel,
       providerID: "openai",
@@ -80,7 +89,7 @@ describe("ProviderTransform.options - setCacheKey", () => {
       },
     }
     const result = ProviderTransform.options({ model: openaiModel, sessionID, providerOptions: {} })
-    expect(result.promptCacheKey).toBe(sessionID)
+    expect(result.promptCacheKey).toBeUndefined()
   })
 
   test("should set store=false for openai provider", () => {

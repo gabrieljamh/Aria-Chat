@@ -236,6 +236,10 @@ const InfoSchema = Schema.Struct({
       auto: Schema.optional(Schema.Boolean).annotate({
         description: "Enable automatic compaction when context is full (default: true)",
       }),
+      threshold: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Token threshold at which to trigger auto-compaction. If set, compaction triggers when context reaches this many tokens instead of using the model's context limit. Example: 100000 for 100K tokens.",
+      }),
       prune: Schema.optional(Schema.Boolean).annotate({
         description: "Enable pruning of old tool outputs (default: true)",
       }),

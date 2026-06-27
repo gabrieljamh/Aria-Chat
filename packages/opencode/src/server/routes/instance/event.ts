@@ -5,6 +5,7 @@ import { streamSSE } from "hono/streaming"
 import { Log } from "@/util"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
+import { GlobalBus } from "@/bus/global"
 import { AsyncQueue } from "@/util/queue"
 
 const log = Log.create({ service: "server" })
@@ -76,22 +77,27 @@ export const EventRoutes = () =>
           )
         }, 10_000)
 
+        const onGlobal = (msg: { directory?: string; project?: string; workspace?: string; payload: any }) => {
+          q.push(JSON.stringify(msg.payload))
+        }
+        GlobalBus.on("event", onGlobal)
+
+        const unsub = Bus.subscribeAll((event) => {
+          if (event.type === Bus.InstanceDisposed.type) {
+            stop()
+          }
+        })
+
         const stop = () => {
           if (done) return
           done = true
           clearInterval(heartbeat)
+          GlobalBus.off("event", onGlobal)
           unsub()
           q.push(null)
           if (q.dropped > 0) log.warn("event dropped under backpressure", { dropped: q.dropped })
           log.info("event disconnected", { buffered: q.size })
         }
-
-        const unsub = Bus.subscribeAll((event) => {
-          q.push(JSON.stringify(event))
-          if (event.type === Bus.InstanceDisposed.type) {
-            stop()
-          }
-        })
 
         stream.onAbort(stop)
 

@@ -29,6 +29,12 @@ export function isOverflow(input: { cfg: Config.Info; tokens: MessageV2.Assistan
 
   const count =
     input.tokens.total || input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
+
+  const threshold = input.cfg.compaction?.threshold
+  if (threshold && threshold > 0) {
+    return count >= threshold
+  }
+
   return count >= usable(input)
 }
 
@@ -42,7 +48,9 @@ export function pressureLevel(input: {
 
   const count =
     input.tokens.total || input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
-  const limit = usable(input)
+
+  const threshold = input.cfg.compaction?.threshold
+  const limit = threshold && threshold > 0 ? threshold : usable(input)
   if (limit === 0) return 0
 
   const ratio = count / limit
