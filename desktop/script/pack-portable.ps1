@@ -1,14 +1,14 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  Builds and packages a portable standalone copy of MiMo Tasker
+  Builds and packages a portable standalone copy of Aria Chat
   (Electron app + compiled server binary). No repo source required to run.
 .DESCRIPTION
   1. Builds the Electron app via electron-vite.
   2. Builds the MiMo Code server into a standalone binary via bun build --compile
      (current platform only, using --single flag).
   3. Copies Electron runtime + app output + server binary into dist-portable/.
-  4. Zips the result into mimocode-desktop-portable-win32-x64.zip.
+  4. Zips the result into aria-chat-portable-win32-x64.zip.
 #>
 
 param(
@@ -20,7 +20,7 @@ $ErrorActionPreference = "Stop"
 $root = Resolve-Path "$PSScriptRoot\.."
 $distDir = Join-Path $root "dist-portable"
 
-Write-Host "=== Building MiMo Tasker portable ===" -ForegroundColor Cyan
+Write-Host "=== Building Aria Chat portable ===" -ForegroundColor Cyan
 
 # ── 1. Build Electron app ──────────────────────────────────────────────
 if (-not $SkipBuild) {
@@ -80,7 +80,7 @@ $electronExe = if ($IsWindows -or $env:OS -eq "Windows_NT") { "electron.exe" } e
 if (-not (Test-Path (Join-Path $electronDist $electronExe))) {
   throw "Electron runtime not found at $electronDist\$electronExe"
 }
-Copy-Item (Join-Path $electronDist $electronExe) (Join-Path $distDir "mimo-tasker.exe")
+Copy-Item (Join-Path $electronDist $electronExe) (Join-Path $distDir "aria-chat.exe")
 # Copy the rest of the Electron runtime next to the exe (dlls, *.pak/*.bin/*.dat,
 # and the locales\ directory). -Recurse is REQUIRED: locales\ holds the *.pak
 # files Electron loads at startup, and without -Recurse it would be created empty,
@@ -115,7 +115,7 @@ Write-Host "Portable package assembled at $distDir" -ForegroundColor Green
 # ── 4. Zip ──────────────────────────────────────────────────────────────
 if (-not $SkipZip) {
   Write-Host "[4/4] Creating zip archive..." -ForegroundColor Yellow
-  $zipName = "mimo-tasker-portable-win32-x64.zip"
+  $zipName = "aria-chat-portable-win32-x64.zip"
   $zipPath = Join-Path $root $zipName
   if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
   Compress-Archive -Path "$distDir\*" -DestinationPath $zipPath -Force
@@ -128,6 +128,6 @@ Write-Host "=== Done ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "To run the portable copy:" -ForegroundColor White
 Write-Host "  cd $distDir" -ForegroundColor White
-Write-Host "  .\mimo-tasker.exe" -ForegroundColor White
+Write-Host "  .\aria-chat.exe" -ForegroundColor White
 Write-Host ""
 Write-Host "The Electron app auto-detects the server binary in .\server\ and starts it." -ForegroundColor DarkGray

@@ -61,4 +61,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
-          files: desktop/mimo-tasker-portable-win32-x64.zip
+          files: desktop/aria-chat-portable-win32-x64.zip
