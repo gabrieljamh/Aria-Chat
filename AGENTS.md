@@ -5,104 +5,107 @@
 - CI triggers on both `main` and `dev` branches.
 - Prefer automation: execute requested actions without confirmation unless blocked by missing info or safety/irreversibility.
 
-## Core Focus (as of 2025-06-18)
+## Monorepo layout
 
-Our core development focus is the **TUI** (terminal UI) implementation in `packages/opencode/src/cli/cmd/tui/`. We do not currently provide support for Web or App interfaces. All operations should default to checking the TUI implementation first.
+- **`packages/opencode/`** — the core server + TUI (`@mimo-ai/cli`). Bun workspace package. Effect framework, SolidJS TUI.
+- **`desktop/`** — **MiMo Tasker** (standalone Electron app). NOT in the Bun workspace — uses `npm`, not `bun`. See `desktop/ARCHITECTURE.md`.
+- **`packages/desktop/`** — upstream `@mimo-ai/desktop`. Different Electron app, in the Bun workspace. Do not confuse with `desktop/`.
+- **`packages/sdk/`** — JS SDK. Regenerated via `./packages/sdk/js/script/build.ts`.
+- **`packages/shared/`** — shared types/utilities.
+- Other packages: `app`, `console`, `enterprise`, `extensions`, `identity`, `plugin`, `script`, `slack`, `ui`, `web`.
 
-## Style Guide
+## Commands
 
-### General Principles
+| What | Command | CWD |
+|------|---------|-----|
+| Typecheck all (turbo) | `bun run typecheck` | repo root |
+| Typecheck desktop/ (MiMo Tasker) | `npm run typecheck` | `desktop/` |
+| Typecheck packages/desktop/ | `bun run typecheck` from package, or `bun turbo typecheck` | root |
+| Typecheck opencode single | `bun run typecheck` | `packages/opencode/` |
+| Lint (oxlint) | `bun run lint` | repo root |
+| Test opencode | `bun test --timeout 30000` | `packages/opencode/` |
+| Test single file | `bun test test/<path>.test.ts` | `packages/opencode/` |
+| Run TUI dev | `bun run dev` | repo root |
+| Run MiMo Tasker dev | `npm run dev` | `desktop/` |
+| Build MiMo Tasker portable | `npm run pack` | `desktop/` |
+
+**Never run `tsc` directly** — always use the package's typecheck script. The opencode package uses `tsgo`.
+
+**Tests cannot run from repo root** (guard exits with error). Always `cd` into a package dir first.
+
+## Pre-push hook
+
+Runs `bun typecheck` — your push will be rejected on type errors. Also validates the Bun version matches `packageManager` in root `package.json`.
+
+## TUI (`packages/opencode/src/cli/cmd/tui/`)
+
+The core development focus. SolidJS + OpentUI framework. Key paths:
+- `app.tsx` — root component
+- `routes/` — route components
+- `component/` — shared UI components
+- `context/` — reactive contexts
+- `plugin/` — plugin system
+- `feature-plugins/` — built-in feature plugins
+
+Uses `@opentui/solid` with `customConditions: ["browser"]` and path alias `@tui/*`.
+
+## Desktop (`desktop/`) — MiMo Tasker
+
+- Standalone npm package. Use `npm install` / `npm run dev`, not `bun`.
+- Three-layer Electron: Main (`src/main/`) → Preload (contextBridge) → Renderer (React).
+- Renderer never talks to the server directly — all server comms go through IPC.
+- **Adding a server feature**: touch all three in lockstep — `shared/types.ts` (`MimoApi`) → `preload/index.ts` → `main/ipc.ts`.
+- Single CSS file: `src/renderer/styles.css`. CSS variables for theming. No CSS-in-JS or Tailwind.
+- Typecheck: `npm run typecheck` (runs `typecheck:node` then `typecheck:web`).
+- `package.json` `name` field (`mimocode-desktop`) determines the `%APPDATA%` folder — **do not rename it** or user data will be orphaned.
+- See `desktop/ARCHITECTURE.md` for full architecture docs.
+
+## opencode (`packages/opencode/`)
+
+- Effect framework (`effect`, `@effect/*`). Uses `Effect.gen` (`function*`) extensively.
+- Condition imports: `#db`, `#pty`, `#hono`, `#read-sqlite` — Bun vs Node entry points.
+- Custom TS path aliases: `@/*` → `./src/*`, `@tui/*`, `@test/*`.
+- `@effect/language-service` plugin enabled in tsconfig.
+- DB: Drizzle ORM with SQLite. Use snake_case for schema fields (no string redefinition needed).
+
+## Style guide
 
 - Keep things in one function unless composable or reusable
-- Avoid `try`/`catch` where possible
-- Avoid using the `any` type
-- Use Bun APIs when possible, like `Bun.file()`
-- Rely on type inference when possible; avoid explicit type annotations or interfaces unless necessary for exports or clarity
-- Prefer functional array methods (flatMap, filter, map) over for loops; use type guards on filter to maintain type inference downstream
-- In `src/config`, follow the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) when adding a new config module.
+- Avoid `try`/`catch` where possible; avoid `any`
+- Use Bun APIs when possible (e.g. `Bun.file()`)
+- Rely on type inference; annotate only for exports or clarity
+- Prefer functional array methods over for loops; use type guards on `.filter()` for type narrowing
+- Config modules in `src/config/`: follow self-export pattern (`export * as ConfigX from "./x"`)
+- Inline values used only once — avoid single-use variables
+- Avoid unnecessary destructuring; use dot notation to preserve context
+- Prefer `const` over `let`; ternaries / early returns over reassignment
+- Avoid `else` — prefer early returns
 
-Reduce total variable count by inlining when a value is only used once.
+## Drizzle schemas
 
-```ts
-// Good
-const journal = await Bun.file(path.join(dir, "journal.json")).json()
-
-// Bad
-const journalPath = path.join(dir, "journal.json")
-const journal = await Bun.file(journalPath).json()
-```
-
-### Destructuring
-
-Avoid unnecessary destructuring. Use dot notation to preserve context.
+Use snake_case fields so column name strings aren't needed:
 
 ```ts
-// Good
-obj.a
-obj.b
-
-// Bad
-const { a, b } = obj
-```
-
-### Variables
-
-Prefer `const` over `let`. Use ternaries or early returns instead of reassignment.
-
-```ts
-// Good
-const foo = condition ? 1 : 2
-
-// Bad
-let foo
-if (condition) foo = 1
-else foo = 2
-```
-
-### Control Flow
-
-Avoid `else` statements. Prefer early returns.
-
-```ts
-// Good
-function foo() {
-  if (condition) return 1
-  return 2
-}
-
-// Bad
-function foo() {
-  if (condition) return 1
-  else return 2
-}
-```
-
-### Schema Definitions (Drizzle)
-
-Use snake_case for field names so column names don't need to be redefined as strings.
-
-```ts
-// Good
 const table = sqliteTable("session", {
   id: text().primaryKey(),
   project_id: text().notNull(),
   created_at: integer().notNull(),
 })
-
-// Bad
-const table = sqliteTable("session", {
-  id: text("id").primaryKey(),
-  projectID: text("project_id").notNull(),
-  createdAt: integer("created_at").notNull(),
-})
 ```
 
 ## Testing
 
-- Avoid mocks as much as possible
-- Test actual implementation, do not duplicate logic into tests
-- Tests cannot run from repo root (guard: `do-not-run-tests-from-root`); run from package dirs like `packages/opencode`.
+- Avoid mocks; test actual implementation
+- Do not duplicate logic into tests
+- Run from package dirs, never repo root (opencode has a guard)
 
-## Type Checking
+## CI
 
-- Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
+Three workflows on `main` and `dev`: lint (oxlint), typecheck (turbo), test (bun test).
+
+## Key gotchas
+
+- Two different desktop apps: `desktop/` (MiMo Tasker, npm) vs `packages/desktop/` (upstream, bun workspace). They are not the same.
+- The opencode package uses `tsgo` for typechecking, not `tsc`.
+- `packages/opencode/src/cli/cmd/tui/` TUI renders via SolidJS, not React.
+- `desktop/` package name field must stay `mimocode-desktop` — changing it moves the user data directory.

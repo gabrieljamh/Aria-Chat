@@ -537,6 +537,20 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           }
           const result = Binary.search(parts, event.properties.part.id, (p) => p.id)
           if (result.found) {
+            // Skip stale updates: if the incoming part has empty/shorter text
+            // than what we already have (accumulated from deltas), preserve the
+            // longer text. The text-start PartUpdated publishes text:"" which
+            // races with PartDelta events.
+            const existing = parts[result.index] as { text?: string }
+            const incoming = event.properties.part as { type: string; text?: string }
+            if (
+              incoming.type === "text" &&
+              existing.text !== undefined &&
+              incoming.text !== undefined &&
+              existing.text.length >= incoming.text.length
+            ) {
+              break
+            }
             setStore("part", event.properties.part.messageID, result.index, reconcile(event.properties.part))
             break
           }
@@ -552,9 +566,35 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
         case "message.part.delta": {
           const parts = store.part[event.properties.messageID]
-          if (!parts) break
+          if (!parts) {
+            setStore("part", event.properties.messageID, [
+              {
+                id: event.properties.partID,
+                messageID: event.properties.messageID,
+                sessionID: event.properties.sessionID,
+                type: "text",
+                text: event.properties.delta,
+              },
+            ])
+            break
+          }
           const result = Binary.search(parts, event.properties.partID, (p) => p.id)
-          if (!result.found) break
+          if (!result.found) {
+            setStore(
+              "part",
+              event.properties.messageID,
+              produce((draft) => {
+                draft.push({
+                  id: event.properties.partID,
+                  messageID: event.properties.messageID,
+                  sessionID: event.properties.sessionID,
+                  type: "text",
+                  text: event.properties.delta,
+                })
+              }),
+            )
+            break
+          }
           setStore(
             "part",
             event.properties.messageID,
