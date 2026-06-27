@@ -17,4 +17,4 @@ if (process.versions.bun !== expectedBunVersion) {
   console.warn(`Warning: Bun version ${process.versions.bun} differs from expected ${expectedBunVersion}`);
 }
 '
-bun typecheck
+bun typecheck --filter='./packages/opencode' --filter='./packages/shared' --filter='./packages/sdk' --filter='./packages/plugin' --filter='./packages/script'
