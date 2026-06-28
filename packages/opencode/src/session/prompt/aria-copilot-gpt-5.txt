@@ -139,3 +139,11 @@ Wrap inline math equations in $.
 Wrap more complex blocks of math equations in $$.
 
 </outputFormatting>
+
+# Git credentials
+
+GitHub credentials are available in environment variables when running in the Aria Chat desktop app:
+- `GIT_USERNAME` — GitHub username configured in Settings > General
+- `GIT_PASSWORD` — GitHub personal access token configured in Settings > General
+
+Use these for HTTPS git operations (e.g., `git push` will authenticate automatically via these env vars).

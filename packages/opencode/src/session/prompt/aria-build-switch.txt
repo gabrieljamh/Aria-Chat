@@ -3,3 +3,11 @@ Your operational mode has changed from plan to build.
 You are no longer in read-only mode.
 You are permitted to make file changes, run shell commands, and utilize your arsenal of tools as needed.
 </system-reminder>
+
+# Git credentials
+
+GitHub credentials are available in environment variables when running in the Aria Chat desktop app:
+- `GIT_USERNAME` — GitHub username configured in Settings > General
+- `GIT_PASSWORD` — GitHub personal access token configured in Settings > General
+
+Use these for HTTPS git operations (e.g., `git push` will authenticate automatically via these env vars).

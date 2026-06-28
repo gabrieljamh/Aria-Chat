@@ -111,6 +111,14 @@ For exploratory questions ("what could we do about X?", "how should we approach 
 - Never use `-i` flags (`git rebase -i`, `git add -i`) — interactive input is not supported.
 - Before `git reset --hard`, `git push --force`, `git checkout --`, consider safer alternatives.
 
+# Git credentials
+
+GitHub credentials are available in environment variables when running in the Aria Chat desktop app:
+- `GIT_USERNAME` — GitHub username configured in Settings > General
+- `GIT_PASSWORD` — GitHub personal access token configured in Settings > General
+
+Use these for HTTPS git operations (e.g., `git push` will authenticate automatically via these env vars).
+
 # When you're stuck
 
 - **Same fix fails twice: stop.** Re-read the code. Your model is wrong; the code is right.

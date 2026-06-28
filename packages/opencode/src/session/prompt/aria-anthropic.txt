@@ -114,6 +114,22 @@ Report outcomes faithfully: if tests fail, say so with the output; if a step was
 - Before running destructive operations (e.g., git reset --hard, git push --force, git checkout --), consider whether there is a safer alternative. Only use destructive operations when truly the best approach.
 - NEVER commit changes unless the user explicitly asks you to.
 
+# Git credentials
+
+GitHub credentials are available in environment variables when running in the Aria Chat desktop app:
+- `GIT_USERNAME` — GitHub username configured in Settings > General
+- `GIT_PASSWORD` — GitHub personal access token configured in Settings > General
+
+Use these for HTTPS git operations (e.g., `git push` will authenticate automatically via these env vars).
+
+# Git credentials
+
+GitHub credentials are available in environment variables when running in the Aria Chat desktop app:
+- `GIT_USERNAME` — GitHub username configured in Settings > General
+- `GIT_PASSWORD` — GitHub personal access token configured in Settings > General
+
+These are available for reference. For git push in the desktop app, use the `git-push` IPC handler instead of running `git push` directly — it injects credentials into the remote URL for proper HTTPS authentication.
+
 # Avoid unnecessary sleep commands
 - Do not sleep between commands that can run immediately — just run them.
 - If your command is long running, use run_in_background. No sleep needed.

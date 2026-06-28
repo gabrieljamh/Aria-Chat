@@ -124,6 +124,14 @@ Report outcomes faithfully: if tests fail, say so with the output; if a step was
 - Never use git commands with the -i flag (git rebase -i, git add -i) since they require interactive input which is not supported.
 - Before running destructive operations (e.g., git reset --hard, git push --force, git checkout --), consider whether there is a safer alternative. Only use destructive operations when truly the best approach.
 
+# Git credentials
+
+GitHub credentials are available in environment variables when running in the Aria Chat desktop app:
+- `GIT_USERNAME` — GitHub username configured in Settings > General
+- `GIT_PASSWORD` — GitHub personal access token configured in Settings > General
+
+Use these for HTTPS git operations (e.g., `git push` will authenticate automatically via these env vars).
+
 # Avoid unnecessary sleep commands
 - Do not sleep between commands that can run immediately — just run them.
 - If your command is long running, use run_in_background. No sleep needed.
