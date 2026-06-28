@@ -453,6 +453,7 @@ export interface MimoApi {
   // settings store
   getSetting(key: string): Promise<unknown>
   setSetting(key: string, value: unknown): Promise<void>
+  gitPush(opts: { directory: string; remote?: string; branch?: string; force?: boolean }): Promise<string>
 
   // app info
   getAppInfo(): Promise<AppInfo>

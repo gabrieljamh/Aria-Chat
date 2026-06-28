@@ -516,6 +516,44 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
   ipcMain.handle("get-setting", (_e, key: string) => getStore().get(key))
   ipcMain.handle("set-setting", (_e, key: string, value: unknown) => getStore().set(key, value))
 
+  /* ------------------------------- git -------------------------------- */
+  ipcMain.handle("git-push", async (_e, opts: { directory: string; remote?: string; branch?: string; force?: boolean }) => {
+    const { directory, remote = "origin", branch, force = false } = opts
+    const store = getStore()
+    const githubUsername = store.get("githubUsername") as string | undefined
+    const githubToken = store.get("githubToken") as string | undefined
+
+    if (!githubUsername || !githubToken) {
+      throw new Error("GitHub username and token not configured. Set them in Settings > General.")
+    }
+
+    const { promisify } = await import("node:util")
+    const execFile = promisify(require("node:child_process").execFile)
+
+    // Get the remote URL and inject credentials for HTTPS auth
+    const { stdout: remoteUrl } = await execFile("git", ["remote", "get-url", remote], { cwd: directory })
+    const cleanUrl = remoteUrl.trim()
+    
+    let authUrl = cleanUrl
+    if (cleanUrl.startsWith("https://")) {
+      // Inject credentials: https://username:token@github.com/...
+      const urlPart = cleanUrl.slice("https://".length)
+      authUrl = `https://${encodeURIComponent(githubUsername)}:${encodeURIComponent(githubToken)}@${urlPart}`
+    } else if (cleanUrl.startsWith("http://")) {
+      const urlPart = cleanUrl.slice("http://".length)
+      authUrl = `http://${encodeURIComponent(githubUsername)}:${encodeURIComponent(githubToken)}@${urlPart}`
+    }
+
+    // Push using the authenticated URL
+    const args = ["push", authUrl]
+    if (branch) args.push(branch)
+    if (force) args.push("--force")
+
+    const { stdout, stderr } = await execFile("git", args, { cwd: directory })
+    if (stderr && !stdout) throw new Error(stderr)
+    return stdout
+  })
+
   ipcMain.handle("get-app-info", () => ({
     appName: "Aria Chat",
     appVersion: app.getVersion(),

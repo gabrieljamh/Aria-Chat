@@ -159,6 +159,9 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [compStatus, setCompStatus] = useState<Status>({ kind: "idle" })
   const [userName, setUserName] = useState("")
   const [userStatus, setUserStatus] = useState<Status>({ kind: "idle" })
+  const [githubUsername, setGithubUsername] = useState("")
+  const [githubToken, setGithubToken] = useState("")
+  const [githubStatus, setGithubStatus] = useState<Status>({ kind: "idle" })
   const [customPrompt, setCustomPrompt] = useState("")
   const [promptStatus, setPromptStatus] = useState<Status>({ kind: "idle" })
   const [aiGreetings, setAiGreetings] = useState(false)
@@ -221,6 +224,11 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
 
   useEffect(() => {
     window.mimo.getSetting("userName").then((v) => setUserName(typeof v === "string" ? v : ""))
+  }, [])
+
+  useEffect(() => {
+    window.mimo.getSetting("githubUsername").then((v) => setGithubUsername(typeof v === "string" ? v : ""))
+    window.mimo.getSetting("githubToken").then((v) => setGithubToken(typeof v === "string" ? v : ""))
   }, [])
 
   useEffect(() => {
@@ -662,6 +670,17 @@ const saveEditModel = async () => {
     }
   }
 
+  const saveGithubSettings = async () => {
+    setGithubStatus({ kind: "saving" })
+    try {
+      await window.mimo.setSetting("githubUsername", githubUsername.trim())
+      await window.mimo.setSetting("githubToken", githubToken.trim())
+      setGithubStatus({ kind: "ok", msg: "GitHub credentials saved." })
+    } catch (e: any) {
+      setGithubStatus({ kind: "error", msg: String(e?.message ?? e) })
+    }
+  }
+
   const saveServerUrl = async () => {
     setServerStatus({ kind: "saving" })
     try {
@@ -827,6 +846,38 @@ const saveEditModel = async () => {
                 <div className="settings-inline-actions">
                   <button className="primary" onClick={saveUserName} disabled={userStatus.kind === "saving"}>
                     {userStatus.kind === "saving" ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-field">
+                <label htmlFor="github-username">GitHub username</label>
+                <input
+                  id="github-username"
+                  placeholder="e.g. your-username"
+                  value={githubUsername}
+                  onChange={(e) => setGithubUsername(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveGithubSettings() }}
+                />
+                <div className="hint">Used for git push operations to GitHub.</div>
+              </div>
+
+              <div className="settings-field">
+                <label htmlFor="github-token">GitHub personal access token</label>
+                <input
+                  id="github-token"
+                  type="password"
+                  placeholder="ghp_..."
+                  value={githubToken}
+                  onChange={(e) => setGithubToken(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveGithubSettings() }}
+                />
+                <div className="hint">Create a classic PAT at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a> with <code>repo</code> scope.</div>
+                {githubStatus.kind === "ok" && <div className="form-msg ok">{githubStatus.msg}</div>}
+                {githubStatus.kind === "error" && <div className="form-msg err">{githubStatus.msg}</div>}
+                <div className="settings-inline-actions">
+                  <button className="primary" onClick={saveGithubSettings} disabled={githubStatus.kind === "saving"}>
+                    {githubStatus.kind === "saving" ? "Saving…" : "Save"}
                   </button>
                 </div>
               </div>

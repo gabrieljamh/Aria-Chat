@@ -90,6 +90,8 @@ const api: MimoApi = {
 
   getSetting: (key) => ipcRenderer.invoke("get-setting", key),
   setSetting: (key, value) => ipcRenderer.invoke("set-setting", key, value) as Promise<void>,
+  gitPush: (opts: { directory: string; remote?: string; branch?: string; force?: boolean }) =>
+    ipcRenderer.invoke("git-push", opts) as Promise<string>,
   getAppInfo: () => ipcRenderer.invoke("get-app-info") as Promise<import("@shared/types").AppInfo>,
 }
 

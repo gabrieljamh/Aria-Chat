@@ -1657,6 +1657,13 @@ button {
   font-size: 11.5px;
   margin-top: 5px;
 }
+.settings-field .hint a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.settings-field .hint a:hover {
+  text-decoration: underline;
+}
 .hint code {
   background: var(--bg-inset);
   border-radius: 4px;

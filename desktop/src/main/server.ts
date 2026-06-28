@@ -5,6 +5,7 @@ import { dirname, join } from "node:path"
 import { EventEmitter } from "node:events"
 import type { ServerStatus } from "@shared/types"
 import { sanitizeGlobalConfig } from "./ipc"
+import { getStore } from "./store"
 
 /**
  * Manages the MiMo Code local server: either attaches to an already-running
@@ -222,6 +223,11 @@ export class ServerManager extends EventEmitter {
     // before the server reads it. This handles configs written before the fix.
     await sanitizeGlobalConfig()
 
+    // Get GitHub credentials from settings for git push auth
+    const store = getStore()
+    const githubUsername = (store.get("githubUsername") as string | undefined) ?? ""
+    const githubToken = (store.get("githubToken") as string | undefined) ?? ""
+
     // Run the server with a random local-only password so the app can use
     // working directories OUTSIDE the repo (e.g. per-chat sandboxes under
     // AppData). Without a password the server confines every request to its
@@ -236,13 +242,9 @@ export class ServerManager extends EventEmitter {
         MIMOCODE_CLIENT: "desktop",
         MIMOCODE_SERVER_USERNAME: "mimocode",
         MIMOCODE_SERVER_PASSWORD: password,
-        // Pin each instance's worktree to the directory we hand it. Without this,
-        // a non-git folder (e.g. a freshly-picked empty project) resolves its
-        // worktree to the filesystem root "/", which breaks snapshotting and
-        // makes file writes land in the wrong place / not at all. Disabling git
-        // discovery makes worktree == the selected directory. (Only affects
-        // MiMo's internal snapshots — the agent can still run git via bash.)
         MIMOCODE_DISABLE_GIT: "1",
+        GIT_USERNAME: githubUsername,
+        GIT_PASSWORD: githubToken,
       },
       stdio: ["ignore", "pipe", "pipe"],
     })
