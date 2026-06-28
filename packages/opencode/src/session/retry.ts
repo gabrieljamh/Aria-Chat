@@ -17,7 +17,8 @@ export function isRateLimitMessage(message: string): boolean {
   return (
     lower.includes("too many requests") ||
     lower.includes("rate limit") ||
-    lower.includes("rate increased too quickly")
+    lower.includes("rate increased too quickly") ||
+    lower.includes("worker local total request limit")
   )
 }
 
@@ -123,7 +124,8 @@ export function retryable(error: Err) {
     if (
       lower.includes("rate increased too quickly") ||
       lower.includes("rate limit") ||
-      lower.includes("too many requests")
+      lower.includes("too many requests") ||
+      lower.includes("worker local total request limit")
     ) {
       return msg
     }

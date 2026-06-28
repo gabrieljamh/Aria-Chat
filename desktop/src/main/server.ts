@@ -4,6 +4,7 @@ import { existsSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { EventEmitter } from "node:events"
 import type { ServerStatus } from "@shared/types"
+import { sanitizeGlobalConfig } from "./ipc"
 
 /**
  * Manages the MiMo Code local server: either attaches to an already-running
@@ -106,6 +107,8 @@ export class ServerManager extends EventEmitter {
   /** Spawn the child, health-check it, and mark ready. Shared by start + restart. */
   private async bringUp(port: number): Promise<ServerHandle> {
     this.lastStartAt = Date.now()
+    // Sanitize global config before server reads it (removes undefined values)
+    await sanitizeGlobalConfig()
     const url = await this.spawn(port)
     // The "listening on" line means the HTTP server is up, but confirm it
     // actually answers /global/health before declaring ready. This also catches
@@ -214,7 +217,10 @@ export class ServerManager extends EventEmitter {
   }
 
   /** Spawn the actual child process and wire up stdout/stderr promise. */
-  private spawnBinary(command: string, args: string[], cwd: string): Promise<string> {
+  private async spawnBinary(command: string, args: string[], cwd: string): Promise<string> {
+    // Sanitize global config (strip undefined values that cause validation errors)
+    // before the server reads it. This handles configs written before the fix.
+    await sanitizeGlobalConfig()
 
     // Run the server with a random local-only password so the app can use
     // working directories OUTSIDE the repo (e.g. per-chat sandboxes under

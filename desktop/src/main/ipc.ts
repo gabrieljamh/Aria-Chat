@@ -21,6 +21,53 @@ import { getStore } from "./store"
 import { allowPreviewRoot } from "./preview"
 import type { AuthInfo, ConfigPatch, PermissionReply, PromptInput, ServerStatus, SkillInfo } from "@shared/types"
 
+// Sanitize config: remove undefined values from cost/limit objects that cause validation errors
+function sanitizeConfig(obj: any): any {
+  if (obj === null || typeof obj !== "object") return obj
+  if (Array.isArray(obj)) return obj.map(sanitizeConfig)
+
+  // If this is a model config with cost/limit, remove undefined fields (server has fallbacks)
+  if (obj.cost && typeof obj.cost === "object") {
+    for (const k of Object.keys(obj.cost)) {
+      if (obj.cost[k] === undefined) delete obj.cost[k]
+    }
+  }
+  if (obj.limit && typeof obj.limit === "object") {
+    for (const k of Object.keys(obj.limit)) {
+      if (obj.limit[k] === undefined) delete obj.limit[k]
+    }
+  }
+
+  const out: Record<string, any> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    const sv = sanitizeConfig(v)
+    if (sv !== undefined) out[k] = sv
+  }
+  return out
+}
+
+// The GLOBAL server config file path (matches opencode's resolveMimocodeHome XDG config)
+async function globalConfigFile(): Promise<string> {
+  // On Windows, xdgConfig resolves to %USERPROFILE%\.config (e.g., C:\Users\PC Gamer\.config)
+  // The server reads from ~/.config/mimocode/mimocode.json
+  const home = process.env.HOME || process.env.USERPROFILE || require("os").homedir()
+  return path.join(home, ".config", "mimocode", "mimocode.json")
+}
+
+// Sanitize global config file: read, remove undefined, write back
+export async function sanitizeGlobalConfig(): Promise<void> {
+  const file = await globalConfigFile()
+  let cfg: Record<string, any> = {}
+  try {
+    if (fs.existsSync(file)) cfg = JSON.parse(fs.readFileSync(file, "utf8"))
+  } catch {
+    cfg = {}
+  }
+  cfg = sanitizeConfig(cfg)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2))
+}
+
 /**
  * Wires the renderer (over IPC) to the ServerManager + MimoClient. All HTTP/SSE
  * traffic stays in the main process; the renderer only sends commands and
@@ -42,15 +89,6 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
     return client
   }
 
-  // The GLOBAL server config file. Providers written here are visible to every
-  // instance (every chat/tasker directory), which is required for the model to
-  // resolve no matter which directory a turn targets (e.g. the vision redirect).
-  const globalConfigFile = async (): Promise<string> => {
-    const info = await ensureClient().getPath().catch(() => null)
-    if (!info?.config) throw new Error("Could not resolve the global server config directory.")
-    return path.join(info.config, "mimocode.json")
-  }
-
   // Read/modify/write the global mimocode.json atomically-ish (single process).
   const mutateGlobalConfig = async (mutate: (cfg: Record<string, any>) => void) => {
     const file = await globalConfigFile()
@@ -60,7 +98,9 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
     } catch {
       cfg = {}
     }
+    cfg = sanitizeConfig(cfg)
     mutate(cfg)
+    cfg = sanitizeConfig(cfg)
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, JSON.stringify(cfg, null, 2))
   }

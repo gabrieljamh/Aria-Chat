@@ -122,6 +122,24 @@ When a `message.part.updated` event arrives with text that's shorter than what d
 
 **Fix:** in `sync.tsx`, if the incoming part is a text type and the store already has text that's equal or longer, skip the update (break instead of overwrite). Also handles out-of-order `message.part.delta` events by creating a placeholder part when the part isn't found yet.
 
+### 5. Config schema leniency — `src/config/provider.ts`
+
+Upstream schema requires `cost.input`, `cost.output`, `limit.context`, `limit.output` as required numbers. Existing configs with missing/undefined values cause validation failure on startup: `expected number, received undefined`.
+
+**Fix:** make all numeric cost/limit fields optional in the `Model` schema. Server's existing fallback logic in `provider.ts` handles missing values: `limit.context` defaults to 1M tokens, `limit.output` defaults to 0, `cost.input/output` default to 0 (free tier marker).
+
+### 6. Rate limit error detection — `src/session/retry.ts`
+
+Provider errors like Anthropic's `ResourceExhausted: Worker local total request limit reached (33/32)` arrive with HTTP 200 but error in response body. Upstream retry logic only checked HTTP status codes (429, 5xx), missing these body-only errors.
+
+**Fix:** added pattern matching in `retryable()` and `isRateLimitMessage()` for:
+- `"worker local total request limit"`
+- `"resourceexhausted"`
+- `"quota exceeded"`
+- Existing patterns: `"rate limit"`, `"too many requests"`, `"rate increased too quickly"`
+
+These are now recognized as retryable, triggering exponential backoff instead of showing "Stopped" immediately. The TUI upsell detector also uses `isRateLimitMessage()` to show the rate limit banner.
+
 ## Development
 
 | Command | Description |

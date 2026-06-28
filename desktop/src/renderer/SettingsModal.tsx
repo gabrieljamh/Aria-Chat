@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react"
-import type { AppInfo, CustomModel, ModelRef, ProviderConfigInput, ProvidersResponse, SkillInfo } from "@shared/types"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
+import type { AppInfo, CustomModel, ModelRef, ProviderConfigInput, ProviderModel, ProvidersResponse, SkillInfo } from "@shared/types"
 import { useCustomModels, saveCustomModels, loadCustomModels } from "./customModels"
 import ariaTextImg from "@shared/img/aria-text.png"
 
@@ -173,6 +173,24 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [homeModel, setHomeModel] = useState("")
   const customModels = useCustomModels()
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  const [editModelKey, setEditModelKey] = useState<string | null>(null) // "providerID/modelID"
+  const [editName, setEditName] = useState("")
+  const [editFamily, setEditFamily] = useState("")
+  const [editCtxLimit, setEditCtxLimit] = useState("")
+  const [editInLimit, setEditInLimit] = useState("")
+  const [editOutLimit, setEditOutLimit] = useState("")
+  const [editCostIn, setEditCostIn] = useState("")
+  const [editCostOut, setEditCostOut] = useState("")
+  const [editCacheRead, setEditCacheRead] = useState("")
+  const [editCacheWrite, setEditCacheWrite] = useState("")
+  const [editCapTemp, setEditCapTemp] = useState(true)
+  const [editCapReason, setEditCapReason] = useState(false)
+  const [editCapTool, setEditCapTool] = useState(true)
+  const [editCapImage, setEditCapImage] = useState(true)
+  const [editCapAudio, setEditCapAudio] = useState(false)
+  const [editCapVideo, setEditCapVideo] = useState(false)
+  const [editCapPdf, setEditCapPdf] = useState(false)
+  const [editStatus, setEditStatus] = useState<Status>({ kind: "idle" })
 
   useEffect(() => {
     window.mimo.getAppInfo().then(setAppInfo).catch(() => {})
@@ -428,7 +446,16 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       const label = pname.trim() ? `${pname.trim()} · ${mId}` : `${providerID} · ${mId}`
       const next: CustomModel[] = [
         ...customModels.filter((c) => !(c.providerID === providerID && c.modelID === mId)),
-        { providerID, modelID: mId, label },
+        {
+          providerID, modelID: mId, label,
+          ...(pname.trim() ? { name: pname.trim() } : {}),
+          capabilities: {
+            temperature: true,
+            toolcall: true,
+            input: { text: true, image: mImage, audio: mAudio, video: mVideo, pdf: mPdf },
+            output: { text: true },
+          },
+        },
       ]
       await saveCustomModels(next)
       onModelChange({ providerID, modelID: mId })
@@ -456,6 +483,110 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     await saveCustomModels(customModels.filter((x) => !(x.providerID === c.providerID && x.modelID === c.modelID)))
     await window.mimo.removeProvider(c.providerID).catch(() => {})
     await onRefreshProviders()
+  }
+
+  const openEditModel = async (c: CustomModel) => {
+    setEditModelKey(`${c.providerID}/${c.modelID}`)
+    setEditStatus({ kind: "idle" })
+
+    // Load live model data from the server so we see the actual current config
+    let modelInfo: ProviderModel | undefined
+    try {
+      const provs = await window.mimo.getProviders()
+      const provider = provs.all.find((p) => p.id === c.providerID)
+      modelInfo = provider?.models?.[c.modelID]
+    } catch { /* fall through to CustomModel data */ }
+
+    const caps = modelInfo?.capabilities ?? c.capabilities
+    const lim = modelInfo?.limit ?? c.limit
+    const cost = modelInfo?.cost ?? c.cost
+
+    setEditName(modelInfo?.name ?? c.name ?? "")
+    setEditFamily(c.family ?? "")
+    setEditCtxLimit(lim?.context ? String(lim.context) : "")
+    setEditInLimit(lim?.input ? String(lim.input) : "")
+    setEditOutLimit(lim?.output ? String(lim.output) : "")
+    setEditCostIn(cost?.input ? String(cost.input) : "")
+    setEditCostOut(cost?.output ? String(cost.output) : "")
+    setEditCacheRead(String((cost as any)?.cache_read ?? (cost as any)?.cache?.read ?? ""))
+    setEditCacheWrite(String((cost as any)?.cache_write ?? (cost as any)?.cache?.write ?? ""))
+    setEditCapTemp(caps?.temperature ?? true)
+    setEditCapReason(caps?.reasoning ?? false)
+    setEditCapTool(caps?.toolcall ?? true)
+    setEditCapImage(caps?.input?.image ?? true)
+    setEditCapAudio(caps?.input?.audio ?? false)
+    setEditCapVideo(caps?.input?.video ?? false)
+    setEditCapPdf(caps?.input?.pdf ?? false)
+  }
+
+  const closeEditModel = () => {
+    setEditModelKey(null)
+    setEditStatus({ kind: "idle" })
+  }
+
+  const saveEditModel = async () => {
+    if (!editModelKey) return
+    setEditStatus({ kind: "saving" })
+    try {
+      const [providerID, ...rest] = editModelKey.split("/")
+      const modelID = rest.join("/")
+      const entry: ProviderConfigInput = {}
+      if (editName.trim()) entry.name = editName.trim()
+      const inputModalities = [
+        "text",
+        ...(editCapImage ? ["image"] : []),
+        ...(editCapAudio ? ["audio"] : []),
+        ...(editCapVideo ? ["video"] : []),
+        ...(editCapPdf ? ["pdf"] : []),
+      ]
+      const modelEntry: Record<string, unknown> = {
+        name: editName.trim() || modelID,
+        attachment: inputModalities.length > 1,
+        temperature: editCapTemp,
+        reasoning: editCapReason,
+        tool_call: editCapTool,
+        modalities: { input: inputModalities, output: ["text"] },
+      }
+      const limit: Record<string, number> = {}
+      if (editCtxLimit.trim()) limit.context = parseInt(editCtxLimit.trim(), 10)
+      if (editInLimit.trim()) limit.input = parseInt(editInLimit.trim(), 10)
+      if (editOutLimit.trim()) limit.output = parseInt(editOutLimit.trim(), 10)
+      if (Object.keys(limit).length) modelEntry.limit = limit
+      const cost: Record<string, unknown> = {}
+      if (editCostIn.trim()) cost.input = parseFloat(editCostIn.trim())
+      if (editCostOut.trim()) cost.output = parseFloat(editCostOut.trim())
+      if (editCacheRead.trim()) cost.cache_read = parseFloat(editCacheRead.trim())
+      if (editCacheWrite.trim()) cost.cache_write = parseFloat(editCacheWrite.trim())
+      if (Object.keys(cost).length) modelEntry.cost = cost
+      entry.models = { [modelID]: modelEntry }
+      await window.mimo.setGlobalProvider(providerID, entry)
+      await onRefreshProviders()
+      const next = customModels.map((c) => {
+        if (c.providerID === providerID && c.modelID === modelID) {
+          const updated: CustomModel = {
+            ...c,
+            name: editName.trim() || c.name,
+            family: editFamily.trim() || c.family,
+            capabilities: {
+              temperature: editCapTemp,
+              reasoning: editCapReason,
+              toolcall: editCapTool,
+              input: { text: true, image: editCapImage, audio: editCapAudio, video: editCapVideo, pdf: editCapPdf },
+              output: { text: true },
+            },
+          }
+          if (Object.keys(limit).length) updated.limit = limit
+          if (Object.keys(cost).length) updated.cost = cost as any
+          return updated
+        }
+        return c
+      })
+      await saveCustomModels(next)
+      setEditStatus({ kind: "ok", msg: "Model updated." })
+      setTimeout(() => closeEditModel(), 1200)
+    } catch (e: any) {
+      setEditStatus({ kind: "error", msg: String(e?.message ?? e) })
+    }
   }
 
   const saveCustomPrompt = async () => {
@@ -911,9 +1042,103 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
                           <strong>{c.label || c.modelID}</strong>
                           <span className="custom-id">{c.providerID} / {c.modelID}</span>
                         </span>
-                        <button className="custom-remove" onClick={() => removeCustom(c)}>Remove</button>
+                        <div className="custom-row-actions">
+                          <button className="custom-edit" onClick={() => openEditModel(c)}>Edit</button>
+                          <button className="custom-remove" onClick={() => removeCustom(c)}>Remove</button>
+                        </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* model editor overlay */}
+              {editModelKey && (
+                <div className="model-editor-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closeEditModel() }}>
+                  <div className="model-editor">
+                    <h4 className="model-editor-title">Edit model</h4>
+                    <div className="model-editor-body">
+                      <div className="model-editor-field">
+                        <label>Model ID</label>
+                        <input value={editModelKey} disabled />
+                      </div>
+                      <div className="model-editor-field">
+                        <label>Display name</label>
+                        <input placeholder="e.g. My Custom Model" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                      </div>
+                      <div className="model-editor-field">
+                        <label>Family</label>
+                        <input placeholder="e.g. llama, gpt, claude" value={editFamily} onChange={(e) => setEditFamily(e.target.value)} />
+                      </div>
+
+                      <div className="model-editor-section-label">Capabilities</div>
+                      <div className="model-editor-row">
+                        <label className="model-editor-toggle">
+                          <input type="checkbox" checked={editCapTemp} onChange={(e) => setEditCapTemp(e.target.checked)} />
+                          <span>Temperature</span>
+                        </label>
+                        <label className="model-editor-toggle">
+                          <input type="checkbox" checked={editCapReason} onChange={(e) => setEditCapReason(e.target.checked)} />
+                          <span>Reasoning</span>
+                        </label>
+                        <label className="model-editor-toggle">
+                          <input type="checkbox" checked={editCapTool} onChange={(e) => setEditCapTool(e.target.checked)} />
+                          <span>Tool calls</span>
+                        </label>
+                      </div>
+                      <div className="model-editor-section-label">Input modalities</div>
+                      <div className="provider-modalities">
+                        <button type="button" className={"mod-chip" + (editCapImage ? " on" : "")} onClick={() => setEditCapImage((v) => !v)}>Image</button>
+                        <button type="button" className={"mod-chip" + (editCapAudio ? " on" : "")} onClick={() => setEditCapAudio((v) => !v)}>Audio</button>
+                        <button type="button" className={"mod-chip" + (editCapVideo ? " on" : "")} onClick={() => setEditCapVideo((v) => !v)}>Video</button>
+                        <button type="button" className={"mod-chip" + (editCapPdf ? " on" : "")} onClick={() => setEditCapPdf((v) => !v)}>PDF</button>
+                      </div>
+
+                      <div className="model-editor-section-label">Limits (tokens)</div>
+                      <div className="model-editor-grid thirds">
+                        <div className="model-editor-field">
+                          <label>Context window</label>
+                          <input type="number" min="0" placeholder="e.g. 128000" value={editCtxLimit} onChange={(e) => setEditCtxLimit(e.target.value)} />
+                        </div>
+                        <div className="model-editor-field">
+                          <label>Max input</label>
+                          <input type="number" min="0" placeholder="e.g. 64000" value={editInLimit} onChange={(e) => setEditInLimit(e.target.value)} />
+                        </div>
+                        <div className="model-editor-field">
+                          <label>Max output</label>
+                          <input type="number" min="0" placeholder="e.g. 16384" value={editOutLimit} onChange={(e) => setEditOutLimit(e.target.value)} />
+                        </div>
+                      </div>
+
+                      <div className="model-editor-section-label">Pricing (USD per million tokens)</div>
+                      <div className="model-editor-grid">
+                        <div className="model-editor-field">
+                          <label>Input price</label>
+                          <input type="number" min="0" step="0.01" placeholder="e.g. 2.5" value={editCostIn} onChange={(e) => setEditCostIn(e.target.value)} />
+                        </div>
+                        <div className="model-editor-field">
+                          <label>Output price</label>
+                          <input type="number" min="0" step="0.01" placeholder="e.g. 10" value={editCostOut} onChange={(e) => setEditCostOut(e.target.value)} />
+                        </div>
+                        <div className="model-editor-field">
+                          <label>Cache read</label>
+                          <input type="number" min="0" step="0.01" placeholder="e.g. 1.25" value={editCacheRead} onChange={(e) => setEditCacheRead(e.target.value)} />
+                        </div>
+                        <div className="model-editor-field">
+                          <label>Cache write</label>
+                          <input type="number" min="0" step="0.01" placeholder="e.g. 5" value={editCacheWrite} onChange={(e) => setEditCacheWrite(e.target.value)} />
+                        </div>
+                      </div>
+
+                      {editStatus.kind === "ok" && <div className="form-msg ok">{editStatus.msg}</div>}
+                      {editStatus.kind === "error" && <div className="form-msg err">{editStatus.msg}</div>}
+                    </div>
+                    <div className="model-editor-footer">
+                      <button className="secondary" onClick={closeEditModel}>Cancel</button>
+                      <button className="primary" onClick={saveEditModel} disabled={editStatus.kind === "saving"}>
+                        {editStatus.kind === "saving" ? "Saving…" : "Save"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
