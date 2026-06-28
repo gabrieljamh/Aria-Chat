@@ -20,7 +20,7 @@ function ToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
   const files = metadata?.files as Array<{ filePath?: string; patch?: string; relativePath?: string }> | undefined
   const isEditDiff = diff && (part.tool === "edit")
   const isApplyPatch = files && part.tool === "apply_patch"
-  const writeContent = (typeof input?.content === "string" && typeof input?.filePath === "string") ? input.content : undefined
+  const writeContent = (typeof input?.content === "string" && (typeof input?.filePath === "string" || typeof input?.file_path === "string")) ? input.content : undefined
   const isWrite = !isEditDiff && !isApplyPatch && !!writeContent
   const isRead = part.tool === "read" && typeof part.state.output === "string"
   const detail =
@@ -87,6 +87,25 @@ function getUserText(msg: ConvMessage): string {
     .filter((p) => p.type === "text" && (p as any).text && !(p as any).synthetic)
     .map((p) => (p as any).text)
     .join("\n")
+}
+
+function extractErrorMessage(info: ConvMessage["info"]): string | null {
+  if (!info) return null
+  const err = (info as any).error
+  if (!err) return null
+  if (typeof err === "string") return err
+  if (err && typeof err === "object") {
+    if (err.data && typeof err.data === "object" && err.data.message) {
+      return String(err.data.message)
+    }
+    if (err.message) return String(err.message)
+    try {
+      return JSON.stringify(err)
+    } catch {
+      return String(err)
+    }
+  }
+  return null
 }
 
 function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actions }: {
@@ -228,10 +247,25 @@ export function MessageView({ message, showDots, ...actions }: MsgActions & { me
               <span />
             </div>
           ) : (
-            <div className="aborted" style={{ color: "var(--muted)", fontSize: "0.85em" }}>Stopped</div>
+            <>
+              {extractErrorMessage(message.info) ? (
+                <div className="error-message">
+                  {extractErrorMessage(message.info)}
+                </div>
+              ) : (
+                <div className="aborted" style={{ color: "var(--muted)", fontSize: "0.85em" }}>Stopped</div>
+              )}
+            </>
           )
         ) : (
-          message.parts.map((p) => <PartView key={p.id} part={p} />)
+          <>
+            {message.parts.map((p) => <PartView key={p.id} part={p} />)}
+            {extractErrorMessage(message.info) && (
+              <div className="error-message">
+                {extractErrorMessage(message.info)}
+              </div>
+            )}
+          </>
         )}
       </div>
       <MsgFooter msg={message} actions={actions} editMode={editMode} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />

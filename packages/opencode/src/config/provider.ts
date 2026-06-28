@@ -23,14 +23,14 @@ export const Model = Schema.Struct({
   ),
   cost: Schema.optional(
     Schema.Struct({
-      input: Schema.Number,
-      output: Schema.Number,
+      input: Schema.optional(Schema.Number),
+      output: Schema.optional(Schema.Number),
       cache_read: Schema.optional(Schema.Number),
       cache_write: Schema.optional(Schema.Number),
       context_over_200k: Schema.optional(
         Schema.Struct({
-          input: Schema.Number,
-          output: Schema.Number,
+          input: Schema.optional(Schema.Number),
+          output: Schema.optional(Schema.Number),
           cache_read: Schema.optional(Schema.Number),
           cache_write: Schema.optional(Schema.Number),
         }),
@@ -39,9 +39,9 @@ export const Model = Schema.Struct({
   ),
   limit: Schema.optional(
     Schema.Struct({
-      context: Schema.Number,
+      context: Schema.optional(Schema.Number),
       input: Schema.optional(Schema.Number),
-      output: Schema.Number,
+      output: Schema.optional(Schema.Number),
     }),
   ),
   modalities: Schema.optional(

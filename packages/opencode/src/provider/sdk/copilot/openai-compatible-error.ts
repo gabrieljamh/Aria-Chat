@@ -21,7 +21,21 @@ export type ProviderErrorStructure<T> = {
   isRetryable?: (response: Response, error?: T) => boolean
 }
 
+const RATE_LIMIT_PATTERNS = [
+  /rate limit/i,
+  /too many requests/i,
+  /resource exhausted/i,
+  /worker local total request limit/i,
+  /quota exceeded/i,
+  /rate increased too quickly/i,
+]
+
+function checkRateLimit(message: string): boolean {
+  return RATE_LIMIT_PATTERNS.some((p) => p.test(message))
+}
+
 export const defaultOpenAICompatibleErrorStructure: ProviderErrorStructure<OpenAICompatibleErrorData> = {
   errorSchema: openaiCompatibleErrorDataSchema,
   errorToMessage: (data) => data.error.message,
+  isRetryable: (_response, error) => error ? checkRateLimit(error.error.message) : false,
 }
