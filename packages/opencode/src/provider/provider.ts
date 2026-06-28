@@ -476,7 +476,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
           location,
           fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
             const { GoogleAuth } = await import("google-auth-library")
-            const auth = new GoogleAuth()
+            const authOptions = (provider.options as any)?.googleAuthOptions ?? {}
+            const auth = new GoogleAuth(authOptions)
             const client = await auth.getApplicationDefault()
             const token = await client.credential.getAccessToken()
 

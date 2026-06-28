@@ -191,9 +191,13 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
       return null
     }
   })
-  ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) => {
+ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) => {
     await bootPromise
     return ensureClient().getTodos(sessionID, directory)
+  })
+  ipcMain.handle("get-tasks", async (_e, sessionID: string, directory?: string) => {
+    await bootPromise
+    return ensureClient().getTasks(sessionID, directory)
   })
   ipcMain.handle("get-session-status", async (_e, directory?: string) => {
     await bootPromise
@@ -219,18 +223,12 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
   })
   ipcMain.handle("set-global-provider", async (_e, providerID: string, entry: unknown) => {
     await bootPromise
-    // Write the provider into the global config via the server's own API endpoint
-    // (PATCH /global/config) so the server reads, validates, writes, and
-    // invalidates all instances — no path-mismatch risk, no race condition.
-    const patch = { provider: { [providerID]: entry } }
-    await ensureClient().updateGlobalConfig(patch as Record<string, unknown>).catch(() => {
-      // Fallback to direct file write if the server API is unavailable
-      throw new Error("Server rejected the provider config. Check that the entry is valid.")
+    await mutateGlobalConfig((cfg) => {
+      if (!cfg.provider || typeof cfg.provider !== "object") cfg.provider = {}
+      ;(cfg.provider as Record<string, unknown>)[providerID] = entry
     })
-    // Purge any stale per-directory copies of THIS provider (older chat sandboxes
-    // / project folders) so the global entry is authoritative and not shadowed by
-    // an out-of-date local override (the original cause of "Model not found").
     removeProviderFromConfigs(providerID)
+    await disposeAllInstances()
     return true
   })
   ipcMain.handle("remove-provider", async (_e, providerID: string) => {

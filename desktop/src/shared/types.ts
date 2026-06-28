@@ -115,6 +115,19 @@ export interface Todo {
   priority: string // high | medium | low
 }
 
+export interface TaskInfo {
+  id: string
+  session_id: string
+  parent_task_id?: string
+  status: "open" | "in_progress" | "blocked" | "done" | "abandoned"
+  summary: string
+  owner?: string
+  created_at: number
+  last_event_at: number
+  ended_at?: number
+  cleanup_after?: number
+}
+
 export interface SessionStatusInfo {
   type: "idle" | "busy" | "retry"
   message?: string
@@ -128,6 +141,7 @@ export type ServerEvent =
   | { type: "message.updated"; properties: { info: MessageInfo } }
   | { type: "message.removed"; properties: { sessionID: string; messageID: string } }
   | { type: "message.part.updated"; properties: { part: Part; delta?: string } }
+  | { type: "message.part.delta"; properties: { sessionID: string; messageID: string; partID: string; field: string; delta: string } }
   | { type: "message.part.removed"; properties: { sessionID: string; messageID: string; partID: string } }
   | { type: "permission.asked"; properties: Permission }
   | { type: "permission.replied"; properties: { sessionID: string; requestID: string; reply: PermissionReply } }
@@ -135,6 +149,8 @@ export type ServerEvent =
   | { type: "question.replied"; properties: { sessionID: string; requestID: string; answers: string[][] } }
   | { type: "question.rejected"; properties: { sessionID: string; requestID: string } }
   | { type: "todo.updated"; properties: { sessionID: string; todos: Todo[] } }
+  | { type: "task.created"; properties: { sessionID: string; task: TaskInfo } }
+  | { type: "task.updated"; properties: { sessionID: string; task: TaskInfo; kind: string } }
   | { type: "file.edited"; properties: { file: string } }
   | { type: "session.idle"; properties: { sessionID: string } }
   | { type: "session.status"; properties: { sessionID: string; status: SessionStatusInfo } }
@@ -166,7 +182,16 @@ export interface ProviderModel {
   name: string
   status?: string
   // Context window + max output (tokens). Used to compute "% of context used".
-  limit?: { context?: number; output?: number }
+  limit?: { context?: number; input?: number; output?: number }
+  cost?: { input?: number; output?: number; cache?: { read?: number; write?: number } }
+  capabilities?: {
+    temperature?: boolean
+    reasoning?: boolean
+    attachment?: boolean
+    toolcall?: boolean
+    input?: { text?: boolean; image?: boolean; audio?: boolean; video?: boolean; pdf?: boolean }
+    output?: { text?: boolean; audio?: boolean; image?: boolean; video?: boolean; pdf?: boolean }
+  }
 }
 
 // Token accounting carried on an assistant message (subset of the server schema).
@@ -234,6 +259,19 @@ export interface CustomModel {
   providerID: string
   modelID: string
   label: string
+  // Optional model metadata for the edit panel
+  name?: string
+  family?: string
+  capabilities?: {
+    temperature?: boolean
+    reasoning?: boolean
+    attachment?: boolean
+    toolcall?: boolean
+    input?: { text?: boolean; image?: boolean; audio?: boolean; video?: boolean; pdf?: boolean }
+    output?: { text?: boolean; audio?: boolean; image?: boolean; video?: boolean; pdf?: boolean }
+  }
+  limit?: { context?: number; input?: number; output?: number }
+  cost?: { input?: number; output?: number; cache?: { read?: number; write?: number } }
 }
 
 /* ------------------------- Chat / Tasker registry ------------------------ */
@@ -357,6 +395,7 @@ export interface MimoApi {
   uninstallSkill(name: string): Promise<void>
   getPath(): Promise<PathInfo | null>
   getTodos(sessionID: string, directory?: string): Promise<Todo[]>
+  getTasks(sessionID: string, directory?: string): Promise<TaskInfo[]>
   // Authoritative per-session run state (idle/busy/retry). Used to seed the
   // abort button's busy flag on load so a stale history reset can't hide it.
   getSessionStatus(directory?: string): Promise<Record<string, SessionStatusInfo>>

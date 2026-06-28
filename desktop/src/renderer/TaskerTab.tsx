@@ -201,7 +201,7 @@ export function TaskerTab(props: Props) {
         <RightPanel
           collapsed={props.rightCollapsed}
           onToggleCollapse={props.onToggleRight}
-          todos={state.todos}
+          tasks={state.tasks}
           files={state.files}
           onOpenFile={props.onOpenFile}
           stats={

@@ -341,7 +341,6 @@ export function App() {
       } catch (e: any) {
         console.error("[sendPrompt] prompt failed:", e)
         setError(String(e?.message ?? e))
-      } finally {
         setBusy(false)
       }
       refreshTitle(finalRef)

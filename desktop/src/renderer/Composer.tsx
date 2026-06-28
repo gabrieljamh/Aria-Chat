@@ -67,6 +67,8 @@ interface Props {
 
 export function Composer(props: Props) {
   const [text, setText] = useState("")
+  const [interruptCount, setInterruptCount] = useState(0)
+  const interruptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [slashItems, setSlashItems] = useState<SlashItem[]>([])
   const [skillsOpen, setSkillsOpen] = useState(false)
@@ -99,6 +101,16 @@ export function Composer(props: Props) {
       requestAnimationFrame(() => ta.setSelectionRange(ta.value.length, ta.value.length))
     }
   }, [prefillN])
+
+  useEffect(() => {
+    return () => {
+      if (interruptTimerRef.current) clearTimeout(interruptTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!props.busy) setInterruptCount(0)
+  }, [props.busy])
 
   const modelOptions = buildModelOptions(props.providers, customModels)
 
@@ -360,7 +372,25 @@ export function Composer(props: Props) {
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      if (slashActive) {
+        setText(text.slice(0, text.lastIndexOf("/")) + slashFilter)
+        return
+      }
+      if (props.busy) {
+        if (interruptTimerRef.current) clearTimeout(interruptTimerRef.current)
+        const next = interruptCount + 1
+        setInterruptCount(next)
+        interruptTimerRef.current = setTimeout(() => setInterruptCount(0), 5000)
+        if (next >= 2) {
+          props.onAbort()
+          setInterruptCount(0)
+        }
+      }
+      return
+    }
     if (e.key === "Enter" && !e.shiftKey) {
+      if (props.busy) return
       if (slashActive && filteredItems.length > 0) {
         e.preventDefault()
         acceptItem(filteredItems[0])
@@ -368,10 +398,6 @@ export function Composer(props: Props) {
       }
       e.preventDefault()
       send()
-    }
-    if (e.key === "Escape" && slashActive) {
-      setText(text.slice(0, text.lastIndexOf("/")) + slashFilter)
-      return
     }
     if (e.key === "Tab" && slashActive && filteredItems.length > 0) {
       e.preventDefault()
@@ -571,7 +597,7 @@ export function Composer(props: Props) {
         </button>
 
         {props.busy ? (
-          <button className="send-btn" title="Stop" onClick={props.onAbort} style={{ background: "var(--danger)" }}>
+          <button className="send-btn" title={interruptCount > 0 ? "Esc again to interrupt" : "Esc to interrupt"} onClick={props.onAbort} style={{ background: "var(--danger)" }}>
             <span style={{ width: 11, height: 11, background: "#fff", borderRadius: 2, display: "block" }} />
           </button>
         ) : (

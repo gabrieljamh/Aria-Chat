@@ -17,6 +17,7 @@ import type {
   ServerStatus,
   SessionInfo,
   SkillInfo,
+  TaskInfo,
   Todo,
 } from "@shared/types"
 
@@ -55,6 +56,7 @@ const api: MimoApi = {
   uninstallSkill: (name: string) => ipcRenderer.invoke("uninstall-skill", name) as Promise<void>,
   getPath: () => ipcRenderer.invoke("get-path") as Promise<PathInfo | null>,
   getTodos: (sessionID, directory) => ipcRenderer.invoke("get-todos", sessionID, directory) as Promise<Todo[]>,
+  getTasks: (sessionID, directory) => ipcRenderer.invoke("get-tasks", sessionID, directory) as Promise<TaskInfo[]>,
   getSessionStatus: (directory) => ipcRenderer.invoke("get-session-status", directory) as Promise<Record<string, import("@shared/types").SessionStatusInfo>>,
 
   getConfig: (directory) => ipcRenderer.invoke("get-config", directory) as Promise<Record<string, unknown>>,

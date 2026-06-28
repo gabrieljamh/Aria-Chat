@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from "react"
-import type { MessageInfo, Part, Permission, QuestionInfo, ServerEvent, SessionStatusInfo, Todo } from "@shared/types"
+import type { MessageInfo, Part, Permission, QuestionInfo, ServerEvent, SessionStatusInfo, TaskInfo, Todo } from "@shared/types"
 
 export interface ConvMessage {
   info: MessageInfo
@@ -17,6 +17,7 @@ export interface State {
   order: string[]
   messages: Record<string, ConvMessage>
   todos: Todo[]
+  tasks: TaskInfo[]
   files: string[]
   permissions: Permission[]
   questions: QuestionState[]
@@ -28,6 +29,7 @@ const empty: State = {
   order: [],
   messages: {},
   todos: [],
+  tasks: [],
   files: [],
   permissions: [],
   questions: [],
@@ -36,7 +38,7 @@ const empty: State = {
 }
 
 type Action =
-  | { kind: "reset"; messages: ConvMessage[]; todos: Todo[]; busy?: boolean; files?: string[] }
+  | { kind: "reset"; messages: ConvMessage[]; todos: Todo[]; tasks: TaskInfo[]; busy?: boolean; files?: string[] }
   | { kind: "files"; files: string[] }
   | { kind: "event"; event: ServerEvent }
   | { kind: "busy"; busy: boolean }
@@ -75,7 +77,7 @@ function reducer(state: State, action: Action): State {
         messages[m.info.id] = m
         order.push(m.info.id)
       }
-      return { ...empty, messages, order, todos: action.todos, busy: action.busy ?? false, files: action.files ?? [] }
+      return { ...empty, messages, order, todos: action.todos, tasks: action.tasks, busy: action.busy ?? false, files: action.files ?? [] }
     }
     case "files":
       return { ...state, files: action.files }
@@ -98,8 +100,51 @@ function reducer(state: State, action: Action): State {
           return { ...state, messages, order: state.order.filter((id) => id !== e.properties.messageID) }
         }
         case "message.part.updated": {
-          const result = upsertPart(state, e.properties.part)
-          return result
+          const part = e.properties.part
+          const msgId = part.messageID
+          if (!state.messages[msgId]) return upsertPart(state, part)
+          const msg = state.messages[msgId]
+          const existing = msg.parts.find((p) => p.id === part.id)
+          if (
+            existing &&
+            (existing as any).text !== undefined &&
+            (part as any).text !== undefined &&
+            (existing as any).type === "text" &&
+            (existing as any).text.length >= (part as any).text.length
+          ) {
+            return state
+          }
+          return upsertPart(state, part)
+        }
+        case "message.part.delta": {
+          const { messageID, partID, field, delta } = e.properties
+          const msg = state.messages[messageID]
+          if (!msg) {
+            const synthetic: Part = {
+              id: partID,
+              sessionID: e.properties.sessionID,
+              messageID,
+              type: "text",
+              text: field === "text" ? delta : "",
+            } as Part
+            return upsertPart(state, synthetic)
+          }
+          const existing = msg.parts.find((p) => p.id === partID)
+          if (!existing) {
+            const synthetic: Part = {
+              id: partID,
+              sessionID: e.properties.sessionID,
+              messageID,
+              type: "text",
+              text: field === "text" ? delta : "",
+            } as Part
+            const next = { ...state, messages: { ...state.messages, [messageID]: { ...msg, parts: [...msg.parts, synthetic] } } }
+            return next
+          }
+          const prev = (existing as any)[field] ?? ""
+          const updated = { ...existing, [field!]: prev + delta } as Part
+          const parts = msg.parts.map((p) => (p.id === partID ? updated : p))
+          return { ...state, messages: { ...state.messages, [messageID]: { ...msg, parts } } }
         }
         case "message.part.removed": {
           const msg = state.messages[e.properties.messageID]
@@ -131,6 +176,26 @@ function reducer(state: State, action: Action): State {
           }
         case "todo.updated":
           return { ...state, todos: e.properties.todos }
+        case "task.created": {
+          const { task } = e.properties
+          const idx = state.tasks.findIndex((t) => t.id === task.id)
+          if (idx >= 0) {
+            const next = [...state.tasks]
+            next[idx] = task
+            return { ...state, tasks: next }
+          }
+          return { ...state, tasks: [...state.tasks, task] }
+        }
+        case "task.updated": {
+          const { task } = e.properties
+          const idx = state.tasks.findIndex((t) => t.id === task.id)
+          if (idx >= 0) {
+            const next = [...state.tasks]
+            next[idx] = task
+            return { ...state, tasks: next }
+          }
+          return { ...state, tasks: [...state.tasks, task] }
+        }
         case "file.edited": {
           const f = e.properties.file
           const files = [...state.files.filter((x) => x !== f), f]
@@ -240,18 +305,21 @@ export function useConversation(sessionID: string | null, directory?: string | n
   useEffect(() => {
     if (!sessionID) {
       populatedRef.current = false
-      dispatch({ kind: "reset", messages: [], todos: [] })
+      dispatch({ kind: "reset", messages: [], todos: [], tasks: [] })
       return
     }
     populatedRef.current = false
     let cancelled = false
     const sid = sessionID
     ;(async () => {
-      const [messages, todos, statuses, diskFiles] = await Promise.all([
+      const [messages, todos, tasks, statuses, diskFiles] = await Promise.all([
         window.mimo.getMessages(sid, directory ?? undefined).catch((err) => {
           return []
         }),
         window.mimo.getTodos(sid, directory ?? undefined).catch((err) => {
+          return []
+        }),
+        window.mimo.getTasks(sid, directory ?? undefined).catch((err) => {
           return []
         }),
         window.mimo.getSessionStatus(directory ?? undefined).catch(() => ({}) as Record<string, SessionStatusInfo>),
@@ -272,7 +340,7 @@ export function useConversation(sessionID: string | null, directory?: string | n
       if (populatedRef.current) {
         return
       }
-      dispatch({ kind: "reset", messages, todos, busy: seededBusy, files: seededFiles })
+      dispatch({ kind: "reset", messages, todos, tasks, busy: seededBusy, files: seededFiles })
     })()
     return () => {
       cancelled = true
@@ -289,7 +357,10 @@ export function useConversation(sessionID: string | null, directory?: string | n
       if (
         t === "message.updated" ||
         t === "message.part.updated" ||
+        t === "message.part.delta" ||
         t === "todo.updated" ||
+        t === "task.created" ||
+        t === "task.updated" ||
         t === "file.edited" ||
         t === "permission.asked" ||
         t === "question.asked" ||

@@ -13,6 +13,7 @@ import type {
   ServerEvent,
   SessionInfo,
   SessionStatusInfo,
+  TaskInfo,
   Todo,
 } from "@shared/types"
 
@@ -166,6 +167,10 @@ export class MimoClient extends EventEmitter {
 
   getTodos(sessionID: string, directory?: string): Promise<Todo[]> {
     return this.json<Todo[]>(`session/${encodeURIComponent(sessionID)}/todo`, undefined, { directory })
+  }
+
+  getTasks(sessionID: string, directory?: string): Promise<TaskInfo[]> {
+    return this.json<TaskInfo[]>(`session/${encodeURIComponent(sessionID)}/task`, undefined, { directory })
   }
 
   getSessionStatus(directory?: string): Promise<Record<string, SessionStatusInfo>> {

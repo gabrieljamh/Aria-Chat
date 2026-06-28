@@ -1252,6 +1252,39 @@ button {
   color: var(--text-faint);
   text-decoration: line-through;
 }
+
+/* Blocked: danger ring + dot, muted label */
+.todo-item.blocked .todo-marker {
+  border-color: var(--danger);
+}
+.todo-item.blocked .todo-dot {
+  background: var(--danger);
+}
+.todo-item.blocked .label {
+  color: var(--danger);
+}
+
+/* Abandoned: muted, struck through */
+.todo-item.abandoned .label {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+/* Done: matches completed (for task done items) */
+.todo-item.done .todo-marker {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.todo-item.done .label {
+  color: var(--text-faint);
+}
+
+.task-id {
+  color: var(--text-faint);
+  font-family: "SF Mono", "Cascadia Code", monospace;
+  font-size: 0.85em;
+  margin-right: 4px;
+}
 @keyframes todo-pulse {
   0%,
   100% {
@@ -3125,4 +3158,153 @@ lyout: title doubles as a back button to the "+" menu */
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.custom-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.custom-edit {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.custom-edit:hover {
+  background: var(--accent-soft);
+}
+
+/* model editor overlay */
+.model-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.model-editor {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 440px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+.model-editor-title {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  margin: 0;
+}
+.model-editor-body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.model-editor-field label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.model-editor-field input {
+  width: 100%;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+.model-editor-field input:focus {
+  border-color: var(--accent);
+}
+.model-editor-field input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.model-editor-section-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+.model-editor-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.model-editor-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.model-editor-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.model-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.model-editor-grid.thirds {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.model-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--border-soft);
+}
+.model-editor-footer .primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.model-editor-footer .primary:disabled {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+.model-editor-footer .secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 8px;
+  padding: 7px 18px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.model-editor-footer .secondary:hover {
+  background: var(--bg-hover);
 }

@@ -1,5 +1,5 @@
 import React from "react"
-import type { Todo } from "@shared/types"
+import type { TaskInfo } from "@shared/types"
 import { IconCheck } from "./Icons"
 
 function basename(p: string): string {
@@ -9,6 +9,23 @@ function ext(p: string): string {
   const name = basename(p)
   const i = name.lastIndexOf(".")
   return i > 0 ? name.slice(i + 1).toLowerCase() : ""
+}
+
+function taskDepth(id: string): number {
+  return id.split(".").length - 1
+}
+
+function sortTasksById(tasks: TaskInfo[]): TaskInfo[] {
+  return [...tasks].sort((a, b) => {
+    const numA = a.id.split(".").map(Number)
+    const numB = b.id.split(".").map(Number)
+    for (let i = 0; i < Math.max(numA.length, numB.length); i++) {
+      const aVal = numA[i] ?? 0
+      const bVal = numB[i] ?? 0
+      if (aVal !== bVal) return aVal - bVal
+    }
+    return 0
+  })
 }
 
 type FileCategory = "code" | "web" | "style" | "data" | "doc" | "image" | "archive" | "file"
@@ -85,10 +102,10 @@ function FileIcon({ path }: { path: string }) {
 interface Props {
   collapsed: boolean
   onToggleCollapse: () => void
-  todos: Todo[]
+  tasks: TaskInfo[]
   files: string[]
   onOpenFile: (path: string) => void
-  // Show the Progress checklist. Off in Chat mode (Tasker-only).
+  // Show the Tasks section. Off in Chat mode (Tasker-only).
   showProgress?: boolean
   // Optional Stats section (context/tokens/cost/compaction), rendered on top.
   stats?: React.ReactNode
@@ -100,17 +117,19 @@ interface Props {
  * file.edited). Clicking a file opens it in the in-app viewer. Collapsible like
  * the left sidebar — defaults differ per tab (collapsed in Chat, open in Tasker).
  */
-export function RightPanel({ collapsed, onToggleCollapse, todos, files, onOpenFile, showProgress = true, stats }: Props) {
+export function RightPanel({ collapsed, onToggleCollapse, tasks, files, onOpenFile, showProgress = true, stats }: Props) {
   if (collapsed) {
     return (
       <aside className="right-panel collapsed">
-        <button className="icon-btn" title="Show progress & files" onClick={onToggleCollapse}>
+        <button className="icon-btn" title="Show tasks & files" onClick={onToggleCollapse}>
           «
         </button>
         {files.length > 0 && <span className="right-collapsed-badge">{files.length}</span>}
       </aside>
     )
   }
+
+  const sortedTasks = sortTasksById(tasks)
 
   return (
     <aside className="right-panel">
@@ -123,30 +142,33 @@ export function RightPanel({ collapsed, onToggleCollapse, todos, files, onOpenFi
 
       {stats}
 
-      {showProgress && (
+      {showProgress && tasks.length > 0 && (
         <div className="panel-section">
           <div className="panel-section-head">
-            <h3>Progress</h3>
-            {todos.length > 0 && (
-              <span className="progress-count">
-                {todos.filter((t) => t.status === "completed").length}/{todos.length}
-              </span>
-            )}
+            <h3>Tasks</h3>
+            <span className="progress-count">
+              {tasks.filter((t) => t.status === "done").length}/{tasks.length}
+            </span>
           </div>
-          {todos.length === 0 ? (
-            <div className="panel-empty">No tasks yet. The checklist fills in as work runs.</div>
-          ) : (
-            <div className="todo-list">
-              {todos.map((t) => (
-                <div key={t.id} className={"todo-item " + t.status}>
-                  <span className="todo-marker">
-                    {t.status === "completed" ? <IconCheck size={11} /> : <span className="todo-dot" />}
-                  </span>
-                  <span className="label">{t.content}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="todo-list">
+            {sortedTasks.map((t) => (
+              <div key={t.id} className={"todo-item " + t.status} style={{ paddingLeft: taskDepth(t.id) * 16 }}>
+                <span className="todo-marker">
+                  {t.status === "done"
+                    ? <IconCheck size={11} />
+                    : t.status === "blocked"
+                    ? <span className="todo-dot" style={{ background: "var(--danger)" }} />
+                    : t.status === "in_progress"
+                    ? <span className="todo-dot" style={{ animation: "todo-pulse 1.2s ease-in-out infinite" }} />
+                    : <span className="todo-dot" />}
+                </span>
+                <span className="label">
+                  <span className="task-id">{t.id} </span>
+                  {t.summary}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
