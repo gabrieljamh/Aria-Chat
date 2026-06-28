@@ -1337,6 +1337,10 @@ button {
   border: 1px solid var(--border-soft);
   border-radius: 12px;
   padding: 14px;
+  width: 320px;
+  max-width: 320px;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 .task-card:hover {
   border-color: var(--border);
@@ -1345,11 +1349,15 @@ button {
 .task-card .t {
   font-weight: 600;
   margin-bottom: 4px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .task-card .d {
   color: var(--text-faint);
   font-size: 12.5px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .active-task-card {
   background: var(--accent-soft);

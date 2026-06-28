@@ -205,6 +205,8 @@ export interface MessageTokens {
 export interface ProviderInfo {
   id: string
   name: string
+  npm?: string
+  options?: Record<string, unknown>
   models: Record<string, ProviderModel>
 }
 

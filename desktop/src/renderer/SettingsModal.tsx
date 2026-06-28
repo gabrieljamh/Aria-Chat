@@ -190,6 +190,10 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [editCapAudio, setEditCapAudio] = useState(false)
   const [editCapVideo, setEditCapVideo] = useState(false)
   const [editCapPdf, setEditCapPdf] = useState(false)
+  const [editProviderName, setEditProviderName] = useState("")
+  const [editProviderNpm, setEditProviderNpm] = useState("")
+  const [editProviderBaseURL, setEditProviderBaseURL] = useState("")
+  const [editProviderApiKey, setEditProviderApiKey] = useState("")
   const [editStatus, setEditStatus] = useState<Status>({ kind: "idle" })
 
   useEffect(() => {
@@ -491,10 +495,12 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
 
     // Load live model data from the server so we see the actual current config
     let modelInfo: ProviderModel | undefined
+    let providerInfo: { name?: string; npm?: string; options?: Record<string, unknown> } | undefined
     try {
       const provs = await window.mimo.getProviders()
       const provider = provs.all.find((p) => p.id === c.providerID)
       modelInfo = provider?.models?.[c.modelID]
+      providerInfo = provider ? { name: provider.name, npm: provider.npm, options: provider.options } : undefined
     } catch { /* fall through to CustomModel data */ }
 
     const caps = modelInfo?.capabilities ?? c.capabilities
@@ -517,21 +523,55 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     setEditCapAudio(caps?.input?.audio ?? false)
     setEditCapVideo(caps?.input?.video ?? false)
     setEditCapPdf(caps?.input?.pdf ?? false)
+    setEditProviderName(providerInfo?.name ?? "")
+    setEditProviderNpm(providerInfo?.npm ?? "")
+    setEditProviderBaseURL((providerInfo?.options?.baseURL as string) ?? "")
+    setEditProviderApiKey((providerInfo?.options?.apiKey as string) ?? "")
   }
 
   const closeEditModel = () => {
     setEditModelKey(null)
+    setEditName("")
+    setEditFamily("")
+    setEditCtxLimit("")
+    setEditInLimit("")
+    setEditOutLimit("")
+    setEditCostIn("")
+    setEditCostOut("")
+    setEditCacheRead("")
+    setEditCacheWrite("")
+    setEditCapTemp(true)
+    setEditCapReason(false)
+    setEditCapTool(true)
+    setEditCapImage(true)
+    setEditCapAudio(false)
+    setEditCapVideo(false)
+    setEditCapPdf(false)
+    setEditProviderName("")
+    setEditProviderNpm("")
+    setEditProviderBaseURL("")
+    setEditProviderApiKey("")
     setEditStatus({ kind: "idle" })
   }
 
-  const saveEditModel = async () => {
+const saveEditModel = async () => {
     if (!editModelKey) return
     setEditStatus({ kind: "saving" })
     try {
       const [providerID, ...rest] = editModelKey.split("/")
       const modelID = rest.join("/")
+
+      // Fetch current provider config to preserve baseURL, apiKey, npm, etc.
+      const providers = await window.mimo.getProviders()
+      const existingProvider = providers.all.find((p) => p.id === providerID)
+      const existingModels = existingProvider?.models ?? {}
+      const existingOptions = existingProvider?.options ?? {}
+
       const entry: ProviderConfigInput = {}
-      if (editName.trim()) entry.name = editName.trim()
+      if (existingProvider?.name) entry.name = existingProvider.name
+      if (existingProvider?.npm) entry.npm = existingProvider.npm
+      if (Object.keys(existingOptions).length) entry.options = existingOptions
+
       const inputModalities = [
         "text",
         ...(editCapImage ? ["image"] : []),
@@ -558,7 +598,16 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       if (editCacheRead.trim()) cost.cache_read = parseFloat(editCacheRead.trim())
       if (editCacheWrite.trim()) cost.cache_write = parseFloat(editCacheWrite.trim())
       if (Object.keys(cost).length) modelEntry.cost = cost
-      entry.models = { [modelID]: modelEntry }
+
+      // Merge with existing models, preserving other models
+      const mergedModels: Record<string, { name?: string } & Record<string, unknown>> = {}
+      for (const [key, model] of Object.entries(existingModels)) {
+        const { status, ...rest } = model as unknown as { status?: string } & Record<string, unknown>
+        mergedModels[key] = { ...rest, name: model.name }
+      }
+      mergedModels[modelID] = modelEntry as { name?: string } & Record<string, unknown>
+      entry.models = mergedModels
+
       await window.mimo.setGlobalProvider(providerID, entry)
       await onRefreshProviders()
       const next = customModels.map((c) => {
@@ -586,7 +635,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       setTimeout(() => closeEditModel(), 1200)
     } catch (e: any) {
       setEditStatus({ kind: "error", msg: String(e?.message ?? e) })
-    }
+}
   }
 
   const saveCustomPrompt = async () => {
@@ -1062,6 +1111,25 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
                         <label>Model ID</label>
                         <input value={editModelKey} disabled />
                       </div>
+
+                      <div className="model-editor-section-label">Provider configuration</div>
+                      <div className="model-editor-field">
+                        <label>Provider display name</label>
+                        <input placeholder="e.g. My Custom Provider" value={editProviderName} onChange={(e) => setEditProviderName(e.target.value)} />
+                      </div>
+                      <div className="model-editor-field">
+                        <label>npm package</label>
+                        <input placeholder="e.g. @ai-sdk/openai-compatible" value={editProviderNpm} onChange={(e) => setEditProviderNpm(e.target.value)} />
+                      </div>
+                      <div className="model-editor-field">
+                        <label>Base URL</label>
+                        <input placeholder="e.g. http://localhost:3123/v1" value={editProviderBaseURL} onChange={(e) => setEditProviderBaseURL(e.target.value)} />
+                      </div>
+                      <div className="model-editor-field">
+                        <label>API key</label>
+                        <input type="password" placeholder="API key" value={editProviderApiKey} onChange={(e) => setEditProviderApiKey(e.target.value)} />
+                      </div>
+
                       <div className="model-editor-field">
                         <label>Display name</label>
                         <input placeholder="e.g. My Custom Model" value={editName} onChange={(e) => setEditName(e.target.value)} />

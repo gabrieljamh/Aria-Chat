@@ -52,19 +52,27 @@ export async function generateGreeting(
   model: ModelRef | null,
   agent: string | null,
   overrideModel?: ModelRef | null,
+  userName?: string
 ): Promise<string> {
-  const ctx = kind === "chat"
-    ? "a user opening a new casual conversation"
-    : "a user about to start a new agentic task that works inside a project folder"
-  const tone = kind === "chat"
-    ? "Casual, warm and chatty — like greeting a friend you haven't seen in a bit (e.g. \"Hey, how's it going?\", \"What's on your mind?\", \"Hey there! Ready to chat?\"). Keep it light and open-ended; no coding or work references, no corporate tone."
-    : "Warm, lightly playful but focused, since the user is about to kick off real work."
-  const raw = await oneShot(
-    `You write UI microcopy. Produce ONE short greeting headline (max 8 words) for the home screen of Aria, an AI assistant, addressed to ${ctx}. Tone: ${tone} No quotes, no emoji, no preamble, no trailing punctuation beyond a single ? or .. Output only the headline.`,
-    model,
-    agent,
-    overrideModel,
-  )
+  const name = userName?.trim() ? userName.trim() : "there"
+  const assistantName = agent ?? "Aria"
+
+  const prompt =
+    kind === "chat"
+      ? `Write a brief, warm, casual greeting for a chat session with ${assistantName}. 
+Address the user as "${name}". 
+Tone: friendly, relaxed, like greeting a friend. 
+Keep it to 1-2 short sentences. 
+No markdown, no formatting, no lists. 
+Do not mention capabilities or offer help.`
+      : `Write a brief, warm, focused greeting for a cowork/coding session with ${assistantName}. 
+Address the user as "${name}". 
+Tone: professional but approachable, ready to build. 
+Keep it to 1-2 short sentences. 
+No markdown, no formatting, no lists. 
+Do not offer a menu of capabilities.`
+
+  const raw = await oneShot(prompt, model, agent, overrideModel)
   const line = raw
     .split("\n")
     .map((s) => s.trim())
@@ -80,29 +88,31 @@ export async function generateSuggestions(
   agent: string | null,
   overrideModel?: ModelRef | null,
 ): Promise<Suggestion[]> {
-  const ctx = kind === "chat"
-    ? "a general-purpose AI assistant chat (not just coding — can talk about anything)"
-    : "an agentic coding assistant that performs tasks inside a chosen project folder"
-  const raw = await oneShot(
-    `Produce exactly 4 home-screen suggestion chips for ${ctx}. The suggestions should be casual, fun, and varied — mix creative, helpful, curious, and everyday topics (e.g. brainstorming ideas, telling a story, planning something, answering a random question, getting advice). Avoid making all four coding-related. Respond with ONLY a JSON array (no markdown fences, no commentary): ` +
+  const isChat = kind === "chat"
+  const prompt = isChat
+    ? `Produce exactly 4 home-screen suggestion chips for a general-purpose AI assistant chat (not just coding — can talk about anything). The suggestions should be casual, fun, and varied — mix creative, helpful, curious, and everyday topics (e.g. brainstorming ideas, telling a story, planning something, answering a random question, getting advice). Avoid making all four coding-related. Respond with ONLY a JSON array (no markdown fences, no commentary): ` +
       `[{"label":"2 to 5 word button label","text":"the full prompt to insert into the input when the chip is clicked"}, ...]. ` +
-      `Make the four varied and genuinely useful.`,
-    model,
-    agent,
-    overrideModel,
-  )
+      `Make the four varied and genuinely useful.`
+    : `Produce exactly 4 home-screen suggestion cards for an agentic coding assistant (Tasker mode) that performs tasks inside a chosen project folder. The suggestions should be building/coding focused: creating files, implementing features, debugging, refactoring, understanding code, setting up projects, writing tests, etc. Each should have a short label (2-5 words) and a longer description explaining the task. Respond with ONLY a JSON array (no markdown fences, no commentary): ` +
+      `[{"label":"2 to 5 word button label","text":"the full prompt to insert into the input when the card is clicked","desc":"one sentence description of what this task does"}, ...]. ` +
+      `Make the four varied and genuinely useful for a developer starting a coding session.`
+
+  const raw = await oneShot(prompt, model, agent, overrideModel)
   const start = raw.indexOf("[")
   const end = raw.lastIndexOf("]")
   if (start === -1 || end === -1 || end < start) throw new Error("no json array")
   const arr = JSON.parse(raw.slice(start, end + 1)) as unknown
   const out: Suggestion[] = (Array.isArray(arr) ? arr : [])
     .map((x) => {
-      const o = x as { label?: unknown; text?: unknown }
-      return { label: String(o.label ?? "").trim(), text: String(o.text ?? "").trim() }
+      const o = x as { label?: unknown; text?: unknown; desc?: unknown }
+      return {
+        label: String(o.label ?? "").trim(),
+        text: String(o.text ?? "").trim(),
+        desc: isChat ? String(o.text ?? "").trim() : String(o.desc ?? "").trim(),
+      }
     })
     .filter((s) => s.label && s.text)
     .slice(0, 4)
-    .map((s) => ({ ...s, desc: s.text }))
   if (out.length !== 4) throw new Error("suggestions rejected")
   return out
 }

@@ -14,6 +14,22 @@ import PROMPT_DEEPSEEK from "./prompt/deepseek.txt"
 import PROMPT_GLM from "./prompt/glm.txt"
 import PROMPT_MINIMAX from "./prompt/minimax.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
+
+import PROMPT_ARIA_ANTHROPIC from "./prompt/aria-anthropic.txt"
+import PROMPT_ARIA_DEFAULT from "./prompt/aria-default.txt"
+import PROMPT_ARIA_BEAST from "./prompt/aria-beast.txt"
+import PROMPT_ARIA_GEMINI from "./prompt/aria-gemini.txt"
+import PROMPT_ARIA_GPT from "./prompt/aria-gpt.txt"
+import PROMPT_ARIA_KIMI from "./prompt/aria-kimi.txt"
+import PROMPT_ARIA_CODEX from "./prompt/aria-codex.txt"
+import PROMPT_ARIA_DEEPSEEK from "./prompt/aria-deepseek.txt"
+import PROMPT_ARIA_GLM from "./prompt/aria-glm.txt"
+import PROMPT_ARIA_MINIMAX from "./prompt/aria-minimax.txt"
+import PROMPT_ARIA_TRINITY from "./prompt/aria-trinity.txt"
+import PROMPT_ARIA_BEAST_SWITCH from "./prompt/aria-build-switch.txt"
+import PROMPT_ARIA_COMPOSE from "./prompt/aria-compose.txt"
+import PROMPT_ARIA_COPILOT_GPT5 from "./prompt/aria-copilot-gpt-5.txt"
+import PROMPT_ARIA_MAX_STEPS from "./prompt/aria-max-steps.txt"
 import type { Provider } from "@/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
@@ -21,21 +37,25 @@ import { Skill } from "@/skill"
 
 export function provider(model: Provider.Model) {
   if (model.api.id.includes("gpt-4") || model.api.id.includes("o1") || model.api.id.includes("o3"))
-    return [PROMPT_BEAST]
+    return [PROMPT_ARIA_BEAST]
   if (model.api.id.includes("gpt")) {
     if (model.api.id.includes("codex")) {
-      return [PROMPT_CODEX]
+      return [PROMPT_ARIA_CODEX]
     }
-    return [PROMPT_GPT]
+    if (model.api.id.includes("copilot") || model.api.id.includes("gpt-5")) {
+      return [PROMPT_ARIA_COPILOT_GPT5]
+    }
+    return [PROMPT_ARIA_GPT]
   }
-  if (model.api.id.includes("gemini-")) return [PROMPT_GEMINI]
-  if (model.api.id.includes("claude")) return [PROMPT_ANTHROPIC]
-  if (model.api.id.toLowerCase().includes("trinity")) return [PROMPT_TRINITY]
-  if (model.api.id.toLowerCase().includes("kimi")) return [PROMPT_KIMI]
-  if (model.api.id.toLowerCase().includes("deepseek")) return [PROMPT_DEEPSEEK]
-  if (model.api.id.toLowerCase().includes("glm")) return [PROMPT_GLM]
-  if (model.api.id.toLowerCase().includes("minimax")) return [PROMPT_MINIMAX]
-  return [PROMPT_DEFAULT]
+  if (model.api.id.includes("gemini-")) return [PROMPT_ARIA_GEMINI]
+  if (model.api.id.includes("claude")) return [PROMPT_ARIA_ANTHROPIC]
+  if (model.api.id.toLowerCase().includes("trinity")) return [PROMPT_ARIA_TRINITY]
+  if (model.api.id.toLowerCase().includes("kimi")) return [PROMPT_ARIA_KIMI]
+  if (model.api.id.toLowerCase().includes("deepseek")) return [PROMPT_ARIA_DEEPSEEK]
+  if (model.api.id.toLowerCase().includes("glm")) return [PROMPT_ARIA_GLM]
+  if (model.api.id.toLowerCase().includes("minimax")) return [PROMPT_ARIA_MINIMAX]
+  if (model.api.id.toLowerCase().includes("agentbridge")) return [PROMPT_ARIA_GPT]
+  return [PROMPT_ARIA_DEFAULT]
 }
 
 export interface Interface {
@@ -55,7 +75,7 @@ export const layer = Layer.effect(
         const project = Instance.project
         return [
           [
-            `You are MiMo Code Agent, built by Xiaomi MiMo Team. You are an interactive agent that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.`,
+            `You are Aria, built by the Aria Team. You are an interactive agent that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.`,
             `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
             `Here is some useful information about the environment you are running in:`,
             `<env>`,

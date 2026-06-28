@@ -43,6 +43,7 @@ export function App() {
   const [agents, setAgents] = useState<AgentInfo[]>([])
   const [model, setModel] = useState<ModelRef | null>(null)
   const [agentName, setAgentName] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string>("")
   const [webSearch, setWebSearch] = useState(false)
   // Auto-compaction token threshold (null when disabled/unset). Drives the
   // "forced auto-compaction" progress bar in the right-panel Stats section.
@@ -102,6 +103,7 @@ export function App() {
   useEffect(() => {
     window.mimo.getSetting("aiGreetings").then((v) => setAiGreetings(v === true))
     window.mimo.getSetting("aiSuggestions").then((v) => setAiSuggestions(v === true))
+    window.mimo.getSetting("userName").then((v) => setUserName(typeof v === "string" ? v : ""))
   }, [])
 
   // Load (and reload when the settings modal closes) the auto-compaction
@@ -127,7 +129,7 @@ export function App() {
       genInflight.current.add("g-" + kind)
       ;(async () => {
         const hm = await resolveHomeModel()
-        generateGreeting(kind, model, agentName, hm)
+        generateGreeting(kind, model, agentName, hm, userName)
           .then((g) => setGenGreeting((s) => ({ ...s, [kind]: g })))
           .catch(() => {})
           .finally(() => genInflight.current.delete("g-" + kind))
@@ -143,7 +145,7 @@ export function App() {
           .finally(() => genInflight.current.delete("s-" + kind))
       })()
     }
-  }, [status.state, tab, activeChatId, activeCoworkId, aiGreetings, aiSuggestions, model, agentName, genGreeting, genSuggest])
+  }, [status.state, tab, activeChatId, activeCoworkId, aiGreetings, aiSuggestions, model, agentName, userName, genGreeting, genSuggest])
 
   /* ----------------------- initial load on ready -------------------------- */
   useEffect(() => {

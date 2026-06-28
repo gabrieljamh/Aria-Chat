@@ -915,6 +915,7 @@ export const Info = Schema.Struct({
   source: Schema.Literals(["env", "config", "custom", "api"]),
   env: Schema.Array(Schema.String),
   key: Schema.optional(Schema.String),
+  npm: Schema.optional(Schema.String),
   options: Schema.Record(Schema.String, Schema.Any),
   models: Schema.Record(Schema.String, Model),
 })
@@ -1067,6 +1068,7 @@ export function fromModelsDevProvider(provider: ModelsDev.Provider): Info {
     source: "custom",
     name: provider.name,
     env: provider.env ?? [],
+    npm: provider.npm,
     options: {},
     models,
   }
@@ -1148,6 +1150,7 @@ const layer: Layer.Layer<
             id: ProviderID.make(providerID),
             name: provider.name ?? existing?.name ?? providerID,
             env: provider.env ?? existing?.env ?? [],
+            npm: provider.npm ?? existing?.npm,
             options: mergeDeep(existing?.options ?? {}, provider.options ?? {}),
             source: "config",
             models: existing?.models ?? {},
