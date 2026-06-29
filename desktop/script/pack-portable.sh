@@ -138,7 +138,13 @@ else
   APP_EXE="aria-chat"
 fi
 
-cp "$ELECTRON_EXE" "$DIST_DIR/$APP_EXE"
+# For macOS, ELECTRON_EXE already has full path (ELECTRON_APP)
+# For Linux/Windows, prepend ELECTRON_DIST
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  cp "$ELECTRON_EXE" "$DIST_DIR/$APP_EXE"
+else
+  cp "$ELECTRON_DIST/$ELECTRON_EXE" "$DIST_DIR/$APP_EXE"
+fi
 
 # Copy the rest of the Electron runtime (dlls, .pak, .bin, .dat, locales/)
 # Exclude 'resources' (default_app.asar) and the original electron exe
