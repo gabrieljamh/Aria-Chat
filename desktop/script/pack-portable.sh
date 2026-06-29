@@ -112,6 +112,11 @@ echo "  Copied server binary to server/$BIN_NAME"
 # 3b. Copy Electron runtime
 ELECTRON_ROOT="$(cd "$ROOT_DIR/node_modules/electron" && pwd)"
 ELECTRON_DIST="$ELECTRON_ROOT/dist"
+ELECTRON_EXE="electron"
+if [[ "$(uname -s)" == "MINGW"* ]] || [[ "$(uname -s)" == "CYGWIN"* ]] || [[ "$(uname -s)" == "MSYS"* ]]; then
+  ELECTRON_EXE="electron.exe"
+fi
+
 # macOS: Electron is distributed as an .app bundle
 if [[ "$(uname -s)" == "Darwin" ]]; then
   ELECTRON_APP="$ELECTRON_DIST/Electron.app/Contents/MacOS/Electron"
@@ -119,7 +124,6 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "Electron runtime not found at $ELECTRON_APP" >&2
     exit 1
   fi
-  ELECTRON_EXE="$ELECTRON_APP"
 else
   if [[ ! -f "$ELECTRON_DIST/$ELECTRON_EXE" ]]; then
     echo "Electron runtime not found at $ELECTRON_DIST/$ELECTRON_EXE" >&2
