@@ -41,10 +41,6 @@ jobs:
             os: win32
             arch: x64
             artifact: aria-chat-portable-win32-x64.zip
-          - runner: windows-latest
-            os: win32
-            arch: arm64
-            artifact: aria-chat-portable-win32-arm64.zip
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
