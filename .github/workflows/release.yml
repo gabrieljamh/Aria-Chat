@@ -74,14 +74,19 @@ jobs:
         shell: bash
 
       - name: Install desktop deps
-        run: npm install
+        run: npm install --prefer-offline=false
         working-directory: desktop
         shell: bash
 
       - name: Verify Electron installation
         run: |
           ls -la node_modules/electron/dist/
-          test -f node_modules/electron/dist/electron && echo "Electron found" || (echo "Electron NOT found, reinstalling..." && npm install --force)
+          if [ ! -f node_modules/electron/dist/electron ]; then
+            echo "Electron NOT found, reinstalling..."
+            npm install --force
+          else
+            echo "Electron found"
+          fi
         working-directory: desktop
         shell: bash
 
