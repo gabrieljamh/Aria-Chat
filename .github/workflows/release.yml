@@ -117,6 +117,10 @@ jobs:
         run: npm install
         working-directory: desktop
 
+      - name: Verify Electron installation
+        run: ls -la node_modules/electron/dist/
+        working-directory: desktop
+
       - name: Build Electron app
         run: npx electron-vite build
         working-directory: desktop
