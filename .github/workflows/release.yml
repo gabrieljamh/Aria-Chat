@@ -15,9 +15,78 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: windows-latest
+  build-server:
+    name: Build server binaries (all platforms)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install monorepo deps
+        run: bun install
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(cat packages/opencode/package.json | jq -r '.version')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build server binaries (all targets)
+        run: bun run script/build.ts
+        working-directory: packages/opencode
+
+      - name: Upload server artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-binaries
+          path: packages/opencode/dist/
+          retention-days: 1
+
+  build-electron:
+    name: Build Electron app (${{ matrix.os }}-${{ matrix.arch }})
+    needs: build-server
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: x64
+            artifact: aria-chat-portable-linux-x64.tar.gz
+          - runner: ubuntu-latest
+            os: linux
+            arch: arm64
+            artifact: aria-chat-portable-linux-arm64.tar.gz
+          - runner: macos-latest
+            os: darwin
+            arch: x64
+            artifact: aria-chat-portable-darwin-x64.zip
+          - runner: macos-latest
+            os: darwin
+            arch: arm64
+            artifact: aria-chat-portable-darwin-arm64.zip
+          - runner: windows-latest
+            os: win32
+            arch: x64
+            artifact: aria-chat-portable-win32-x64.zip
+          - runner: windows-latest
+            os: win32
+            arch: arm64
+            artifact: aria-chat-portable-win32-arm64.zip
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,27 +107,60 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Install monorepo deps
-        run: bun install
+      - name: Download server binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: server-binaries
+          path: packages/opencode/dist
 
       - name: Install desktop deps
         run: npm install
         working-directory: desktop
 
-      - name: Build server binary
-        run: bun run script/build.ts --single
-        working-directory: packages/opencode
-
       - name: Build Electron app
         run: npx electron-vite build
         working-directory: desktop
 
-      - name: Assemble portable package
-        run: pwsh -File script/pack-portable.ps1 -SkipBuild
+      - name: Package portable
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            pwsh -File script/pack-portable.ps1 -SkipBuild
+          else
+            bash script/pack-portable.sh --skip-build
+          fi
         working-directory: desktop
+        env:
+          SERVER_OS: ${{ matrix.os }}
+          SERVER_ARCH: ${{ matrix.arch }}
 
       - name: Upload release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: desktop/${{ matrix.artifact }}
+          retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: [build-server, build-electron]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: aria-chat-portable-*
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -la release-assets/
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
-          files: desktop/aria-chat-portable-win32-x64.zip
+          tag_name: ${{ github.ref_name }}
+          files: release-assets/*
+          draft: false
+          prerelease: false
