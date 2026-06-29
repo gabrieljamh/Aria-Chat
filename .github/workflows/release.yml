@@ -15,52 +15,8 @@ permissions:
   contents: write
 
 jobs:
-  build-server:
-    name: Build server binaries (all platforms)
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v5
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install monorepo deps
-        run: bun install
-        shell: bash
-
-      - name: Get version
-        id: version
-        run: |
-          VERSION=$(cat packages/opencode/package.json | jq -r '.version')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - name: Build server binaries (all targets)
-        run: bun run script/build.ts
-        working-directory: packages/opencode
-        shell: bash
-
-      - name: Upload server artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: server-binaries
-          path: packages/opencode/dist/
-          retention-days: 1
-
   build-electron:
     name: Build Electron app (${{ matrix.os }}-${{ matrix.arch }})
-    needs: build-server
     strategy:
       fail-fast: false
       matrix:
@@ -110,18 +66,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Download server binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: server-binaries
-          path: packages/opencode/dist
+      - name: Install monorepo deps
+        run: bun install
+        shell: bash
 
-      - name: List downloaded server binaries
+      - name: Get version
+        id: version
         run: |
-          echo "=== Server binaries in packages/opencode/dist ==="
-          find packages/opencode/dist -type f -name "mimo*" | head -20
-          echo "=== Directory structure ==="
-          ls -la packages/opencode/dist/
+          VERSION=$(cat packages/opencode/package.json | jq -r '.version')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Build server binary (native)
+        run: bun run script/build.ts --single
+        working-directory: packages/opencode
         shell: bash
 
       - name: Install desktop deps
@@ -163,7 +121,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-server, build-electron]
+    needs: build-electron
     runs-on: ubuntu-latest
     permissions:
       contents: write
