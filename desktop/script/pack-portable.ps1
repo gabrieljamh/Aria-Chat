@@ -45,7 +45,9 @@ $targetArch = $env:SERVER_ARCH ?? (if ($IsLinux -or $IsMacOS) { (uname -m) } els
 if ($targetArch -in @('x86_64', 'amd64')) { $targetArch = 'x64' }
 if ($targetArch -in @('aarch64', 'arm64')) { $targetArch = 'arm64' }
 
-$targetDirPattern = "mimocode-$targetOs-$targetArch*"
+# Build script uses "windows" not "win32" for directory naming
+$buildTargetOs = if ($targetOs -eq "win32") { "windows" } else { $targetOs }
+$targetDirPattern = "mimocode-$buildTargetOs-$targetArch*"
 
 if (-not $SkipBuild) {
   Write-Host "[2/4] Building server binary (this may take a few minutes)..." -ForegroundColor Yellow

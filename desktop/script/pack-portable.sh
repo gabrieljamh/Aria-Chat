@@ -37,13 +37,19 @@ case "$SERVER_OS" in
   windows|win32|mingw*) SERVER_OS="win32" ;;
 esac
 
+# Build script uses "windows" not "win32" for directory naming
+BUILD_TARGET_OS="$SERVER_OS"
+if [[ "$SERVER_OS" == "win32" ]]; then
+  BUILD_TARGET_OS="windows"
+fi
+
 BIN_NAME="mimo"
 if [[ "$SERVER_OS" == "win32" ]]; then
   BIN_NAME="mimo.exe"
 fi
 
 echo "=== Building Aria Chat portable ==="
-echo "Target: $SERVER_OS-$SERVER_ARCH"
+echo "Target: $SERVER_OS-$SERVER_ARCH (build dir: $BUILD_TARGET_OS-$SERVER_ARCH)"
 
 # ── 1. Build Electron app ──────────────────────────────────────────────
 if [[ "$SKIP_BUILD" != "true" ]]; then
@@ -73,10 +79,14 @@ else
   echo "[2/4] SkipBuild: using existing server binary"
 fi
 
-# Find the built server binary
-DIST_GLOB=$(find "$SERVER_DIR/dist" -maxdepth 1 -type d -name "mimocode-*" | head -1)
+# Find the built server binary matching target platform
+# Server build output dirs are named like: mimocode-linux-x64, mimocode-windows-x64, etc.
+TARGET_DIR_PATTERN="mimocode-${BUILD_TARGET_OS}-${SERVER_ARCH}"
+DIST_GLOB=$(find "$SERVER_DIR/dist" -maxdepth 1 -type d -name "${TARGET_DIR_PATTERN}*" | head -1)
 if [[ -z "$DIST_GLOB" ]]; then
-  echo "No server build output found in dist/" >&2
+  echo "No server build output found for ${SERVER_OS}-${SERVER_ARCH} in dist/" >&2
+  echo "Available:" >&2
+  find "$SERVER_DIR/dist" -maxdepth 1 -type d -name "mimocode-*" | sed 's/^/  /' >&2
   exit 1
 fi
 SERVER_BUILD_DIR="$DIST_GLOB/bin"
