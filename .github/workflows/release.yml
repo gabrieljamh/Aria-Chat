@@ -53,6 +53,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
+          cache-dependency-path: desktop/package-lock.json
 
       - name: Cache Bun dependencies
         uses: actions/cache@v5
@@ -71,6 +73,14 @@ jobs:
         run: |
           VERSION=$(cat packages/opencode/package.json | jq -r '.version')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Debug desktop node_modules before install
+        run: |
+          echo "=== desktop/node_modules before install ==="
+          ls -la desktop/node_modules/ 2>/dev/null || echo "node_modules does not exist"
+          echo "=== desktop/node_modules/electron ==="
+          ls -la desktop/node_modules/electron/ 2>/dev/null || echo "electron not found"
         shell: bash
 
       - name: Install desktop deps
