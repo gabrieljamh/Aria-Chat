@@ -118,7 +118,9 @@ jobs:
         working-directory: desktop
 
       - name: Verify Electron installation
-        run: ls -la node_modules/electron/dist/
+        run: |
+          ls -la node_modules/electron/dist/
+          test -f node_modules/electron/dist/electron && echo "Electron found" || (echo "Electron NOT found, reinstalling..." && npm install --force)
         working-directory: desktop
 
       - name: Build Electron app
