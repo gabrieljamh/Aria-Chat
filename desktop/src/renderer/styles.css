@@ -591,13 +591,18 @@ button {
 /* Nested markdown inside user bubbles — same styling as assistant output */
 .msg.user .bubble .md {
   line-height: 1.55;
+  white-space: pre-wrap;
 }
-.msg.user .bubble .md p { margin: 0 0 8px; }
+.msg.user .bubble .md p {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+}
 .msg.user .bubble .md pre {
   background: var(--bg-inset);
   border: 1px solid var(--border-soft);
   border-radius: 8px;
   padding: 10px 12px;
+  white-space: pre;
 }
 .msg.user .bubble .md pre code {
   font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;

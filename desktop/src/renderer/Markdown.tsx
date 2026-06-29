@@ -58,7 +58,7 @@ export function Markdown({ children }: { children: string }) {
   return (
     <div className="md">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[[remarkGfm, { breaks: true }]]}
         components={{
           a: ({ node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
           code: ({ node, className, children: codeChildren, ...props }) => {
