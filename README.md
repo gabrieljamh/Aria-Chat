@@ -7,14 +7,16 @@ A desktop AI assistant built with Electron, powered by [MiMo Code](https://githu
 
 Aria Chat wraps the MiMo Code local server in a clean, Claude-desktop-style UI — two modes, real-time streaming, inline approvals, and a live workspace panel. No cloud dependencies; everything runs locally.
 
-Built by [Junji at Project BomberCraft](https://github.com/gabrieljamh/MiMo-Tasker).
+Built by [Junji at Project BomberCraft](https://github.com/gabrieljamh/Aria-Chat).
 
 ---
+
+**Version: 0.2.0** — Aria rebrand, Tasker mode improvements, GitHub auth, personalized greetings
 
 ## Features
 
 - **Chat mode** — throwaway sandboxed conversations. Each chat gets its own isolated folder so file operations never touch your real projects.
-- **Tasker mode** — point at a project folder and describe a task. A live **Progress** checklist and **Files** panel track what the agent creates or edits alongside the conversation.
+- **Tasker mode** — point at a project folder and describe a task. A live **Progress** checklist and **Files** panel track what the agent creates or edits alongside the conversation. Suggestion cards are constrained (max-width 360px, flex grid) with building/coding focused prompts: create files, implement features, debug, refactor, understand code, setup projects, write tests.
 - **Real-time streaming** — tokens, tool calls, reasoning, and file changes stream live over SSE.
 - **Inline approvals** — permission requests appear as cards in the conversation. Approve once, always allow, or deny without leaving the flow.
 - **Multiple model/providers** — the model selector is populated live from the server. Add any OpenAI-compatible provider with an API key and base URL.
@@ -23,6 +25,8 @@ Built by [Junji at Project BomberCraft](https://github.com/gabrieljamh/MiMo-Task
 - **Auto-compaction** — keep long conversations within context limits with configurable token thresholds and an optional dedicated model.
 - **Skills** — extend the agent with installable skill packs (`.skill` files, SKILL.md folders).
 - **Settings** — General, Conversations, Models, Providers, Skills, Server, and About pages with full configuration.
+- **GitHub integration** — configure GitHub username and personal access token in Settings > General for authenticated git push.
+- **Personalized greetings** — Aria addresses you by name (from settings) in chat mode greetings.
 
 ## Getting started
 
@@ -35,8 +39,8 @@ Built by [Junji at Project BomberCraft](https://github.com/gabrieljamh/MiMo-Task
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/gabrieljamh/MiMo-Tasker.git
-cd MiMo-Tasker
+git clone https://github.com/gabrieljamh/Aria-Chat.git
+cd Aria-Chat
 
 # 2. Install monorepo deps (Bun)
 bun install
@@ -139,6 +143,22 @@ Provider errors like Anthropic's `ResourceExhausted: Worker local total request 
 - Existing patterns: `"rate limit"`, `"too many requests"`, `"rate increased too quickly"`
 
 These are now recognized as retryable, triggering exponential backoff instead of showing "Stopped" immediately. The TUI upsell detector also uses `isRateLimitMessage()` to show the rate limit banner.
+
+### 7. Config sanitization on read — `src/config/provider.ts`
+
+Upstream validates config at startup with strict Zod schemas (`z.number()`). Existing config files with `undefined` values for numeric fields (`cost.input`, `cost.output`, `limit.context`, `limit.output`) cause immediate startup failure.
+
+**Fix:** sanitize config on READ at startup (before server process reads it) — strips `undefined` from numeric fields so validation passes. This runs in Electron's `spawnBinary()` before spawning the child process.
+
+### 8. Provider edit preserves base config — `desktop/src/renderer/components/SettingsModal.tsx`
+
+When editing a provider's model metadata (limits/pricing/capabilities), the old code sent the full provider object including `npm` and `options`, but also included an invalid `status` field that caused validation errors.
+
+**Fix:** send only `{ models: { [modelID]: { ... } } }` partial update — the server merges with existing provider data, preserving `baseURL`/`apiKey`/`options`. Also strips `status` field before sending.
+
+### 9. Aria system prompts for all model variants — `packages/opencode/src/session/prompt/aria-*.txt`
+
+14 new system prompt files (`aria-anthropic`, `aria-beast`, `aria-codex`, `aria-compose`, `aria-deepseek`, `aria-gemini`, `aria-glm`, `aria-gpt`, `aria-kimi`, `aria-trinity`, `aria-max-steps`, `aria-copilot-gpt-5`, `aria-build-switch`, `aria-minimax`) created in `packages/opencode/src/session/prompt/`. Each adapts the corresponding MiMo-Code prompt by replacing "MiMo Code" → "Aria Chat", "MiMo" → "Aria", updating help text to reference Aria Chat, and setting identity to "You are Aria". All include Git credentials section documenting `GIT_USERNAME`/`GIT_PASSWORD` env vars for HTTPS git operations.
 
 ## Development
 
