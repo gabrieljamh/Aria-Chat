@@ -77,11 +77,6 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Build server binary (native)
-        run: bun run script/build.ts --single
-        working-directory: packages/opencode
-        shell: bash
-
       - name: Install desktop deps
         run: npm install
         working-directory: desktop
@@ -102,9 +97,9 @@ jobs:
       - name: Package portable
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            pwsh -File script/pack-portable.ps1 -SkipBuild
+            pwsh -File script/pack-portable.ps1
           else
-            bash script/pack-portable.sh --skip-build
+            bash script/pack-portable.sh
           fi
         working-directory: desktop
         env:
