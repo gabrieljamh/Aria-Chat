@@ -78,12 +78,21 @@ jobs:
         working-directory: desktop
         shell: bash
 
+      - name: Debug Electron installation
+        run: |
+          echo "=== Checking node_modules/electron ==="
+          ls -la node_modules/electron/
+          echo "=== Checking node_modules/electron/dist ==="
+          ls -la node_modules/electron/dist/
+        working-directory: desktop
+        shell: bash
+
       - name: Verify Electron installation
         run: |
-          ls -la node_modules/electron/dist/
           if [ ! -f node_modules/electron/dist/electron ]; then
             echo "Electron NOT found, reinstalling..."
             npm install --force
+            ls -la node_modules/electron/dist/
           else
             echo "Electron found"
           fi
