@@ -124,6 +124,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "Electron runtime not found at $ELECTRON_APP" >&2
     exit 1
   fi
+  ELECTRON_EXE="$ELECTRON_APP"
 else
   if [[ ! -f "$ELECTRON_DIST/$ELECTRON_EXE" ]]; then
     echo "Electron runtime not found at $ELECTRON_DIST/$ELECTRON_EXE" >&2
