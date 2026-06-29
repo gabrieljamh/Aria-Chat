@@ -38,6 +38,15 @@ if (-not $SkipBuild) {
 $serverDir = Resolve-Path "$root\..\packages\opencode"
 $binName = if ($IsWindows -or $env:OS -eq "Windows_NT") { "mimo.exe" } else { "mimo" }
 
+# Determine target platform from env vars (set by workflow)
+$targetOs = $env:SERVER_OS ?? (if ($IsWindows -or $env:OS -eq "Windows_NT") { "win32" } elseif ($IsLinux) { "linux" } else { "darwin" })
+$targetArch = $env:SERVER_ARCH ?? (if ($IsLinux -or $IsMacOS) { (uname -m) } else { "x64" })
+# Normalize arch
+if ($targetArch -in @('x86_64', 'amd64')) { $targetArch = 'x64' }
+if ($targetArch -in @('aarch64', 'arm64')) { $targetArch = 'arm64' }
+
+$targetDirPattern = "mimocode-$targetOs-$targetArch*"
+
 if (-not $SkipBuild) {
   Write-Host "[2/4] Building server binary (this may take a few minutes)..." -ForegroundColor Yellow
   Push-Location $serverDir
@@ -46,16 +55,16 @@ if (-not $SkipBuild) {
     if ($proc.ExitCode -ne 0) { throw "server build failed (exit code $($proc.ExitCode))" }
   } finally { Pop-Location }
 
-  $distGlob = Get-ChildItem -Path (Join-Path $serverDir "dist") -Directory | Where-Object { $_.Name -like "mimocode-*" }
-  if (-not $distGlob) { throw "No server build output found in dist/" }
+  $distGlob = Get-ChildItem -Path (Join-Path $serverDir "dist") -Directory | Where-Object { $_.Name -like $targetDirPattern }
+  if (-not $distGlob) { throw "No server build output found for $targetOs-$targetArch in dist/" }
   $serverBuildDir = Join-Path $distGlob.FullName "bin"
   $serverBinary = Join-Path $serverBuildDir $binName
   if (-not (Test-Path $serverBinary)) { throw "Server binary not found: $serverBinary" }
   Write-Host "  Server binary: $serverBinary" -ForegroundColor Green
 } else {
   Write-Host "[2/4] SkipBuild: using existing server binary" -ForegroundColor DarkGray
-  $distGlob = Get-ChildItem -Path (Join-Path $serverDir "dist") -Directory | Where-Object { $_.Name -like "mimocode-*" }
-  if (-not $distGlob) { throw "No server build output found in dist/" }
+  $distGlob = Get-ChildItem -Path (Join-Path $serverDir "dist") -Directory | Where-Object { $_.Name -like $targetDirPattern }
+  if (-not $distGlob) { throw "No server build output found for $targetOs-$targetArch in dist/" }
   $serverBuildDir = Join-Path $distGlob.FullName "bin"
   $serverBinary = Join-Path $serverBuildDir $binName
   if (-not (Test-Path $serverBinary)) { throw "Server binary not found: $serverBinary" }
@@ -115,7 +124,7 @@ Write-Host "Portable package assembled at $distDir" -ForegroundColor Green
 # ── 4. Zip ──────────────────────────────────────────────────────────────
 if (-not $SkipZip) {
   Write-Host "[4/4] Creating zip archive..." -ForegroundColor Yellow
-  $zipName = "aria-chat-portable-win32-x64.zip"
+  $zipName = "aria-chat-portable-win32-$targetArch.zip"
   $zipPath = Join-Path $root $zipName
   if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
   Compress-Archive -Path "$distDir\*" -DestinationPath $zipPath -Force
