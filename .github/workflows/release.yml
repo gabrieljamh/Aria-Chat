@@ -99,12 +99,24 @@ jobs:
 
       - name: Verify Electron installation
         run: |
-          if [ ! -f node_modules/electron/dist/electron ]; then
-            echo "Electron NOT found, reinstalling..."
-            npm install --force
-            ls -la node_modules/electron/dist/
+          if [[ "$(uname -s)" == "Darwin" ]]; then
+            # macOS: Electron is distributed as an .app bundle
+            if [ ! -f node_modules/electron/dist/Electron.app/Contents/MacOS/Electron ]; then
+              echo "Electron NOT found, reinstalling..."
+              npm install --force
+              ls -la node_modules/electron/dist/
+            else
+              echo "Electron found at node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+            fi
           else
-            echo "Electron found"
+            # Linux/Windows: Electron binary is at dist/electron or dist/electron.exe
+            if [ ! -f node_modules/electron/dist/electron ] && [ ! -f node_modules/electron/dist/electron.exe ]; then
+              echo "Electron NOT found, reinstalling..."
+              npm install --force
+              ls -la node_modules/electron/dist/
+            else
+              echo "Electron found"
+            fi
           fi
         working-directory: desktop
         shell: bash
@@ -156,6 +168,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           files: release-assets/*
           draft: false
           prerelease: false
