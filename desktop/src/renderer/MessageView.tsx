@@ -5,8 +5,23 @@ import { WriteView } from "./WriteView"
 import { ReadView } from "./ReadView"
 import type { Part } from "@shared/types"
 import type { ConvMessage } from "./useConversation"
-import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork } from "./Icons"
+import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork, IconChevronDown } from "./Icons"
 import { Markdown } from "./Markdown"
+
+function CollapsibleReasoning({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="reasoning">
+      <div className="reasoning-header" onClick={() => setOpen(!open)}>
+        <IconChevronDown size={13} className={open ? "open" : ""} />
+        <span>Thinking</span>
+      </div>
+      <div className="reasoning-content" style={{ maxHeight: open ? "none" : 0, opacity: open ? 1 : 0 }}>
+        <Markdown>{text}</Markdown>
+      </div>
+    </div>
+  )
+}
 
 function ToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
   const [open, setOpen] = useState(false)
@@ -52,9 +67,7 @@ function PartView({ part }: { part: Part }) {
       ) : null
     case "reasoning":
       return (part as any).text ? (
-        <div className="reasoning">
-          <Markdown>{(part as any).text}</Markdown>
-        </div>
+        <CollapsibleReasoning text={(part as any).text} />
       ) : null
     case "tool":
       return <ToolView part={part as Extract<Part, { type: "tool" }>} />
@@ -121,6 +134,7 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
   const isUser = msg.info.role === "user"
   const [text, setText] = useState("")
   const taRef = React.useRef<HTMLTextAreaElement>(null)
+  const timestamp = msg.info.time?.created ? new Date(msg.info.time.created).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : null
 
   React.useEffect(() => {
     if (editMode && !text) setText(getUserText(msg))
@@ -152,20 +166,23 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
   }
 
   return (
-    <div className="msg-footer">
+    <div className={`msg-footer ${isUser ? "user" : "assistant"}`}>
       {isUser ? (
         <>
+          <span className="msg-role-badge">You</span>
           <button className="msg-act" title="Edit message" onClick={onStartEdit}><IconEdit size={13} /> Edit</button>
           <button className="msg-act" title="Delete from here" onClick={() => onDelete?.(id)}><IconTrash size={13} /> Delete</button>
-          <button className="msg-act" title="Continue from this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Cont.</button>
+          <button className="msg-act" title="Return to this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Return</button>
         </>
       ) : (
         <>
           <button className="msg-act" title="Regenerate" onClick={() => onRegen?.(id)}><IconRefresh size={13} /> Regen</button>
-          <button className="msg-act" title="Continue from this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Cont.</button>
+          <button className="msg-act" title="Return to this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Return</button>
           <button className="msg-act" title="Delete message" onClick={() => onDelete?.(id)}><IconTrash size={13} /> Delete</button>
+          <span className="msg-role-badge">Aria</span>
         </>
       )}
+      {timestamp && <span className="msg-timestamp">{timestamp}</span>}
     </div>
   )
 }

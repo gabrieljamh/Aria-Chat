@@ -1,7 +1,7 @@
 import React from "react"
 
-type P = { size?: number }
-const svg = (children: React.ReactNode, size = 16) => (
+type P = { size?: number; className?: string }
+const svg = (children: React.ReactNode, size = 16, className?: string) => (
   <svg
     width={size}
     height={size}
@@ -11,6 +11,7 @@ const svg = (children: React.ReactNode, size = 16) => (
     strokeWidth="1.8"
     strokeLinecap="round"
     strokeLinejoin="round"
+    className={className}
   >
     {children}
   </svg>
@@ -61,4 +62,5 @@ export const IconTrash = ({ size }: P) =>
   svg(<><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 10v8M14 10v8" /></>, size)
 export const IconFork = ({ size }: P) =>
   svg(<><path d="M6 5v14M6 5l6-2M6 5l6 2M12 3v18M18 8v11M18 8l-6-1M18 8l-6 2" /></>, size)
+export const IconChevronDown = ({ size }: P) => svg(<><path d="M6 9l6 6 6-6" /></>, size)
 export const IconRegen = ({ size }: P) => IconRefresh({ size })

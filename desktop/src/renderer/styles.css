@@ -632,6 +632,35 @@ button {
   white-space: pre-wrap;
   font-style: italic;
 }
+.reasoning-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  user-select: none;
+  transition: color 0.15s;
+}
+.reasoning-header:hover {
+  color: var(--text);
+}
+.reasoning-header svg {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.reasoning-header svg.open {
+  transform: rotate(90deg);
+}
+.reasoning-content {
+  overflow: hidden;
+  transition: max-height 0.2s ease, opacity 0.15s ease;
+  max-height: 0;
+  opacity: 0;
+}
 
 /* tool call card */
 .tool {
@@ -803,11 +832,43 @@ button {
   display: flex;
   gap: 6px;
   margin-bottom: 16px;
+  padding: 4px 8px;
   padding-left: 0;
   opacity: 0.55;
   transition: opacity 0.2s;
+  border-radius: 6px;
 }
 .msg-footer:hover { opacity: 1; }
+
+.msg-footer.user {
+  justify-content: flex-start;
+  background: var(--bg-raised);
+}
+.msg-footer.assistant {
+  justify-content: flex-end;
+  background: var(--accent-soft);
+}
+
+.msg-role-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: var(--text-faint);
+  margin-right: 8px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.msg-footer.user .msg-role-badge {
+  background: var(--bg-raised);
+  color: var(--text-faint);
+}
+.msg-footer.assistant .msg-role-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
 .msg-act {
   display: inline-flex;
@@ -822,9 +883,40 @@ button {
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
 }
+.msg-footer.assistant .msg-act {
+  color: var(--accent);
+}
+.msg-footer.assistant .msg-act svg {
+  stroke: currentColor;
+}
 .msg-act:hover {
   color: var(--text);
   background: var(--bg-raised);
+}
+.msg-footer.assistant .msg-act:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.msg-timestamp {
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: center;
+  padding: 0 4px;
+}
+.msg-footer.user .msg-timestamp {
+  margin-left: auto;
+}
+.msg-footer.assistant .msg-timestamp {
+  margin-right: auto;
+  order: -1;
+  color: var(--accent);
+}
+
+/* inline edit box */
+  margin-right: auto;
 }
 
 /* inline edit box */
