@@ -52,6 +52,11 @@ console.log(`Loaded ${migrations.length} migrations`)
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
+
+// Allow explicit target override via env vars (for CI)
+const targetOs = process.env.SERVER_OS ?? process.platform
+const targetArch = process.env.SERVER_ARCH ?? process.arch
+
 const plugin = createSolidTransformPlugin()
 // const skipEmbedWebUi = process.argv.includes("--skip-embed-web-ui")
 // Web UI temporarily disabled
@@ -147,7 +152,7 @@ const allTargets: {
 
 const targets = singleFlag
   ? allTargets.filter((item) => {
-      if (item.os !== process.platform || item.arch !== process.arch) {
+      if (item.os !== targetOs || item.arch !== targetArch) {
         return false
       }
 
