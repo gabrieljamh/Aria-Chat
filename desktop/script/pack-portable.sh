@@ -112,14 +112,19 @@ echo "  Copied server binary to server/$BIN_NAME"
 # 3b. Copy Electron runtime
 ELECTRON_ROOT="$(cd "$ROOT_DIR/node_modules/electron" && pwd)"
 ELECTRON_DIST="$ELECTRON_ROOT/dist"
-ELECTRON_EXE="electron"
-if [[ "$(uname -s)" == "MINGW"* ]] || [[ "$(uname -s)" == "CYGWIN"* ]] || [[ "$(uname -s)" == "MSYS"* ]]; then
-  ELECTRON_EXE="electron.exe"
-fi
-
-if [[ ! -f "$ELECTRON_DIST/$ELECTRON_EXE" ]]; then
-  echo "Electron runtime not found at $ELECTRON_DIST/$ELECTRON_EXE" >&2
-  exit 1
+# macOS: Electron is distributed as an .app bundle
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  ELECTRON_APP="$ELECTRON_DIST/Electron.app/Contents/MacOS/Electron"
+  if [[ ! -f "$ELECTRON_APP" ]]; then
+    echo "Electron runtime not found at $ELECTRON_APP" >&2
+    exit 1
+  fi
+  ELECTRON_EXE="$ELECTRON_APP"
+else
+  if [[ ! -f "$ELECTRON_DIST/$ELECTRON_EXE" ]]; then
+    echo "Electron runtime not found at $ELECTRON_DIST/$ELECTRON_EXE" >&2
+    exit 1
+  fi
 fi
 
 # Determine output executable name
@@ -129,14 +134,22 @@ else
   APP_EXE="aria-chat"
 fi
 
-cp "$ELECTRON_DIST/$ELECTRON_EXE" "$DIST_DIR/$APP_EXE"
+cp "$ELECTRON_EXE" "$DIST_DIR/$APP_EXE"
 
 # Copy the rest of the Electron runtime (dlls, .pak, .bin, .dat, locales/)
 # Exclude 'resources' (default_app.asar) and the original electron exe
-find "$ELECTRON_DIST" -mindepth 1 -maxdepth 1 \
-  ! -name "resources" \
-  ! -name "$ELECTRON_EXE" \
-  -exec cp -r {} "$DIST_DIR/" \;
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  # macOS: copy from Electron.app/Contents/Resources/
+  ELECTRON_RESOURCES="$ELECTRON_DIST/Electron.app/Contents/Resources"
+  find "$ELECTRON_RESOURCES" -mindepth 1 -maxdepth 1 \
+    ! -name "default_app.asar" \
+    -exec cp -r {} "$DIST_DIR/" \;
+else
+  find "$ELECTRON_DIST" -mindepth 1 -maxdepth 1 \
+    ! -name "resources" \
+    ! -name "$(basename "$ELECTRON_EXE")" \
+    -exec cp -r {} "$DIST_DIR/" \;
+fi
 echo "  Copied Electron runtime"
 
 # 3c. Copy app files as resources/app
