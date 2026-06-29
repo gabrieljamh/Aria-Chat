@@ -116,6 +116,14 @@ jobs:
           name: server-binaries
           path: packages/opencode/dist
 
+      - name: List downloaded server binaries
+        run: |
+          echo "=== Server binaries in packages/opencode/dist ==="
+          find packages/opencode/dist -type f -name "mimo*" | head -20
+          echo "=== Directory structure ==="
+          ls -la packages/opencode/dist/
+        shell: bash
+
       - name: Install desktop deps
         run: npm install
         working-directory: desktop
