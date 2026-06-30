@@ -422,7 +422,7 @@ export function App() {
   // Regen: delete the last assistant message + its user prompt, then re-send the
   // same user text. Finds the user message immediately before this assistant msg.
   const regenMessage = useCallback(async (messageID: string) => {
-    if (!activeRef || !state.order.length) return
+    if (!activeRef || !model || !state.order.length) return
     const idx = state.order.indexOf(messageID)
     if (idx < 0) return
     // Walk backwards to find the user message that preceded this one
@@ -447,8 +447,9 @@ export function App() {
       if (m) await window.mimo.deleteMessage(activeSession!, m.info.id, serverDir).catch(() => {})
     }
     // Re-send the user's text
+    setBusy(true)
     sendPrompt(userText)
-  }, [activeRef, activeSession, sendPrompt, state.order, state.messages])
+  }, [activeRef, activeSession, sendPrompt, state.order, state.messages, model, setBusy])
 
   // Continue from here: delete all messages after and including this one
   const continueFrom = useCallback(async (messageID: string) => {
