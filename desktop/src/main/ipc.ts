@@ -275,13 +275,21 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
     await bootPromise
     // 1) server-side credentials (auth.json)
     await client?.removeAuth(providerID).catch(() => {})
-    // 2) desktop store: custom models and any redirect refs
+    // 2) desktop store: custom models, any redirect refs, and the cached baseConfig
     const store = getStore()
     const customModels = (store.get("customModels") as { providerID?: string }[] | undefined) ?? []
     store.set("customModels", customModels.filter((c) => c.providerID !== providerID))
     for (const key of ["lastModel", "visionModel", "audioModel", "videoModel", "homeModel"]) {
       const m = store.get(key) as { providerID?: string } | undefined
       if (m && m.providerID === providerID) store.set(key, null)
+    }
+    const baseCfg = store.get("baseConfig") as Record<string, unknown> | null
+    if (baseCfg?.provider && typeof baseCfg.provider === "object") {
+      const prov = baseCfg.provider as Record<string, unknown>
+      if (prov[providerID]) {
+        delete prov[providerID]
+        store.set("baseConfig", baseCfg)
+      }
     }
     // 3) global config file — remove the provider entry directly & dispose
     try {

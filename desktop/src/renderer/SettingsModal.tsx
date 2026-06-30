@@ -493,8 +493,14 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   }
 
   const removeCustom = async (c: CustomModel) => {
-    await saveCustomModels(customModels.filter((x) => !(x.providerID === c.providerID && x.modelID === c.modelID)))
-    await window.mimo.removeProvider(c.providerID).catch(() => {})
+    const remaining = customModels.filter((x) => !(x.providerID === c.providerID && x.modelID === c.modelID))
+    await saveCustomModels(remaining)
+    // Only remove the provider from global config if no other custom model uses it
+    const stillUses = remaining.some((x) => x.providerID === c.providerID)
+    if (!stillUses) {
+      await window.mimo.removeProvider(c.providerID).catch(() => {})
+    }
+    setBaseProviders((ps) => ps.filter((p) => p !== c.providerID))
     await onRefreshProviders()
   }
 
