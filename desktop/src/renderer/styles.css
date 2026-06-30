@@ -650,10 +650,6 @@ button {
 }
 .reasoning-header svg {
   flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-.reasoning-header svg.open {
-  transform: rotate(90deg);
 }
 .reasoning-content {
   overflow: hidden;
@@ -3208,6 +3204,7 @@ lyout: title doubles as a back button to the "+" menu */
   border-radius: 10px;
   border: 1px solid var(--border-soft);
   object-fit: cover;
+  cursor: zoom-in;
 }
 .msg-attach-file {
   display: inline-flex;
@@ -3431,4 +3428,59 @@ lyout: title doubles as a back button to the "+" menu */
 }
 .model-editor-footer .secondary:hover {
   background: var(--bg-hover);
+}
+
+/* Model search select combobox */
+.model-search-select {
+  position: relative;
+  width: 100%;
+}
+.model-search-input {
+  width: 100%;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius, 8px);
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.model-search-input:focus {
+  border-color: var(--accent);
+}
+.model-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  max-height: 280px;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  margin-top: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.model-search-option {
+  padding: 7px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+}
+.model-search-option:hover {
+  background: var(--bg-hover);
+}
+.model-search-option.selected {
+  background: var(--accent);
+  color: #fff;
+}
+.model-search-empty {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--text-faint);
+  text-align: center;
 }

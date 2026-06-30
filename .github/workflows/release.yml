@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build-electron:
-    name: Build Electron app (${{ matrix.os }}-${{ matrix.arch }})
+    name: Build Electron app (${{ matrix.os }}-${{ matrix.arch }}${{ matrix.baseline && '-baseline' || '' }})
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +41,11 @@ jobs:
             os: win32
             arch: x64
             artifact: aria-chat-portable-win32-x64.zip
+          - runner: windows-latest
+            os: win32
+            arch: x64
+            baseline: true
+            artifact: aria-chat-portable-win32-x64-baseline.zip
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
@@ -128,10 +133,14 @@ jobs:
 
       - name: Package portable
         run: |
+          BASELINE_FLAG=""
+          if [[ "${{ matrix.baseline }}" == "true" ]]; then
+            BASELINE_FLAG="--baseline"
+          fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            pwsh -File script/pack-portable.ps1
+            pwsh -File script/pack-portable.ps1 $BASELINE_FLAG
           else
-            bash script/pack-portable.sh
+            bash script/pack-portable.sh $BASELINE_FLAG
           fi
         working-directory: desktop
         env:

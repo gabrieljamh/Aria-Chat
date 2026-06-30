@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react"
 import type { AppInfo, CustomModel, ModelRef, ProviderConfigInput, ProviderModel, ProvidersResponse, SkillInfo } from "@shared/types"
 import { useCustomModels, saveCustomModels, loadCustomModels } from "./customModels"
 import ariaTextImg from "@shared/img/aria-text.png"
+import { ModelSearchSelect } from "./ModelSearchSelect"
 
 interface Props {
   initialPage?: string
@@ -940,12 +941,7 @@ const saveEditModel = async () => {
           {homeRedirect && (
             <div className="settings-field">
               <label htmlFor="home-model">Home-screen model</label>
-              <select id="home-model" value={homeModel} onChange={(e) => changeHomeModel(e.target.value)}>
-                {modelOptions.length === 0 && <option value="">No models available</option>}
-                {modelOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              <ModelSearchSelect value={homeModel} options={modelOptions} onChange={changeHomeModel} placeholder="Select home model…" />
               <div className="hint">Used only for AI-generated greetings and suggestion chips on the home screen.</div>
             </div>
           )}
@@ -958,20 +954,15 @@ const saveEditModel = async () => {
 
               <div className="settings-field">
                 <label>Active model</label>
-                <select
+                <ModelSearchSelect
                   value={model ? `${model.providerID}/${model.modelID}` : ""}
-                  onChange={(e) => {
-                    const [providerID, ...rest] = e.target.value.split("/")
+                  options={modelOptions}
+                  onChange={(val) => {
+                    const [providerID, ...rest] = val.split("/")
                     onModelChange({ providerID, modelID: rest.join("/") })
                   }}
-                >
-                  {modelOptions.length === 0 && <option value="">No models available</option>}
-                  {modelOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select model…"
+                />
                 <div className="hint">Connected: {(providers?.connected ?? []).join(", ") || "none"}.</div>
               </div>
 
@@ -997,12 +988,7 @@ const saveEditModel = async () => {
               {visionRedirect && (
                 <div className="settings-field">
                   <label htmlFor="vision-model">Vision model</label>
-                  <select id="vision-model" value={visionModel} onChange={(e) => changeVisionModel(e.target.value)}>
-                    {modelOptions.length === 0 && <option value="">No models available</option>}
-                    {modelOptions.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <ModelSearchSelect id="vision-model" value={visionModel} options={modelOptions} onChange={changeVisionModel} placeholder="Select vision model…" />
                   <div className="hint">Used only for messages that contain an image attachment.</div>
                 </div>
               )}
@@ -1027,12 +1013,7 @@ const saveEditModel = async () => {
               {audioRedirect && (
                 <div className="settings-field">
                   <label htmlFor="audio-model">Audio model</label>
-                  <select id="audio-model" value={audioModel} onChange={(e) => changeAudioModel(e.target.value)}>
-                    {modelOptions.length === 0 && <option value="">No models available</option>}
-                    {modelOptions.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <ModelSearchSelect id="audio-model" value={audioModel} options={modelOptions} onChange={changeAudioModel} placeholder="Select audio model…" />
                   <div className="hint">Used only for messages that contain an audio attachment.</div>
                 </div>
               )}
@@ -1057,12 +1038,7 @@ const saveEditModel = async () => {
               {videoRedirect && (
                 <div className="settings-field">
                   <label htmlFor="video-model">Video model</label>
-                  <select id="video-model" value={videoModel} onChange={(e) => changeVideoModel(e.target.value)}>
-                    {modelOptions.length === 0 && <option value="">No models available</option>}
-                    {modelOptions.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <ModelSearchSelect id="video-model" value={videoModel} options={modelOptions} onChange={changeVideoModel} placeholder="Select video model…" />
                   <div className="hint">Used only for messages that contain a video attachment.</div>
                 </div>
               )}
@@ -1424,12 +1400,7 @@ const saveEditModel = async () => {
               {compactRedirect && (
                 <div className="settings-field">
                   <label htmlFor="compact-model">Compact model</label>
-                  <select id="compact-model" value={compactModel} onChange={(e) => changeCompactModel(e.target.value)}>
-                    <option value="">Select a model…</option>
-                    {modelOptions.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <ModelSearchSelect id="compact-model" value={compactModel} options={modelOptions} onChange={changeCompactModel} placeholder="Select compact model…" />
                   <div className="hint">Used only for compaction runs (auto and manual).</div>
                 </div>
               )}

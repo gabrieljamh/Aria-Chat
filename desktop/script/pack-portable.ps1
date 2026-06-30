@@ -13,7 +13,8 @@
 
 param(
   [switch]$SkipBuild,
-  [switch]$SkipZip
+  [switch]$SkipZip,
+  [switch]$Baseline
 )
 
 $ErrorActionPreference = "Stop"
@@ -53,7 +54,9 @@ if (-not $SkipBuild) {
   Write-Host "[2/4] Building server binary (this may take a few minutes)..." -ForegroundColor Yellow
   Push-Location $serverDir
   try {
-    $proc = Start-Process -FilePath "bun" -ArgumentList "run","script/build.ts","--single" -NoNewWindow -Wait -PassThru
+    $buildArgs = @("run","script/build.ts","--single")
+    if ($Baseline) { $buildArgs += "--baseline" }
+    $proc = Start-Process -FilePath "bun" -ArgumentList $buildArgs -NoNewWindow -Wait -PassThru
     if ($proc.ExitCode -ne 0) { throw "server build failed (exit code $($proc.ExitCode))" }
   } finally { Pop-Location }
 
@@ -126,7 +129,8 @@ Write-Host "Portable package assembled at $distDir" -ForegroundColor Green
 # ── 4. Zip ──────────────────────────────────────────────────────────────
 if (-not $SkipZip) {
   Write-Host "[4/4] Creating zip archive..." -ForegroundColor Yellow
-  $zipName = "aria-chat-portable-win32-$targetArch.zip"
+  $suffix = if ($Baseline) { "-baseline" } else { "" }
+  $zipName = "aria-chat-portable-win32-$targetArch$suffix.zip"
   $zipPath = Join-Path $root $zipName
   if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
   Compress-Archive -Path "$distDir\*" -DestinationPath $zipPath -Force

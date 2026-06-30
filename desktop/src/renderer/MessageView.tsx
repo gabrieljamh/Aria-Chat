@@ -5,7 +5,7 @@ import { WriteView } from "./WriteView"
 import { ReadView } from "./ReadView"
 import type { Part } from "@shared/types"
 import type { ConvMessage } from "./useConversation"
-import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork, IconChevronDown } from "./Icons"
+import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork, IconChevronDown, IconChevronRight } from "./Icons"
 import { Markdown } from "./Markdown"
 
 function CollapsibleReasoning({ text }: { text: string }) {
@@ -13,7 +13,7 @@ function CollapsibleReasoning({ text }: { text: string }) {
   return (
     <div className="reasoning">
       <div className="reasoning-header" onClick={() => setOpen(!open)}>
-        <IconChevronDown size={13} className={open ? "open" : ""} />
+        {open ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
         <span>Thinking</span>
       </div>
       <div className="reasoning-content" style={{ maxHeight: open ? "none" : 0, opacity: open ? 1 : 0 }}>
@@ -195,6 +195,7 @@ export function MessageView({ message, showDots, ...actions }: MsgActions & { me
     (p) => (p.type === "text" || p.type === "reasoning") && (p as any).text || p.type === "tool" || p.type === "file",
   )
   const [editMode, setEditMode] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const saveEdit = (newText: string) => {
     if (!newText.trim()) return
     actions.onEdit?.(message.info.id, newText)
@@ -228,6 +229,7 @@ export function MessageView({ message, showDots, ...actions }: MsgActions & { me
                       src={(p as any).url}
                       alt={(p as any).filename ?? "image"}
                       title={(p as any).filename}
+                      onClick={() => setPreviewUrl((p as any).url)}
                     />
                   )
                 }
@@ -248,6 +250,14 @@ export function MessageView({ message, showDots, ...actions }: MsgActions & { me
           {body && <div className="bubble"><Markdown>{body}</Markdown></div>}
         </div>
         <MsgFooter msg={message} actions={actions} editMode={editMode} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
+        {previewUrl && (
+          <div className="attach-preview-overlay" onClick={() => setPreviewUrl(null)}>
+            <div className="attach-preview-box">
+              <img src={previewUrl} alt="preview" className="attach-preview-img" />
+              <button className="attach-preview-close" onClick={() => setPreviewUrl(null)}>×</button>
+            </div>
+          </div>
+        )}
       </>
     )
   }
@@ -286,6 +296,14 @@ export function MessageView({ message, showDots, ...actions }: MsgActions & { me
         )}
       </div>
       <MsgFooter msg={message} actions={actions} editMode={editMode} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
+      {previewUrl && (
+        <div className="attach-preview-overlay" onClick={() => setPreviewUrl(null)}>
+          <div className="attach-preview-box">
+            <img src={previewUrl} alt="preview" className="attach-preview-img" />
+            <button className="attach-preview-close" onClick={() => setPreviewUrl(null)}>×</button>
+          </div>
+        </div>
+      )}
     </>
   )
 }

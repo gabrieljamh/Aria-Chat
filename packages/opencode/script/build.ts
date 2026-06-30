@@ -266,7 +266,7 @@ for (const item of targets) {
   })
 
   // Smoke test: only run if binary is for current platform
-  if (item.os === process.platform && item.arch === process.arch && !item.abi) {
+  if (item.os === process.platform && item.arch === process.arch && !item.abi && (item.avx2 !== false || baselineFlag)) {
     const binaryPath = `dist/${name}/bin/mimo`
     console.log(`Running smoke test: ${binaryPath} --version`)
     try {

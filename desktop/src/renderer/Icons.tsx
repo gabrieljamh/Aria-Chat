@@ -63,4 +63,5 @@ export const IconTrash = ({ size }: P) =>
 export const IconFork = ({ size }: P) =>
   svg(<><path d="M6 5v14M6 5l6-2M6 5l6 2M12 3v18M18 8v11M18 8l-6-1M18 8l-6 2" /></>, size)
 export const IconChevronDown = ({ size }: P) => svg(<><path d="M6 9l6 6 6-6" /></>, size)
+export const IconChevronRight = ({ size }: P) => svg(<><path d="M9 6l6 6-6 6" /></>, size)
 export const IconRegen = ({ size }: P) => IconRefresh({ size })
