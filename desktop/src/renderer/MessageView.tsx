@@ -121,13 +121,14 @@ function extractErrorMessage(info: ConvMessage["info"]): string | null {
   return null
 }
 
-function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actions }: {
+function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actions, busy }: {
   msg: ConvMessage
   editMode: boolean
   onStartEdit: () => void
   onSaveEdit: (text: string) => void
   onCancelEdit: () => void
   actions: MsgActions
+  busy?: boolean
 }) {
   const { onDelete, onRegen, onContinueFrom } = actions
   const id = msg.info.id
@@ -168,26 +169,34 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
   return (
     <div className={`msg-footer ${isUser ? "user" : "assistant"}`}>
       {isUser ? (
-        <>
+        busy ? (
           <span className="msg-role-badge">You</span>
-          <button className="msg-act" title="Edit message" onClick={onStartEdit}><IconEdit size={13} /> Edit</button>
-          <button className="msg-act" title="Delete from here" onClick={() => onDelete?.(id)}><IconTrash size={13} /> Delete</button>
-          <button className="msg-act" title="Return to this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Return</button>
-        </>
+        ) : (
+          <>
+            <span className="msg-role-badge">You</span>
+            <button className="msg-act" title="Edit message" onClick={onStartEdit}><IconEdit size={13} /> Edit</button>
+            <button className="msg-act" title="Delete from here" onClick={() => onDelete?.(id)}><IconTrash size={13} /> Delete</button>
+            <button className="msg-act" title="Return to this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Return</button>
+          </>
+        )
       ) : (
-        <>
-          <button className="msg-act" title="Regenerate" onClick={() => onRegen?.(id)}><IconRefresh size={13} /> Regen</button>
-          <button className="msg-act" title="Return to this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Return</button>
-          <button className="msg-act" title="Delete message" onClick={() => onDelete?.(id)}><IconTrash size={13} /> Delete</button>
+        busy ? (
           <span className="msg-role-badge">Aria</span>
-        </>
+        ) : (
+          <>
+            <button className="msg-act" title="Regenerate" onClick={() => onRegen?.(id)}><IconRefresh size={13} /> Regen</button>
+            <button className="msg-act" title="Return to this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Return</button>
+            <button className="msg-act" title="Delete message" onClick={() => onDelete?.(id)}><IconTrash size={13} /> Delete</button>
+            <span className="msg-role-badge">Aria</span>
+          </>
+        )
       )}
       {timestamp && <span className="msg-timestamp">{timestamp}</span>}
     </div>
   )
 }
 
-export function MessageView({ message, showDots, ...actions }: MsgActions & { message: ConvMessage; showDots?: boolean }) {
+export function MessageView({ message, showDots, busy, ...actions }: MsgActions & { message: ConvMessage; showDots?: boolean; busy?: boolean }) {
   const role = message.info.role
   const isUser = role === "user"
   const textParts = message.parts.filter((p) => p.type === "text" && (p as any).text && !(p as any).synthetic)
@@ -249,7 +258,7 @@ export function MessageView({ message, showDots, ...actions }: MsgActions & { me
           )}
           {body && <div className="bubble"><Markdown>{body}</Markdown></div>}
         </div>
-        <MsgFooter msg={message} actions={actions} editMode={editMode} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
+<MsgFooter msg={message} actions={actions} editMode={editMode} busy={busy} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
         {previewUrl && (
           <div className="attach-preview-overlay" onClick={() => setPreviewUrl(null)}>
             <div className="attach-preview-box">
@@ -267,22 +276,18 @@ export function MessageView({ message, showDots, ...actions }: MsgActions & { me
       <div className="msg assistant">
         <div className="role">Aria</div>
         {!hasContent ? (
-          showDots ? (
+          extractErrorMessage(message.info) ? (
+            <div className="error-message">
+              {extractErrorMessage(message.info)}
+            </div>
+          ) : showDots ? (
             <div className="dots">
               <span />
               <span />
               <span />
             </div>
           ) : (
-            <>
-              {extractErrorMessage(message.info) ? (
-                <div className="error-message">
-                  {extractErrorMessage(message.info)}
-                </div>
-              ) : (
-                <div className="aborted" style={{ color: "var(--muted)", fontSize: "0.85em" }}>Stopped</div>
-              )}
-            </>
+            <div className="aborted" style={{ color: "var(--muted)", fontSize: "0.85em" }}>Stopped</div>
           )
         ) : (
           <>
@@ -295,7 +300,7 @@ export function MessageView({ message, showDots, ...actions }: MsgActions & { me
           </>
         )}
       </div>
-      <MsgFooter msg={message} actions={actions} editMode={editMode} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
+      <MsgFooter msg={message} actions={actions} editMode={editMode} busy={busy} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
       {previewUrl && (
         <div className="attach-preview-overlay" onClick={() => setPreviewUrl(null)}>
           <div className="attach-preview-box">
