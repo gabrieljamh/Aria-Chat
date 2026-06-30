@@ -167,6 +167,7 @@ const targets = singleFlag
         return false
       }
 
+      // If --baseline is set but we're also building the standard target, keep both
       return true
     })
   : allTargets
@@ -235,35 +236,43 @@ for (const item of targets) {
   const bunfsRoot = item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
   const workerRelativePath = path.relative(dir, parserWorker).replaceAll("\\", "/")
 
-  await Bun.build({
-    conditions: ["browser"],
-    tsconfig: "./tsconfig.json",
-    plugins: [plugin],
-    external: ["node-gyp"],
-    format: "esm",
-    minify: true,
-    splitting: true,
-    compile: {
-      autoloadBunfig: false,
-      autoloadDotenv: false,
-      autoloadTsconfig: true,
-      autoloadPackageJson: true,
-      target: name.replace(BINARY_PREFIX, "bun") as any,
-      outfile: `dist/${name}/bin/mimo`,
-      execArgv: [`--user-agent=mimocode/${Script.version}`, "--use-system-ca", "--"],
-      windows: {},
-    },
-    files: embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {},
-    entrypoints: ["./src/index.ts", parserWorker, workerPath, ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : [])],
-    define: {
-      MIMOCODE_VERSION: `'${Script.version}'`,
-      OPENCODE_MIGRATIONS: JSON.stringify(migrations),
-      OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
-      OPENCODE_WORKER_PATH: workerPath,
-      MIMOCODE_CHANNEL: `'${Script.channel}'`,
-      OPENCODE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
-    },
-  })
+  try {
+    await Bun.build({
+      conditions: ["browser"],
+      tsconfig: "./tsconfig.json",
+      plugins: [plugin],
+      external: ["node-gyp"],
+      format: "esm",
+      minify: true,
+      splitting: true,
+      compile: {
+        autoloadBunfig: false,
+        autoloadDotenv: false,
+        autoloadTsconfig: true,
+        autoloadPackageJson: true,
+        target: name.replace(BINARY_PREFIX, "bun") as any,
+        outfile: `dist/${name}/bin/mimo`,
+        execArgv: [`--user-agent=mimocode/${Script.version}`, "--use-system-ca", "--"],
+        windows: {},
+      },
+      files: embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {},
+      entrypoints: ["./src/index.ts", parserWorker, workerPath, ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : [])],
+      define: {
+        MIMOCODE_VERSION: `'${Script.version}'`,
+        OPENCODE_MIGRATIONS: JSON.stringify(migrations),
+        OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
+        OPENCODE_WORKER_PATH: workerPath,
+        MIMOCODE_CHANNEL: `'${Script.channel}'`,
+        OPENCODE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
+      },
+    })
+  } catch (e) {
+    if (item.avx2 === false) {
+      console.error(`Baseline build failed for ${name}, skipping:`, `${e}`.trim())
+      continue
+    }
+    throw e
+  }
 
   // Smoke test: only run if binary is for current platform
   if (item.os === process.platform && item.arch === process.arch && !item.abi && (item.avx2 !== false || baselineFlag)) {

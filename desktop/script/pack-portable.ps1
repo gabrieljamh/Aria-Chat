@@ -64,7 +64,24 @@ if (-not $SkipBuild) {
   if (-not $distGlob) { throw "No server build output found for $targetOs-$targetArch in dist/" }
   $serverBuildDir = Join-Path $distGlob.FullName "bin"
   $serverBinary = Join-Path $serverBuildDir $binName
-  if (-not (Test-Path $serverBinary)) { throw "Server binary not found: $serverBinary" }
+  if (-not (Test-Path $serverBinary)) {
+    # Baseline build may have failed (Bun runtime download issue on Windows).
+    # Fall back to the standard binary if one exists.
+    Write-Host "  Baseline binary not found at $serverBinary, checking for standard build..." -ForegroundColor Yellow
+    $fallbackPattern = "mimocode-$buildTargetOs-$targetArch"
+    $fallbackGlob = Get-ChildItem -Path (Join-Path $serverDir "dist") -Directory | Where-Object { $_.Name -eq $fallbackPattern }
+    if ($fallbackGlob) {
+      $fallbackBinary = Join-Path $fallbackGlob.FullName "bin" $binName
+      if (Test-Path $fallbackBinary) {
+        $serverBinary = $fallbackBinary
+        Write-Host "  Using fallback standard binary: $serverBinary" -ForegroundColor Yellow
+      } else {
+        throw "Server binary not found: $serverBinary (nor standard fallback)"
+      }
+    } else {
+      throw "Server binary not found: $serverBinary (nor standard fallback)"
+    }
+  }
   Write-Host "  Server binary: $serverBinary" -ForegroundColor Green
 } else {
   Write-Host "[2/4] SkipBuild: using existing server binary" -ForegroundColor DarkGray
