@@ -160,6 +160,7 @@ export function ChatTab(props: Props) {
                     key={id}
                     message={state.messages[id]}
                     showDots={state.busy}
+                    busy={state.busy}
                     onDelete={props.onDeleteMessage}
                     onRegen={props.onRegenMessage}
                     onContinueFrom={props.onContinueFrom}
