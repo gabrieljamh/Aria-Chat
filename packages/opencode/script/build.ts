@@ -143,11 +143,15 @@ const allTargets: {
     os: "win32",
     arch: "x64",
   },
-  {
-    os: "win32",
-    arch: "x64",
-    avx2: false,
-  },
+  // Baseline (no-AVX2) target is intentionally omitted for Windows because
+  // Bun v1.3.x does not distribute the baseline runtime binary for Windows x64.
+  // Building it fails with: "Failed to extract executable for 'bun-windows-x64-baseline'".
+  // Remove this comment block once Bun supports baseline downloads on Windows.
+  // {
+  //   os: "win32",
+  //   arch: "x64",
+  //   avx2: false,
+  // },
 ]
 
 const targets = singleFlag
@@ -267,10 +271,6 @@ for (const item of targets) {
       },
     })
   } catch (e) {
-    if (item.avx2 === false) {
-      console.error(`Baseline build failed for ${name}, skipping:`, `${e}`.trim())
-      continue
-    }
     throw e
   }
 
