@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react"
 import type { AgentInfo, CommandInfo, FileAttachment, ModelRef, ProvidersResponse, SkillInfo } from "@shared/types"
 import { IconPlus, IconSend, IconMic, IconFile, IconSkill, IconPlug, IconGlobe, IconCheck, IconSettings } from "./Icons"
 import { useCustomModels } from "./customModels"
+import { ModelSearchSelect } from "./ModelSearchSelect"
 
 interface ModelOption {
   providerID: string
@@ -570,21 +571,17 @@ export function Composer(props: Props) {
         )}
 
         {modelOptions.length > 0 && (
-          <select
-            className="select"
-            title="Model"
-            value={props.model ? `${props.model.providerID}/${props.model.modelID}` : ""}
-            onChange={(e) => {
-              const [providerID, ...rest] = e.target.value.split("/")
-              props.onModelChange({ providerID, modelID: rest.join("/") })
-            }}
-          >
-            {modelOptions.map((o) => (
-              <option key={`${o.providerID}/${o.modelID}`} value={`${o.providerID}/${o.modelID}`}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <div className="model-search-select-wrapper" style={{ display: "inline-block", verticalAlign: "middle" }}>
+            <ModelSearchSelect
+              value={props.model ? `${props.model.providerID}/${props.model.modelID}` : ""}
+              options={modelOptions.map((o) => ({ value: `${o.providerID}/${o.modelID}`, label: o.label }))}
+              onChange={(v) => {
+                const [providerID, ...rest] = v.split("/")
+                props.onModelChange({ providerID, modelID: rest.join("/") })
+              }}
+              placeholder="Model"
+            />
+          </div>
         )}
 
         {recording && <span className="rec-timer">{formatDuration(recSeconds)}</span>}
