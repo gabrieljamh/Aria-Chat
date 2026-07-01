@@ -526,20 +526,21 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
   ipcMain.handle("open-path", async (_e, p: string) => shell.openPath(p))
   ipcMain.handle("show-item-in-folder", async (_e, p: string) => shell.showItemInFolder(p))
   ipcMain.handle("notify", async (_e, title: string, body: string) => {
-    if (!Notification.isSupported()) return
-    if (process.platform === "win32") {
-      const ico = app.isPackaged
-        ? path.join(__dirname, "../shared/img/aria-icon.png")
-        : path.join(__dirname, "../../src/shared/img/aria-icon.png")
-      const xml = `<toast><visual><binding template="ToastGeneric"><text>${escapeXml(title)}</text><text>${escapeXml(body)}</text><image placement="appLogoOverride" src="file:///${ico.replace(/\\/g, "/")}" hint-crop="circle"/></binding></visual></toast>`
-      const n = new Notification({ toastXml: xml })
-      n.show()
-    } else {
+    const supported = Notification.isSupported()
+    console.log("[notify] isSupported:", supported, "platform:", process.platform)
+    if (!supported) return
+    try {
       const ico = app.isPackaged
         ? path.join(__dirname, "../shared/img/aria-icon.png")
         : path.join(__dirname, "../../src/shared/img/aria-icon.png")
       const n = new Notification({ title, body, icon: ico })
+      n.on("click", () => console.log("[notify] click"))
+      n.on("close", () => console.log("[notify] close"))
+      n.on("failed", (_ev, err) => console.log("[notify] failed:", err))
       n.show()
+      console.log("[notify] show() called for:", title)
+    } catch (err) {
+      console.log("[notify] error:", err)
     }
   })
   ipcMain.handle("read-file-text", (_e, p: string) => readFileText(p))
