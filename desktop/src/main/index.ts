@@ -9,6 +9,18 @@ registerPreviewScheme()
 let mainWindow: BrowserWindow | null = null
 let ipc: { dispose(): void } | null = null
 
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
 function resolveIcon() {
   const rel = app.isPackaged
     ? join(__dirname, "../shared/img/aria-icon.png")
