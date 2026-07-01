@@ -12,6 +12,7 @@
   --accent: #8B5CF6; /* warm violet (Aria brand) */
   --accent-hover: #9D6FF8;
   --accent-soft: rgba(139, 92, 246, 0.14);
+  --accent-soft-hover: rgba(139, 92, 246, 0.2);
   --accent-text: #ffffff;
   --accent-border: rgba(139, 92, 246, 0.35);
   --accent-glow: rgba(139, 92, 246, 0.45);
@@ -268,7 +269,7 @@ button {
   margin-bottom: 8px;
 }
 .sidebar .new-btn:hover {
-  background: var(--accent-soft);
+  background: var(--accent-soft-hover);
 }
 .sidebar .nav-item {
   display: flex;
