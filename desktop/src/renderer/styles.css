@@ -72,8 +72,15 @@ button {
   align-items: center;
   gap: 6px;
 }
-.topbar .brand img.brand-logo {
+.topbar .brand img.brand-logo,
+.topbar .brand span.brand-logo {
   height: 22px;
+  width: auto;
+  color: var(--accent);
+  display: inline-flex;
+}
+.topbar .brand span.brand-logo svg {
+  height: 100%;
   width: auto;
 }
 .topbar .brand .brand-logo-btn {
@@ -88,14 +95,27 @@ button {
 .topbar .brand .brand-logo-btn:hover {
   background: var(--bg-hover);
 }
-.topbar .brand .brand-logo-btn img.brand-logo {
+.topbar .brand .brand-logo-btn img.brand-logo,
+.topbar .brand .brand-logo-btn span.brand-logo {
   height: 22px;
   width: auto;
-  display: block;
+  display: inline-flex;
+  color: var(--accent);
 }
-.topbar .brand img.brand-logo-aria-text {
+.topbar .brand .brand-logo-btn span.brand-logo svg {
+  height: 100%;
+  width: auto;
+}
+.topbar .brand img.brand-logo-aria-text,
+.topbar .brand span.brand-logo-aria-text {
   height: 22px;
   margin-right: 4px;
+  color: var(--accent);
+  display: inline-flex;
+}
+.topbar .brand span.brand-logo-aria-text svg {
+  height: 100%;
+  width: auto;
 }
 .brand-menu-overlay {
   position: fixed;
@@ -2591,10 +2611,22 @@ button {
 .splash-logo {
   height: 40px;
   width: auto;
+  color: var(--accent);
+  display: inline-flex;
+}
+.splash-logo svg {
+  height: 100%;
+  width: auto;
 }
 .splash-logo-aria-text {
   height: 28px;
   opacity: 0.95;
+  color: var(--accent);
+  display: inline-flex;
+}
+.splash-logo-aria-text svg {
+  height: 100%;
+  width: auto;
 }
 .splash-spinner {
   width: 30px;
@@ -2992,6 +3024,12 @@ button {
 }
 .about-name-logo {
   height: 28px;
+  width: auto;
+  color: var(--accent);
+  display: inline-flex;
+}
+.about-name-logo svg {
+  height: 100%;
   width: auto;
 }
 .about-name-pill {

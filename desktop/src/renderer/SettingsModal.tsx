@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
 import type { AppInfo, CustomModel, McpConfig, McpStatus, ModelRef, ProviderConfigInput, ProviderModel, ProvidersResponse, SkillInfo } from "@shared/types"
 import { useCustomModels, saveCustomModels, loadCustomModels } from "./customModels"
-import ariaTextImg from "@shared/img/aria-text.png"
+import ariaTextRaw from "@shared/img/aria-text.svg?raw"
 import { ModelSearchSelect } from "./ModelSearchSelect"
 
 interface Props {
@@ -1634,7 +1634,7 @@ const saveEditModel = async () => {
               {appInfo ? (
                 <div className="settings-field">
                   <div className="about-name">
-                    <img className="about-name-logo" src={ariaTextImg} alt="Aria" />
+                    <span className="about-name-logo" dangerouslySetInnerHTML={{ __html: ariaTextRaw }} />
                     <span className="about-name-pill">Chat</span>
                   </div>
                   <div className="about-version">Version {appInfo.appVersion}</div>

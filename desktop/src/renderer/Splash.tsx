@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react"
 import type { ServerStatus } from "@shared/types"
-import ariaLogo from "@shared/img/aria-logo.png"
-import ariaText from "@shared/img/aria-text.png"
+import ariaLogoRaw from "@shared/img/aria-logo.svg?raw"
+import ariaTextRaw from "@shared/img/aria-text.svg?raw"
 
 interface Props {
   status: ServerStatus
@@ -41,9 +41,9 @@ export function Splash({ status, ready, onCustomServer }: Props) {
   return (
     <div className={"splash" + (ready ? " splash-hide" : "") + (isError ? " splash-error" : "")}>
       <div className="splash-inner">
-        <div className="splash-logos">
-          <img className="splash-logo" src={ariaLogo} alt="Aria" />
-          <img className="splash-logo splash-logo-aria-text" src={ariaText} alt="Aria Chat" />
+          <div className="splash-logos">
+          <span className="splash-logo" dangerouslySetInnerHTML={{ __html: ariaLogoRaw }} />
+          <span className="splash-logo splash-logo-aria-text" dangerouslySetInnerHTML={{ __html: ariaTextRaw }} />
         </div>
         {!isError && <div className="splash-spinner" aria-hidden />}
         <div className={"splash-message" + (isError ? " err" : "")}>{message}</div>
