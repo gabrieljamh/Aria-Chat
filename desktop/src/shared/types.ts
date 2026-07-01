@@ -254,6 +254,34 @@ export interface CommandInput {
   directory?: string
 }
 
+/* ---------------------------- MCP connector types ---------------------------- */
+
+export type McpStatusValue = "connected" | "disabled" | "pending" | "failed" | "needs_auth" | "needs_client_registration"
+
+export interface McpStatus {
+  status: McpStatusValue
+  error?: string
+}
+
+export interface McpLocalConfig {
+  type: "local"
+  command: string[]
+  environment?: Record<string, string>
+  enabled?: boolean
+  timeout?: number
+}
+
+export interface McpRemoteConfig {
+  type: "remote"
+  url: string
+  enabled?: boolean
+  headers?: Record<string, string>
+  oauth?: { clientId?: string; clientSecret?: string; scope?: string; redirectUri?: string } | false
+  timeout?: number
+}
+
+export type McpConfig = McpLocalConfig | McpRemoteConfig
+
 export interface PathInfo {
   home: string
   state: string
@@ -464,6 +492,14 @@ export interface MimoApi {
   getSetting(key: string): Promise<unknown>
   setSetting(key: string, value: unknown): Promise<void>
   gitPush(opts: { directory: string; remote?: string; branch?: string; force?: boolean }): Promise<string>
+
+  // MCP connectors
+  getMcpStatus(directory?: string): Promise<Record<string, McpStatus>>
+  addMcp(name: string, config: McpConfig, directory?: string): Promise<Record<string, McpStatus>>
+  connectMcp(name: string, directory?: string): Promise<boolean>
+  disconnectMcp(name: string, directory?: string): Promise<boolean>
+  authenticateMcp(name: string, directory?: string): Promise<McpStatus>
+  removeMcpAuth(name: string, directory?: string): Promise<boolean>
 
   // app info
   getAppInfo(): Promise<AppInfo>

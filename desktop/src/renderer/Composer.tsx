@@ -60,6 +60,8 @@ interface Props {
   prefill?: { text: string; n: number }
   // Opens Settings on the Skills page (from the skills dropdown).
   onManageSkills?: () => void
+  // Opens Settings on the Connectors page (from the connectors button).
+  onManageConnectors?: () => void
   // Session-level actions served as client-side slash commands (not from the server).
   sessionID?: string | null
   onCompact?: () => void
@@ -489,10 +491,10 @@ export function Composer(props: Props) {
                   Skills<div className="desc">Insert a skill's slash command</div>
                 </span>
               </button>
-              <button className="menu-row" onClick={() => setMenuOpen(false)}>
+              <button className="menu-row" onClick={() => { setMenuOpen(false); props.onManageConnectors?.() }}>
                 <IconPlug size={16} />
                 <span>
-                  Connectors<div className="desc">MCP tools &amp; integrations</div>
+                  Connectors<div className="desc">MCP tools & integrations</div>
                 </span>
               </button>
               <button

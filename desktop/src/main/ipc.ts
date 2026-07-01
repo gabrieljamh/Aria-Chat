@@ -19,7 +19,7 @@ import {
 import { ServerManager } from "./server"
 import { getStore } from "./store"
 import { allowPreviewRoot } from "./preview"
-import type { AuthInfo, CommandInput, ConfigPatch, PermissionReply, PromptInput, ServerStatus, SkillInfo } from "@shared/types"
+import type { AuthInfo, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo } from "@shared/types"
 
 // Sanitize config: remove undefined values from cost/limit objects that cause validation errors
 function sanitizeConfig(obj: any): any {
@@ -402,6 +402,32 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
         return { filename, mime: "", url: "", size: 0, error: String(e?.message ?? e) }
       }
     })
+  })
+
+  /* ---------------------------- MCP connectors --------------------------- */
+  ipcMain.handle("mcp-status", async (_e, directory?: string) => {
+    await bootPromise
+    return ensureClient().getMcpStatus(directory)
+  })
+  ipcMain.handle("mcp-add", async (_e, name: string, config: McpConfig, directory?: string) => {
+    await bootPromise
+    return ensureClient().addMcp(name, config, directory)
+  })
+  ipcMain.handle("mcp-connect", async (_e, name: string, directory?: string) => {
+    await bootPromise
+    return ensureClient().connectMcp(name, directory)
+  })
+  ipcMain.handle("mcp-disconnect", async (_e, name: string, directory?: string) => {
+    await bootPromise
+    return ensureClient().disconnectMcp(name, directory)
+  })
+  ipcMain.handle("mcp-authenticate", async (_e, name: string, directory?: string) => {
+    await bootPromise
+    return ensureClient().authenticateMcp(name, directory)
+  })
+  ipcMain.handle("mcp-remove-auth", async (_e, name: string, directory?: string) => {
+    await bootPromise
+    return ensureClient().removeMcpAuth(name, directory)
   })
 
   /* --------------------- skills management --------------------------- */

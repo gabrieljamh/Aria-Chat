@@ -7,6 +7,8 @@ import type {
   CommandInput,
   ConfigPatch,
   FileText,
+  McpConfig,
+  McpStatus,
   MessageWithParts,
   MimoApi,
   PathInfo,
@@ -69,6 +71,13 @@ const api: MimoApi = {
   setGlobalProvider: (providerID, entry) => ipcRenderer.invoke("set-global-provider", providerID, entry) as Promise<boolean>,
   setCompactionThreshold: (tokens, auto) => ipcRenderer.invoke("set-compaction-threshold", tokens, auto) as Promise<boolean>,
   setCompactRedirectModel: (model: { providerID: string; modelID: string } | null) => ipcRenderer.invoke("set-compact-redirect-model", model) as Promise<boolean>,
+
+  getMcpStatus: (directory) => ipcRenderer.invoke("mcp-status", directory) as Promise<Record<string, McpStatus>>,
+  addMcp: (name: string, config: McpConfig, directory) => ipcRenderer.invoke("mcp-add", name, config, directory) as Promise<Record<string, McpStatus>>,
+  connectMcp: (name: string, directory) => ipcRenderer.invoke("mcp-connect", name, directory) as Promise<boolean>,
+  disconnectMcp: (name: string, directory) => ipcRenderer.invoke("mcp-disconnect", name, directory) as Promise<boolean>,
+  authenticateMcp: (name: string, directory) => ipcRenderer.invoke("mcp-authenticate", name, directory) as Promise<McpStatus>,
+  removeMcpAuth: (name: string, directory) => ipcRenderer.invoke("mcp-remove-auth", name, directory) as Promise<boolean>,
 
   createChatSandbox: () => ipcRenderer.invoke("chat-create-sandbox") as Promise<{ id: string; directory: string }>,
   ensureProjectMarker: (directory) => ipcRenderer.invoke("ensure-project-marker", directory) as Promise<void>,

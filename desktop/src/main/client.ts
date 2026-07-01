@@ -6,6 +6,8 @@ import type {
   AuthInfo,
   CommandInput,
   ConfigPatch,
+  McpConfig,
+  McpStatus,
   MessageWithParts,
   PathInfo,
   PermissionReply,
@@ -250,6 +252,33 @@ export class MimoClient extends EventEmitter {
 
   async disposeInstance(directory?: string): Promise<void> {
     await this.json("instance/dispose", { method: "POST", body: "{}" }, { directory }).catch(() => {})
+  }
+
+  /* --------------------------------- MCP --------------------------------- */
+
+  getMcpStatus(directory?: string): Promise<Record<string, McpStatus>> {
+    return this.json<Record<string, McpStatus>>("mcp", undefined, { directory })
+  }
+
+  async addMcp(name: string, config: McpConfig, directory?: string): Promise<Record<string, McpStatus>> {
+    return this.json<Record<string, McpStatus>>("mcp", { method: "POST", body: JSON.stringify({ name, config }) }, { directory })
+  }
+
+  async connectMcp(name: string, directory?: string): Promise<boolean> {
+    return this.json<boolean>(`mcp/${encodeURIComponent(name)}/connect`, { method: "POST", body: "{}" }, { directory })
+  }
+
+  async disconnectMcp(name: string, directory?: string): Promise<boolean> {
+    return this.json<boolean>(`mcp/${encodeURIComponent(name)}/disconnect`, { method: "POST", body: "{}" }, { directory })
+  }
+
+  async authenticateMcp(name: string, directory?: string): Promise<McpStatus> {
+    return this.json<McpStatus>(`mcp/${encodeURIComponent(name)}/auth/authenticate`, { method: "POST", body: "{}" }, { directory })
+  }
+
+  async removeMcpAuth(name: string, directory?: string): Promise<boolean> {
+    await this.json(`mcp/${encodeURIComponent(name)}/auth`, { method: "DELETE" }, { directory })
+    return true
   }
 
   async questionReply(requestID: string, answers: string[][], directory?: string): Promise<void> {

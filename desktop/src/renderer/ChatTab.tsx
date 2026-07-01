@@ -51,6 +51,7 @@ interface Props {
   aiHome?: boolean
   onRegenerate?: () => void
   onManageSkills?: () => void
+  onManageConnectors?: () => void
   sessionID?: string | null
   onCompact?: () => void
   onClear?: () => void
@@ -91,6 +92,7 @@ export function ChatTab(props: Props) {
       directory={props.chats.find((c) => c.id === props.activeId)?.directory ?? null}
       prefill={prefill}
       onManageSkills={props.onManageSkills}
+      onManageConnectors={props.onManageConnectors}
       sessionID={props.sessionID}
       onCompact={props.onCompact}
       onClear={props.onClear}

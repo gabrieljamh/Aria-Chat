@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import type { AppInfo, CustomModel, ModelRef, ProviderConfigInput, ProviderModel, ProvidersResponse, SkillInfo } from "@shared/types"
+import type { AppInfo, CustomModel, McpConfig, McpStatus, ModelRef, ProviderConfigInput, ProviderModel, ProvidersResponse, SkillInfo } from "@shared/types"
 import { useCustomModels, saveCustomModels, loadCustomModels } from "./customModels"
 import ariaTextImg from "@shared/img/aria-text.png"
 import { ModelSearchSelect } from "./ModelSearchSelect"
@@ -15,7 +15,7 @@ interface Props {
 }
 
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "ok"; msg: string } | { kind: "error"; msg: string }
-type Page = "general" | "models" | "providers" | "skills" | "server" | "conversations" | "about"
+type Page = "general" | "models" | "providers" | "skills" | "connectors" | "server" | "conversations" | "about"
 
 interface PageDef {
   id: Page
@@ -70,6 +70,18 @@ const PAGES: PageDef[] = [
         <path d="M12 2l9 5-9 5-9-5 9-5z" />
         <path d="M3 8v6l9 5 9-5V8" />
         <path d="M12 13v8" />
+      </svg>
+    ),
+  },
+  {
+    id: "connectors",
+    label: "Connectors",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 4v6M8 7l4 3 4-3" />
+        <path d="M20 16a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4" />
+        <path d="M8 20h8" />
+        <circle cx="12" cy="20" r="1" fill="currentColor" />
       </svg>
     ),
   },
@@ -141,6 +153,15 @@ const SkillsIcon = () => (
   </svg>
 )
 
+const ConnectorsIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 4v6M8 7l4 3 4-3" />
+    <path d="M20 16a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4" />
+    <path d="M8 20h8" />
+    <circle cx="12" cy="20" r="1" fill="currentColor" />
+  </svg>
+)
+
 const AboutIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" />
@@ -155,6 +176,15 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [skillsLoading, setSkillsLoading] = useState(false)
   const [skillsStatus, setSkillsStatus] = useState<Status>({ kind: "idle" })
+  const [mcpStatusMap, setMcpStatusMap] = useState<Record<string, McpStatus>>({})
+  const [mcpLoading, setMcpLoading] = useState(false)
+  const [mcpFormType, setMcpFormType] = useState<"local" | "remote">("local")
+  const [mcpName, setMcpName] = useState("")
+  const [mcpCommand, setMcpCommand] = useState("")
+  const [mcpUrl, setMcpUrl] = useState("")
+  const [mcpHeaders, setMcpHeaders] = useState("")
+  const [mcpStatus, setMcpStatus] = useState<Status>({ kind: "idle" })
+  const [mcpRemoving, setMcpRemoving] = useState<string | null>(null)
   const [compactionThreshold, setCompactionThreshold] = useState<string>("")
   const [compactionEnabled, setCompactionEnabled] = useState(false)
   const [compStatus, setCompStatus] = useState<Status>({ kind: "idle" })
@@ -395,6 +425,23 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       loadSkills()
     }
   }, [page, loadSkills])
+
+  const loadMcpStatus = useCallback(async () => {
+    setMcpLoading(true)
+    try {
+      const map = await window.mimo.getMcpStatus(directory ?? undefined)
+      setMcpStatusMap(map)
+    } catch {
+      setMcpStatusMap({})
+    }
+    setMcpLoading(false)
+  }, [directory])
+
+  useEffect(() => {
+    if (page === "connectors") {
+      loadMcpStatus()
+    }
+  }, [page, loadMcpStatus])
 
   const modelOptions: { value: string; label: string }[] = []
   const seen = new Set<string>()
@@ -772,6 +819,76 @@ const saveEditModel = async () => {
       setSkills((prev) => prev.filter((s) => s.name !== name))
     } catch (e: any) {
       setSkillsStatus({ kind: "error", msg: String(e?.message ?? e) })
+    }
+  }
+
+  const addMcpServer = async () => {
+    setMcpStatus({ kind: "saving" })
+    try {
+      const name = mcpName.trim()
+      if (!name) return
+      const config: McpConfig = mcpFormType === "local"
+        ? { type: "local", command: mcpCommand.trim().split(/\s+/).filter(Boolean) }
+        : { type: "remote", url: mcpUrl.trim(), ...(mcpHeaders.trim() ? { headers: Object.fromEntries(mcpHeaders.trim().split(",").map((h) => { const i = h.indexOf(":"); return [h.slice(0, i).trim(), h.slice(i + 1).trim()] }).filter(([, v]) => v)) } : {}) }
+      await window.mimo.addMcp(name, config, directory ?? undefined)
+      const cfg = await window.mimo.getConfig(directory ?? undefined)
+      const mcp = (cfg.mcp as Record<string, unknown>) ?? {}
+      ;(mcp as Record<string, unknown>)[name] = config
+      await window.mimo.updateConfig({ mcp: mcp as any }, directory ?? undefined)
+      await loadMcpStatus()
+      setMcpName("")
+      setMcpCommand("")
+      setMcpUrl("")
+      setMcpHeaders("")
+      setMcpStatus({ kind: "ok", msg: `Added connector "${name}".` })
+    } catch (e: any) {
+      setMcpStatus({ kind: "error", msg: String(e?.message ?? e) })
+    }
+  }
+
+  const removeMcpServer = async (name: string) => {
+    if (mcpRemoving) return
+    setMcpRemoving(name)
+    try {
+      const st = mcpStatusMap[name]
+      if (st?.status === "connected" || st?.status === "pending") {
+        await window.mimo.disconnectMcp(name, directory ?? undefined).catch(() => {})
+      }
+      await window.mimo.removeMcpAuth(name, directory ?? undefined).catch(() => {})
+      const cfg = await window.mimo.getConfig(directory ?? undefined)
+      const mcp = (cfg.mcp as Record<string, unknown>) ?? {}
+      if (mcp[name]) {
+        delete mcp[name]
+        await window.mimo.updateConfig({ mcp: mcp as any }, directory ?? undefined)
+      }
+      await loadMcpStatus()
+    } catch (e: any) {
+      setMcpStatus({ kind: "error", msg: String(e?.message ?? e) })
+    } finally {
+      setMcpRemoving(null)
+    }
+  }
+
+  const toggleMcpConnection = async (name: string) => {
+    const st = mcpStatusMap[name]
+    try {
+      if (st?.status === "connected" || st?.status === "pending") {
+        await window.mimo.disconnectMcp(name, directory ?? undefined)
+      } else {
+        await window.mimo.connectMcp(name, directory ?? undefined)
+      }
+      await loadMcpStatus()
+    } catch (e: any) {
+      setMcpStatus({ kind: "error", msg: String(e?.message ?? e) })
+    }
+  }
+
+  const authenticateMcpServer = async (name: string) => {
+    try {
+      await window.mimo.authenticateMcp(name, directory ?? undefined)
+      await loadMcpStatus()
+    } catch (e: any) {
+      setMcpStatus({ kind: "error", msg: String(e?.message ?? e) })
     }
   }
 
@@ -1287,6 +1404,97 @@ const saveEditModel = async () => {
                     ))}
                   </div>
                 )}
+              </div>
+            </>
+          )}
+
+          {page === "connectors" && (
+            <>
+              <h3 className="settings-page-title"><ConnectorsIcon /> Connectors</h3>
+
+              <div className="settings-field">
+                <label>Add a connector</label>
+                <div className="provider-form">
+                  <input placeholder="Name (e.g. my-server)" value={mcpName} onChange={(e) => setMcpName(e.target.value)} />
+                  <div className="provider-modalities">
+                    <button type="button" className={"mod-chip" + (mcpFormType === "local" ? " on" : "")} onClick={() => setMcpFormType("local")}>Local (stdio)</button>
+                    <button type="button" className={"mod-chip" + (mcpFormType === "remote" ? " on" : "")} onClick={() => setMcpFormType("remote")}>Remote (HTTP)</button>
+                  </div>
+                  {mcpFormType === "local" && (
+                    <input placeholder="Command (e.g. npx my-mcp-server)" value={mcpCommand} onChange={(e) => setMcpCommand(e.target.value)} />
+                  )}
+                  {mcpFormType === "remote" && (
+                    <>
+                      <input placeholder="URL (e.g. https://api.example.com/mcp)" value={mcpUrl} onChange={(e) => setMcpUrl(e.target.value)} />
+                      <input placeholder="Headers (key: value, ...) — optional" value={mcpHeaders} onChange={(e) => setMcpHeaders(e.target.value)} />
+                    </>
+                  )}
+                  <button
+                    className="primary"
+                    onClick={addMcpServer}
+                    disabled={!mcpName.trim() || (mcpFormType === "local" && !mcpCommand.trim()) || (mcpFormType === "remote" && !mcpUrl.trim()) || mcpStatus.kind === "saving"}
+                  >
+                    {mcpStatus.kind === "saving" ? "Adding…" : "Add connector"}
+                  </button>
+                </div>
+                {mcpStatus.kind === "ok" && <div className="form-msg ok">{mcpStatus.msg}</div>}
+                {mcpStatus.kind === "error" && <div className="form-msg err">{mcpStatus.msg}</div>}
+              </div>
+
+              <div className="settings-divider" />
+
+              <div className="settings-field">
+                <label>MCP servers</label>
+                {mcpLoading ? (
+                  <div className="hint">Loading…</div>
+                ) : Object.keys(mcpStatusMap).length === 0 ? (
+                  <div className="skill-empty">No MCP connectors configured. Add one above or edit mimocode.json.</div>
+                ) : (
+                  <div className="custom-list">
+                    {Object.entries(mcpStatusMap).map(([name, st]) => {
+                      const statusStr = st.status
+                      const dotColor = statusStr === "connected" ? "green" : statusStr === "pending" ? "yellow" : statusStr === "failed" ? "red" : statusStr === "disabled" ? "gray" : "orange"
+                      const statusLabel = statusStr === "needs_auth" ? "Needs Auth"
+                        : statusStr === "needs_client_registration" ? "Needs Registration"
+                        : statusStr === "failed" ? `Failed: ${st.error ?? "unknown"}`
+                        : statusStr.charAt(0).toUpperCase() + statusStr.slice(1)
+                      const canConnect = statusStr === "disabled" || statusStr === "failed"
+                      const canDisconnect = statusStr === "connected" || statusStr === "pending"
+                      const canAuth = statusStr === "needs_auth" || statusStr === "needs_client_registration"
+                      return (
+                        <div className="custom-row" key={name}>
+                          <span className="custom-meta">
+                            <strong>{name}</strong>
+                            <span className="custom-id">
+                              <span className="mcp-status-dot" style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", backgroundColor: dotColor, marginRight: 6, verticalAlign: "middle" }} />
+                              {statusLabel}
+                            </span>
+                          </span>
+                          <div className="custom-row-actions">
+                            {canAuth && (
+                              <button className="custom-edit" onClick={() => authenticateMcpServer(name)}>Authenticate</button>
+                            )}
+                            {(canConnect || canDisconnect) && (
+                              <button className="custom-edit" onClick={() => toggleMcpConnection(name)}>
+                                {canDisconnect ? "Disconnect" : "Connect"}
+                              </button>
+                            )}
+                            <button
+                              className="custom-remove"
+                              disabled={mcpRemoving === name}
+                              onClick={() => removeMcpServer(name)}
+                            >
+                              {mcpRemoving === name ? "Removing…" : "Remove"}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div className="hint">
+                  MCP servers provide tools and resources to Aria. Changes are persisted to mimocode.json.
+                </div>
               </div>
             </>
           )}

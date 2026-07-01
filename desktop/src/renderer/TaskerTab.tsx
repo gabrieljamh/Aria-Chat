@@ -52,6 +52,7 @@ interface Props {
   aiHome?: boolean
   onRegenerate?: () => void
   onManageSkills?: () => void
+  onManageConnectors?: () => void
   sessionID?: string | null
   onCompact?: () => void
   onClear?: () => void
@@ -98,6 +99,7 @@ export function TaskerTab(props: Props) {
       directory={props.projectDir ?? props.items.find((i) => i.id === props.activeId)?.directory ?? null}
       prefill={prefill}
       onManageSkills={props.onManageSkills}
+      onManageConnectors={props.onManageConnectors}
       sessionID={props.sessionID}
       onCompact={props.onCompact}
       onClear={props.onClear}

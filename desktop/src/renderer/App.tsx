@@ -630,6 +630,7 @@ export function App() {
             onReply={replyPermission}
             onOpenSettings={() => openSettings()}
             onManageSkills={() => openSettings("skills")}
+            onManageConnectors={() => openSettings("connectors")}
             favoriteIds={favoriteIds}
             onPin={togglePin}
             onRename={renameChat}
@@ -670,6 +671,7 @@ export function App() {
             onOpenFile={(p) => setViewerPath(p)}
             onOpenSettings={() => openSettings()}
             onManageSkills={() => openSettings("skills")}
+            onManageConnectors={() => openSettings("connectors")}
             onDelete={deleteCowork}
             onQuestionReply={questionReply}
             onQuestionReject={questionReject}
