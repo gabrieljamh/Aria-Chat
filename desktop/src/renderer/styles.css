@@ -914,8 +914,6 @@ button {
   font-weight: 600;
 }
 .diff-text { padding: 0 10px !important; white-space: pre; }
-/* context line */
-.diff-line-ctx {}
 /* added line */
 .diff-line-add { background: rgba(139, 184, 143, 0.12); }
 .diff-line-add .diff-ln { background: rgba(139, 184, 143, 0.06); }
@@ -1916,38 +1914,7 @@ button {
 .settings-field .hint a:hover {
   text-decoration: underline;
 }
-.hint code {
-  background: var(--bg-inset);
-  border-radius: 4px;
-  padding: 0 4px;
-  font-size: 11px;
-}
-.settings-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 8px;
-}
-.settings-actions button {
-  border-radius: 8px;
-  padding: 8px 15px;
-  font-size: 13px;
-  border: 1px solid var(--border);
-  background: var(--bg-inset);
-  color: var(--text);
-  cursor: pointer;
-}
-.settings-actions button:hover {
-  background: var(--bg-hover);
-}
-.settings-actions .primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
-}
-.settings-actions .primary:hover {
-  background: var(--accent-hover);
-}
+
 
 /* status banner */
 .status-banner {
@@ -1988,21 +1955,6 @@ button {
   padding: 40px;
 }
 
-/* code tab stub */
-.code-stub {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  color: var(--text-faint);
-}
-.code-stub .big {
-  font-family: var(--serif);
-  font-size: 30px;
-  color: var(--text-dim);
-}
 
 /* ------------------------- Custom models (settings) ------------------------ */
 
@@ -2112,21 +2064,7 @@ button {
   color: var(--text-faint);
 }
 
-/* form messages */
-.form-msg {
-  margin-top: 8px;
-  font-size: 12px;
-  padding: 8px 12px;
-  border-radius: 6px;
-}
-.form-msg.ok {
-  background: rgba(70, 180, 110, 0.12);
-  color: var(--good);
-}
-.form-msg.err {
-  background: rgba(217, 106, 90, 0.12);
-  color: var(--danger);
-}
+
 .toggle-row {
   display: flex;
   align-items: center;
@@ -2301,16 +2239,7 @@ button {
   color: var(--accent);
 }
 
-/* fenced code block (old flat style — preserved for backward compat, now superseded by .md-codeblock) */
-.md-codeblock-lang {
-  display: block;
-  font-family: "SF Mono", "Cascadia Code", monospace;
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-faint);
-  margin-bottom: 6px;
-}
+
 
 /* syntax-highlighted codeblock wrapper */
 .md-codeblock {
@@ -3307,7 +3236,7 @@ button {
   margin: 0 0 5px;
   color: var(--text-dim);
 }
-lyout: title doubles as a back button to the "+" menu */
+/* Layout: title doubles as a back button to the "+" menu */
 .skills-pop-back {
   display: flex;
   align-items: center;
