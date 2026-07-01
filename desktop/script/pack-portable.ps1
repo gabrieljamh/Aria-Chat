@@ -112,6 +112,16 @@ if (-not (Test-Path (Join-Path $electronDist $electronExe))) {
   throw "Electron runtime not found at $electronDist\$electronExe"
 }
 Copy-Item (Join-Path $electronDist $electronExe) (Join-Path $distDir "aria-chat.exe")
+
+# Replace the embedded Electron icon in the exe with our custom icon.
+# Windows shows the exe's embedded icon in Explorer, the taskbar, and shortcuts.
+# rcedit is a devDependency that patches the .exe resources.
+Push-Location $root
+try {
+  $rceditResult = node -e "require('rcedit')('$distDir\\aria-chat.exe', { 'icon-path': '$root\\src\\shared\\img\\aria-icon.ico' }).then(() => console.log('ok')).catch(e => { console.error(e.message); process.exit(1) })"
+  if ($LASTEXITCODE -eq 0) { Write-Host "  Replaced exe icon with aria-icon.ico" }
+  else { Write-Host "  Warning: rcedit failed, exe will show default Electron icon" -ForegroundColor Yellow }
+} finally { Pop-Location }
 # Copy the rest of the Electron runtime next to the exe (dlls, *.pak/*.bin/*.dat,
 # and the locales\ directory). -Recurse is REQUIRED: locales\ holds the *.pak
 # files Electron loads at startup, and without -Recurse it would be created empty,
