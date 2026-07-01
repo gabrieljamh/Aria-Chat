@@ -148,11 +148,22 @@ export async function evalScript(body: string, hooks: Record<string, HostFn>, op
     vm.setProp(vm.global, "args", argsHandle)
     argsHandle.dispose()
     // Strip ES module `export` keywords — QuickJS doesn't support ESM syntax.
-    // Handles `export const`, `export function`, `export default`, `export let`,
-    // `export var`, `export class`, `export {`, and `export *`. The `export`
-    // keyword is replaced with equal-length whitespace to preserve line numbers.
-    const stripped = body.replace(/^(\s*)export\s+/gm, (_, lead) => lead + " ".repeat(7))
-    const wrapped = `(async () => {\n${stripped}\n})()`
+    // `export default` → both words stripped; `export const/function/let/var/class`
+    // → only `export` stripped. Whitespace replaces removed chars to preserve line
+    // numbers. After stripping, `export default async function foo()` becomes
+    // just `async function foo()` — valid plain-script JS that QuickJS can run.
+    const stripped = body
+      .replace(/^(\s*)export\s+default\s+/gm, (_, lead) => lead + " ".repeat(15))
+      .replace(/^(\s*)export\s+/gm, (_, lead) => lead + " ".repeat(7))
+    // Auto-invoke top-level named function/async function declarations.
+    // After export stripping, an inline script like `export async function run()`
+    // becomes `async function run()` — defined but never called. If the script
+    // has no top-level `return`, find the first top-level function declaration
+    // and call it, forwarding args.
+    const hasTopLevelReturn = /(?:^|\n)\s*return\b/.test(stripped)
+    const funcMatch = /\n\s*(?:async\s+)?function\s+(\w+)\s*\(/.exec(stripped)
+    const footer = !hasTopLevelReturn && funcMatch ? `\nreturn ${funcMatch[1]}(args)` : ""
+    const wrapped = `(async () => {\n${stripped}${footer}\n})()`
     const evalRes = vm.evalCode(wrapped)
     if (evalRes.error) {
       const err = vm.dump(evalRes.error)
