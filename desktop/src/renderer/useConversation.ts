@@ -23,6 +23,7 @@ export interface State {
   questions: QuestionState[]
   busy: boolean
   error: string | null
+  _subagentMsgIds: Set<string>
 }
 
 const empty: State = {
@@ -35,6 +36,7 @@ const empty: State = {
   questions: [],
   busy: false,
   error: null,
+  _subagentMsgIds: new Set(),
 }
 
 type Action =
@@ -91,6 +93,10 @@ function reducer(state: State, action: Action): State {
       switch (t) {
         case "message.updated": {
           const info = e.properties.info
+          const agentID = (info as any).agentID
+          if (typeof agentID === "string" && agentID !== "main") {
+            return { ...state, _subagentMsgIds: new Set(state._subagentMsgIds).add(info.id) }
+          }
           const next = upsertMessage(state, info)
           const completed = info.role === "assistant" && Boolean((info.time as any)?.completed)
           return completed ? { ...next, busy: false } : next
@@ -102,6 +108,7 @@ function reducer(state: State, action: Action): State {
         case "message.part.updated": {
           const part = e.properties.part
           const msgId = part.messageID
+          if (state._subagentMsgIds.has(msgId)) return state
           if (!state.messages[msgId]) return upsertPart(state, part)
           const msg = state.messages[msgId]
           const existing = msg.parts.find((p) => p.id === part.id)
@@ -118,6 +125,7 @@ function reducer(state: State, action: Action): State {
         }
         case "message.part.delta": {
           const { messageID, partID, field, delta } = e.properties
+          if (state._subagentMsgIds.has(messageID)) return state
           const msg = state.messages[messageID]
           if (!msg) {
             const synthetic: Part = {
@@ -147,6 +155,8 @@ function reducer(state: State, action: Action): State {
           return { ...state, messages: { ...state.messages, [messageID]: { ...msg, parts } } }
         }
         case "message.part.removed": {
+          const msgId = e.properties.messageID
+          if (state._subagentMsgIds.has(msgId)) return state
           const msg = state.messages[e.properties.messageID]
           if (!msg) return state
           const parts = msg.parts.filter((p) => p.id !== e.properties.partID)
