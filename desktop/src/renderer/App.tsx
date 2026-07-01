@@ -100,11 +100,19 @@ export function App() {
   const prevPermCount = useRef(0)
   const prevQCount = useRef(0)
   const prevBusy = useRef(state.busy)
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     const wasBusy = prevBusy.current
     prevBusy.current = state.busy
+    if (idleTimer.current) { clearTimeout(idleTimer.current); idleTimer.current = null }
     if (wasBusy && !state.busy) {
-      window.mimo.getSetting("notifIdle").then((v) => { if (v !== false) window.mimo.notify("Aria Chat", "Response complete") })
+      window.mimo.getSetting("notifIdle").then((enabled) => {
+        if (enabled === false) return
+        window.mimo.getSetting("notifIdleDelay").then((delay) => {
+          const ms = typeof delay === "number" ? delay * 1000 : 3000
+          idleTimer.current = setTimeout(() => { window.mimo.notify("Aria Chat", "Response complete") }, ms)
+        })
+      })
     }
   }, [state.busy])
   useEffect(() => {
