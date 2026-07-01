@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import stripAnsi from "strip-ansi"
-import hljs from "highlight.js/lib/common"
+import hljs from "./highlight"
 
 export function highlightCode(code: string, lang: string): string {
   if (lang && hljs.getLanguage(lang)) {

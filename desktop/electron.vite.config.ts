@@ -29,8 +29,12 @@ export default defineConfig({
     plugins: [react()],
     resolve: { alias: shared },
     build: {
+      target: "chrome120",
       rollupOptions: {
         input: { index: resolve(__dirname, "src/renderer/index.html") },
+        output: {
+          manualChunks: { vendor: ["react", "react-dom", "react-markdown", "highlight.js"] },
+        },
       },
     },
   },

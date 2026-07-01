@@ -81,25 +81,8 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Debug desktop node_modules before install
-        run: |
-          echo "=== desktop/node_modules before install ==="
-          ls -la desktop/node_modules/ 2>/dev/null || echo "node_modules does not exist"
-          echo "=== desktop/node_modules/electron ==="
-          ls -la desktop/node_modules/electron/ 2>/dev/null || echo "electron not found"
-        shell: bash
-
       - name: Install desktop deps
-        run: npm install --prefer-offline=false
-        working-directory: desktop
-        shell: bash
-
-      - name: Debug Electron installation
-        run: |
-          echo "=== Checking node_modules/electron ==="
-          ls -la node_modules/electron/
-          echo "=== Checking node_modules/electron/dist ==="
-          ls -la node_modules/electron/dist/
+        run: npm install
         working-directory: desktop
         shell: bash
 
