@@ -245,6 +245,15 @@ export interface CommandInfo {
   hints?: string[]
 }
 
+export interface CommandInput {
+  sessionID: string
+  command: string
+  arguments: string
+  agent?: string
+  model?: ModelRef
+  directory?: string
+}
+
 export interface PathInfo {
   home: string
   state: string
@@ -384,6 +393,7 @@ export interface MimoApi {
   createSession(opts?: { directory?: string; title?: string }): Promise<SessionInfo>
   getMessages(sessionID: string, directory?: string): Promise<MessageWithParts[]>
   prompt(input: PromptInput): Promise<void>
+  sendCommand(input: CommandInput): Promise<void>
   abort(sessionID: string, directory?: string): Promise<void>
   summarizeSession(sessionID: string, providerID: string, modelID: string, directory?: string): Promise<boolean>
   deleteMessage(sessionID: string, messageID: string, directory?: string): Promise<void>

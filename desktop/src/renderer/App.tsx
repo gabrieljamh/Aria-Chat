@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type {
   AgentInfo,
   ChatRef,
+  CommandInfo,
   ModelRef,
   PermissionReply,
   ProvidersResponse,
@@ -313,8 +314,6 @@ export function App() {
         if (!ref) return
       }
       const finalRef = ref
-      // If this turn carries an image and the user enabled redirect, send it to
-      // the configured vision model instead of the active one (just this turn).
       let turnModel = model
       const atts = files ?? []
       if (atts.some((f) => f.mime?.startsWith("image/"))) {
@@ -329,6 +328,31 @@ export function App() {
         const on = await window.mimo.getSetting("videoRedirect").catch(() => null)
         const vm2 = (await window.mimo.getSetting("videoModel").catch(() => null)) as ModelRef | null
         if (on === true && vm2?.providerID && vm2?.modelID) turnModel = vm2
+      }
+      const slashMatch = text.match(/^\/(\S+)(?:\s+(.*))?$/s)
+      if (slashMatch && !files?.length) {
+        const cmdName = slashMatch[1]
+        const cmdArgs = slashMatch[2] ?? ""
+        const cmds = await window.mimo.getCommands(finalRef.directory).catch(() => [] as CommandInfo[])
+        if (cmds.some((c) => c.name === cmdName)) {
+          setBusy(true)
+          try {
+            await window.mimo.sendCommand({
+              sessionID: finalRef.sessionID,
+              command: cmdName,
+              arguments: cmdArgs,
+              model: turnModel ?? undefined,
+              agent: agentName ?? undefined,
+              directory: finalRef.directory,
+            })
+          } catch (e: any) {
+            console.error("[sendPrompt] sendCommand failed:", e)
+            setError(String(e?.message ?? e))
+            setBusy(false)
+          }
+          refreshTitle(finalRef)
+          return
+        }
       }
       setBusy(true)
       try {

@@ -4,6 +4,7 @@ import type {
   AuthInfo,
   ChatRef,
   CommandInfo,
+  CommandInput,
   ConfigPatch,
   FileText,
   MessageWithParts,
@@ -37,6 +38,7 @@ const api: MimoApi = {
   createSession: (opts) => ipcRenderer.invoke("create-session", opts) as Promise<SessionInfo>,
   getMessages: (sessionID, directory) => ipcRenderer.invoke("get-messages", sessionID, directory) as Promise<MessageWithParts[]>,
   prompt: (input: PromptInput) => ipcRenderer.invoke("prompt", input) as Promise<void>,
+  sendCommand: (input: CommandInput) => ipcRenderer.invoke("send-command", input) as Promise<void>,
   abort: (sessionID, directory) => ipcRenderer.invoke("abort", sessionID, directory) as Promise<void>,
   summarizeSession: (sessionID, providerID, modelID, directory) =>
     ipcRenderer.invoke("summarize-session", sessionID, providerID, modelID, directory) as Promise<boolean>,

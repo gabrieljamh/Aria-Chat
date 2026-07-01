@@ -4,6 +4,7 @@ import { join } from "node:path"
 import type {
   AgentInfo,
   AuthInfo,
+  CommandInput,
   ConfigPatch,
   MessageWithParts,
   PathInfo,
@@ -111,6 +112,28 @@ export class MimoClient extends EventEmitter {
       // still propagate.
       if (isInFlightDrop(err)) {
         console.warn("[mimo-client] prompt response not awaited; turn continues via SSE:", errCode(err))
+        return
+      }
+      throw err
+    }
+  }
+
+  async sendCommand(input: CommandInput): Promise<void> {
+    const body: Record<string, unknown> = {
+      command: input.command,
+      arguments: input.arguments,
+    }
+    if (input.model) body.model = input.model
+    if (input.agent) body.agent = input.agent
+    try {
+      await this.json(
+        `session/${encodeURIComponent(input.sessionID)}/command`,
+        { method: "POST", body: JSON.stringify(body) },
+        { directory: input.directory },
+      )
+    } catch (err) {
+      if (isInFlightDrop(err)) {
+        console.warn("[mimo-client] command response not awaited; turn continues via SSE:", errCode(err))
         return
       }
       throw err

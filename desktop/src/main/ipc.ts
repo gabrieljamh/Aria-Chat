@@ -19,7 +19,7 @@ import {
 import { ServerManager } from "./server"
 import { getStore } from "./store"
 import { allowPreviewRoot } from "./preview"
-import type { AuthInfo, ConfigPatch, PermissionReply, PromptInput, ServerStatus, SkillInfo } from "@shared/types"
+import type { AuthInfo, CommandInput, ConfigPatch, PermissionReply, PromptInput, ServerStatus, SkillInfo } from "@shared/types"
 
 // Sanitize config: remove undefined values from cost/limit objects that cause validation errors
 function sanitizeConfig(obj: any): any {
@@ -182,6 +182,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
   ipcMain.handle("prompt", async (_e, input: PromptInput) => {
     await bootPromise
     return ensureClient().prompt(input)
+  })
+  ipcMain.handle("send-command", async (_e, input: CommandInput) => {
+    await bootPromise
+    return ensureClient().sendCommand(input)
   })
   ipcMain.handle("abort", async (_e, sessionID: string, directory?: string) => {
     await bootPromise
