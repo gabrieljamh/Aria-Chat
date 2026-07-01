@@ -527,7 +527,10 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
   ipcMain.handle("show-item-in-folder", async (_e, p: string) => shell.showItemInFolder(p))
   ipcMain.handle("notify", async (_e, title: string, body: string) => {
     if (Notification.isSupported()) {
-      const n = new Notification({ title, body, icon: path.join(__dirname, "../shared/img/aria-icon.png") })
+      const ico = app.isPackaged
+        ? path.join(__dirname, "../shared/img/aria-icon.ico")
+        : path.join(__dirname, "../../src/shared/img/aria-icon.ico")
+      const n = new Notification({ title, body, icon: ico })
       n.show()
     }
   })
