@@ -8,6 +8,10 @@ export function applyAccentHue(offset: number, darkText?: boolean) {
   root.setProperty("--accent", `hsl(${h}, ${BASE_S}%, ${BASE_L}%)`)
   root.setProperty("--accent-hover", `hsl(${h}, ${BASE_S}%, ${Math.min(BASE_L + 7, 100)}%)`)
   root.setProperty("--accent-soft", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0.14)`)
+  root.setProperty("--accent-border", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0.35)`)
+  root.setProperty("--accent-glow", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0.45)`)
+  root.setProperty("--accent-glow-end", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0)`)
+  root.setProperty("--accent-soft-bg", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0.06)`)
   const useDark = darkText !== undefined ? darkText : accentNeedsDarkText(offset)
   root.setProperty("--accent-text", useDark ? "#1a1a1a" : "#ffffff")
 }
