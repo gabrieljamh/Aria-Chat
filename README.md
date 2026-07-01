@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="desktop/src/shared/img/aria-logo.png" alt="Aria" width="96" />
-  <img src="desktop/src/shared/img/aria-text.png" alt="Aria Chat" height="40" />
+  <img src="desktop/src/shared/img/aria-logo.svg" alt="Aria" width="96" />
+  <img src="desktop/src/shared/img/aria-text.svg" alt="Aria Chat" height="40" />
 </div>
 
 A desktop AI assistant built with Electron, powered by [MiMo Code](https://github.com/XiaomiMiMo/MiMo-Code).
