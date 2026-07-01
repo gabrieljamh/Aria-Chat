@@ -139,6 +139,7 @@ Copy-Item (Join-Path $root "out") (Join-Path $appDir "out") -Recurse
 $sharedTargetDir = Join-Path $appDir "out\shared\img"
 New-Item -ItemType Directory -Path $sharedTargetDir -Force | Out-Null
 Copy-Item (Join-Path $root "src\shared\img\aria-icon.png") $sharedTargetDir -Force
+Copy-Item (Join-Path $root "src\shared\img\aria-icon.ico") $sharedTargetDir -Force
 Write-Host "  Copied app files (out/ + package.json + shared assets)"
 
 Write-Host "Portable package assembled at $distDir" -ForegroundColor Green

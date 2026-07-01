@@ -22,10 +22,15 @@ if (!gotLock) {
 }
 
 function resolveIcon() {
-  const rel = app.isPackaged
+  const ico = app.isPackaged
+    ? join(__dirname, "../shared/img/aria-icon.ico")
+    : join(__dirname, "../../src/shared/img/aria-icon.ico")
+  const png = app.isPackaged
     ? join(__dirname, "../shared/img/aria-icon.png")
     : join(__dirname, "../../src/shared/img/aria-icon.png")
-  return nativeImage.createFromPath(rel)
+  return nativeImage.createFromPath(ico).isEmpty()
+    ? nativeImage.createFromPath(png)
+    : nativeImage.createFromPath(ico)
 }
 
 function createWindow() {

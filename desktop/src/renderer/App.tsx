@@ -20,8 +20,8 @@ import { CustomServerModal } from "./CustomServerModal"
 import { generateGreeting, generateSuggestions, type Suggestion } from "./generate"
 import type { FileAttachment } from "@shared/types"
 
-import ariaLogo from "@shared/img/aria-logo.png"
-import ariaText from "@shared/img/aria-text.png"
+import ariaLogoRaw from "@shared/img/aria-logo.svg?raw"
+import ariaTextRaw from "@shared/img/aria-text.svg?raw"
 
 type Tab = "chat" | "cowork" // "cowork" = Tasker mode internal key
 
@@ -567,7 +567,7 @@ export function App() {
               setBrandMenuOpen((v) => !v)
             }}
           >
-            <img className="brand-logo" src={ariaLogo} alt="Aria" />
+            <span className="brand-logo" dangerouslySetInnerHTML={{ __html: ariaLogoRaw }} />
           </button>
           {brandMenuOpen && (
             <div className="brand-menu-overlay" onClick={() => setBrandMenuOpen(false)} />
@@ -579,7 +579,7 @@ export function App() {
               <button onClick={() => window.close()}>Quit</button>
             </div>
           )}
-          <img className="brand-logo brand-logo-aria-text" src={ariaText} alt="Aria" />
+          <span className="brand-logo brand-logo-aria-text" dangerouslySetInnerHTML={{ __html: ariaTextRaw }} />
           <div className="tabs-pill">
             {(["chat", "cowork"] as Tab[]).map((t) => (
               <button
