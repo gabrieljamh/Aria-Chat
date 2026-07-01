@@ -71,6 +71,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === "win32") app.setAppUserModelId("com.mimocode.desktop")
   // Grant permission requests (microphone for voice recording, etc.) to the app
   // itself, but never to the sandboxed mimo-file:// preview iframe.
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback, details) => {
