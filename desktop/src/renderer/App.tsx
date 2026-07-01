@@ -96,6 +96,26 @@ export function App() {
 
   const { state, setBusy, setError, setCurrentSession } = useConversation(activeSession, activeDir, activeRef?.createdAt)
 
+  // Desktop notifications for: approval needed, question asked, idle after busy
+  const prevPermCount = useRef(0)
+  const prevQCount = useRef(0)
+  const prevBusy = useRef(state.busy)
+  useEffect(() => {
+    const wasBusy = prevBusy.current
+    prevBusy.current = state.busy
+    if (wasBusy && !state.busy) window.mimo.notify("Aria Chat", "Response complete")
+  }, [state.busy])
+  useEffect(() => {
+    const len = state.permissions.length
+    if (len > prevPermCount.current && len > 0) window.mimo.notify("Approval Required", "A tool is requesting permission")
+    prevPermCount.current = len
+  }, [state.permissions.length])
+  useEffect(() => {
+    const len = state.questions.length
+    if (len > prevQCount.current && len > 0) window.mimo.notify("Question Asked", "The assistant needs your input")
+    prevQCount.current = len
+  }, [state.questions.length])
+
   /* ----------------------------- server status ---------------------------- */
   useEffect(() => {
     window.mimo.getServerStatus().then(setStatus)
