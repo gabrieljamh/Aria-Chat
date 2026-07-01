@@ -171,6 +171,7 @@ cp -r "$ROOT_DIR/out" "$APP_DIR/out"
 SHARED_TARGET_DIR="$APP_DIR/out/shared/img"
 mkdir -p "$SHARED_TARGET_DIR"
 cp "$ROOT_DIR/src/shared/img/aria-icon.png" "$SHARED_TARGET_DIR/"
+cp "$ROOT_DIR/src/shared/img/aria-icon.ico" "$SHARED_TARGET_DIR/" 2>/dev/null || true
 echo "  Copied app files (out/ + package.json + shared assets)"
 
 if [[ "$(uname -s)" != "MINGW"* ]] && [[ "$(uname -s)" != "CYGWIN"* ]] && [[ "$(uname -s)" != "MSYS"* ]]; then
