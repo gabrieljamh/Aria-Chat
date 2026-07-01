@@ -11,7 +11,7 @@ Built by [Junji at Project BomberCraft](https://github.com/gabrieljamh/Aria-Chat
 
 ---
 
-**Version: 0.2.0** — Aria rebrand, Tasker mode improvements, GitHub auth, personalized greetings
+**Version: 0.3.0** — MCP implemented on UI and more bugfixes!
 
 ## Features
 
