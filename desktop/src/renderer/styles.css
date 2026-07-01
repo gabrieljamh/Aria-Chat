@@ -12,6 +12,7 @@
   --accent: #8B5CF6; /* warm violet (Aria brand) */
   --accent-hover: #9D6FF8;
   --accent-soft: rgba(139, 92, 246, 0.14);
+  --accent-text: #ffffff;
   --danger: #d96a5a;
   --good: #8bb88f;
   --serif: "Georgia", "Iowan Old Style", "Apple Color Emoji", "Segoe UI Emoji", "Times New Roman", serif;
@@ -1094,7 +1095,7 @@ button {
 }
 .msg-act-apply {
   background: var(--accent) !important;
-  color: var(--invert) !important;
+  color: var(--accent-text) !important;
   border-radius: 4px;
   padding: 4px 12px;
   font-size: 12px;
@@ -1257,7 +1258,7 @@ button {
   border-radius: 50%;
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   display: grid;
   place-items: center;
 }
@@ -1652,7 +1653,7 @@ button {
 .approval .actions .approve {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
 }
 .approval .actions .approve:hover {
   background: var(--accent-hover);
@@ -1767,7 +1768,7 @@ button {
 .question-actions .primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
 }
 .question-actions .primary:hover {
   background: var(--accent-hover);
@@ -1937,7 +1938,7 @@ button {
 .settings-actions .primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
 }
 .settings-actions .primary:hover {
   background: var(--accent-hover);
@@ -2014,7 +2015,7 @@ button {
   flex-shrink: 0;
   background: var(--accent);
   border: 1px solid var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   border-radius: 8px;
   padding: 8px 16px;
   font-size: 13px;
@@ -2175,7 +2176,7 @@ button {
   align-self: stretch;
   background: var(--accent);
   border: 1px solid var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   border-radius: 8px;
   padding: 8px 16px;
   font-size: 13px;
@@ -2212,7 +2213,7 @@ button {
   align-self: flex-start;
   background: var(--accent);
   border: 1px solid var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   border-radius: 8px;
   padding: 8px 18px;
   font-size: 13px;
@@ -2766,7 +2767,7 @@ button {
 .cs-primary {
   background: var(--accent) !important;
   border-color: var(--accent) !important;
-  color: #1a1f22 !important;
+  color: var(--accent-text) !important;
   font-weight: 600;
 }
 .cs-ghost {
@@ -2813,7 +2814,7 @@ button {
   font-size: 10px;
   font-weight: 600;
   background: var(--accent);
-  color: #15301a;
+  color: var(--accent-text);
   border-radius: 999px;
   padding: 1px 6px;
   line-height: 1.6;
@@ -2962,7 +2963,7 @@ button {
 .settings-inline-actions .primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
 }
 .settings-inline-actions .primary:hover {
   background: var(--accent-hover);
@@ -3052,6 +3053,36 @@ button {
 .accent-hue-reset:hover {
   color: var(--text);
   border-color: var(--text-faint);
+}
+.accent-text-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  gap: 10px;
+}
+.accent-text-toggle-group {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.accent-text-opt {
+  background: none;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-faint);
+  padding: 3px 10px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.accent-text-opt:last-child { border-right: none; }
+.accent-text-opt:hover { color: var(--text); background: var(--bg-hover); }
+.accent-text-opt.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
 }
 
 /* settings: single global close button (replaces per-page Close buttons) */
@@ -3636,7 +3667,7 @@ lyout: title doubles as a back button to the "+" menu */
 .model-editor-footer .primary {
   background: var(--accent);
   border: 1px solid var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   border-radius: 8px;
   padding: 7px 18px;
   font-size: 13px;
@@ -3708,7 +3739,7 @@ lyout: title doubles as a back button to the "+" menu */
 }
 .model-search-option.selected {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
 }
 .model-search-empty {
   padding: 12px 10px;

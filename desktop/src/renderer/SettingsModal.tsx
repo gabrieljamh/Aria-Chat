@@ -199,6 +199,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [aiGreetings, setAiGreetings] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState(false)
   const [accentHue, setAccentHue] = useState(0)
+  const [accentDarkText, setAccentDarkText] = useState<boolean | null>(null)
   const [visionRedirect, setVisionRedirect] = useState(false)
   const [visionModel, setVisionModel] = useState("")
   const [audioRedirect, setAudioRedirect] = useState(false)
@@ -267,10 +268,14 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   useEffect(() => {
     window.mimo.getSetting("aiGreetings").then((v) => setAiGreetings(v === true))
     window.mimo.getSetting("aiSuggestions").then((v) => setAiSuggestions(v === true))
-    window.mimo.getSetting("accentHue").then((v) => {
-      const n = typeof v === "number" ? v : 0
+    window.mimo.getSetting("accentHue").then((hv) => {
+      const n = typeof hv === "number" ? hv : 0
       setAccentHue(n)
-      applyAccentHue(n)
+      window.mimo.getSetting("accentDarkText").then((dv) => {
+        const d = dv === true || dv === false ? dv : null
+        setAccentDarkText(d)
+        applyAccentHue(n, d ?? undefined)
+      })
     })
   }, [])
 
@@ -397,8 +402,18 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
 
   const changeAccentHue = (offset: number) => {
     setAccentHue(offset)
-    applyAccentHue(offset)
+    applyAccentHue(offset, accentDarkText ?? undefined)
     window.mimo.setSetting("accentHue", offset).catch(() => {})
+  }
+
+  const changeAccentDarkText = (dark: boolean | null) => {
+    setAccentDarkText(dark)
+    applyAccentHue(accentHue, dark ?? undefined)
+    if (dark === null) {
+      window.mimo.setSetting("accentDarkText", null).catch(() => {})
+    } else {
+      window.mimo.setSetting("accentDarkText", dark).catch(() => {})
+    }
   }
   const toggleAiSuggestions = () => {
     setAiSuggestions((v) => {
@@ -1002,7 +1017,15 @@ const saveEditModel = async () => {
                   <span className="accent-hue-swatch" style={{ background: accentHex(accentHue) }} />
                   <button className="accent-hue-reset" onClick={() => changeAccentHue(0)} title="Reset to default">↺</button>
                 </div>
-                <div className="hint">Shift the hue of the accent color used throughout the UI. Default is violet (258°).</div>
+                <div className="accent-text-row">
+                  <span className="hint" style={{margin:0}}>Text on accent</span>
+                  <div className="accent-text-toggle-group">
+                    <button className={"accent-text-opt" + (accentDarkText === null ? " active" : "")} onClick={() => changeAccentDarkText(null)} title="Auto-detect based on luminance">Auto</button>
+                    <button className={"accent-text-opt" + (accentDarkText === true ? " active" : "")} onClick={() => changeAccentDarkText(true)} title="Force dark text on accent backgrounds">Dark</button>
+                    <button className={"accent-text-opt" + (accentDarkText === false ? " active" : "")} onClick={() => changeAccentDarkText(false)} title="Force light text on accent backgrounds">Light</button>
+                  </div>
+                </div>
+                <div className="hint">Shift the hue of the accent color. "Auto" picks dark or light text based on luminance.</div>
               </div>
 
               <div className="settings-field">
