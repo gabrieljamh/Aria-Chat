@@ -1,7 +1,7 @@
 {
   "name": "mimocode-desktop",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Aria Chat — an AI assistant with Claude-desktop-style Electron UI for the Aria local server",
   "type": "module",
   "main": "./out/main/index.js",
