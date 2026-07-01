@@ -524,6 +524,7 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
   ipcMain.handle("registry-get", (_e, kind: RegistryKind) => getRegistry(kind))
   ipcMain.handle("registry-save", (_e, kind: RegistryKind, items: ChatRef[]) => saveRegistry(kind, items))
   ipcMain.handle("open-path", async (_e, p: string) => shell.openPath(p))
+  ipcMain.handle("show-item-in-folder", async (_e, p: string) => shell.showItemInFolder(p))
   ipcMain.handle("read-file-text", (_e, p: string) => readFileText(p))
   ipcMain.handle("list-workspace-files", (_e, directory: string, sinceMs?: number) => listWorkspaceFiles(directory, sinceMs ?? 0))
   ipcMain.handle("preview-url", (_e, p: string) => allowPreviewRoot(p))

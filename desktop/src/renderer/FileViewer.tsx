@@ -5,11 +5,14 @@ function basename(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p
 }
 
-type Kind = "html" | "svg" | "markdown" | "other"
+type Kind = "html" | "svg" | "markdown" | "image" | "audio" | "video" | "other"
 function kindOf(p: string): Kind {
   if (/\.(html?|htm)$/i.test(p)) return "html"
   if (/\.svg$/i.test(p)) return "svg"
   if (/\.(md|markdown|mdx)$/i.test(p)) return "markdown"
+  if (/\.(png|jpe?g|gif|webp|bmp|ico|avif|tiff?)$/i.test(p)) return "image"
+  if (/\.(mp3|wav|ogg|flac|aac|m4a|wma|opus)$/i.test(p)) return "audio"
+  if (/\.(mp4|webm|mkv|avi|mov|wmv|flv|m4v|ogv)$/i.test(p)) return "video"
   return "other"
 }
 
@@ -27,15 +30,13 @@ export function FileViewer({ path, onClose }: Props) {
 
   const kind = kindOf(path)
   const previewable = kind !== "other"
-  // Default to the rendered preview for previewable files; raw code otherwise.
+  const isMedia = kind === "image" || kind === "audio" || kind === "video"
   const [mode, setMode] = useState<"preview" | "code">("preview")
 
   useEffect(() => {
     const k = kindOf(path)
     setMode(k !== "other" ? "preview" : "code")
-    // HTML/SVG load by URL so sibling assets (relative paths) resolve; markdown
-    // renders from text. Fall back to inline srcDoc if the URL can't be made.
-    if (k === "html" || k === "svg") {
+    if (k === "html" || k === "svg" || k === "image" || k === "audio" || k === "video") {
       let cancelled = false
       setPreviewUrl(null)
       window.mimo.getPreviewUrl(path).then((u) => { if (!cancelled) setPreviewUrl(u) }).catch(() => {})
@@ -66,9 +67,21 @@ export function FileViewer({ path, onClose }: Props) {
     if (error) return <div className="form-msg err">{error}</div>
     if (previewable && mode === "preview") {
       if (kind === "markdown") return <Markdown>{content}</Markdown>
-      // HTML and SVG render in a sandboxed iframe so their own styling shows.
-      // The agent authors these files, so we allow scripts + same-origin so
-      // richer pages (external resources, fetch, forms) work as written.
+      if (kind === "image") {
+        return previewUrl
+          ? <img className="file-viewer-media" src={previewUrl} alt={basename(path)} />
+          : <div className="empty-note">Image preview unavailable</div>
+      }
+      if (kind === "audio") {
+        return previewUrl
+          ? <audio className="file-viewer-media" controls src={previewUrl} />
+          : <div className="empty-note">Audio preview unavailable</div>
+      }
+      if (kind === "video") {
+        return previewUrl
+          ? <video className="file-viewer-media" controls src={previewUrl} />
+          : <div className="empty-note">Video preview unavailable</div>
+      }
       return (
         <iframe
           className="file-viewer-frame"
@@ -99,6 +112,7 @@ export function FileViewer({ path, onClose }: Props) {
                 </button>
               </div>
             )}
+            <button onClick={() => window.mimo.showItemInFolder(path)}>Show in folder</button>
             <button onClick={() => window.mimo.openPath(path)}>Open externally</button>
             <button onClick={onClose}>Close</button>
           </div>
@@ -107,7 +121,7 @@ export function FileViewer({ path, onClose }: Props) {
         <div className="file-viewer-body">
           {renderBody()}
           {truncated && (
-            <div className="hint">Preview truncated (file is large). Use “Open externally” for the full file.</div>
+            <div className="hint">Preview truncated (file is large). Use "Open externally" for the full file.</div>
           )}
         </div>
       </div>

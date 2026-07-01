@@ -85,6 +85,7 @@ const api: MimoApi = {
   getRegistry: (kind: RegistryKind) => ipcRenderer.invoke("registry-get", kind) as Promise<ChatRef[]>,
   saveRegistry: (kind: RegistryKind, items: ChatRef[]) => ipcRenderer.invoke("registry-save", kind, items) as Promise<void>,
   openPath: (path) => ipcRenderer.invoke("open-path", path) as Promise<string>,
+  showItemInFolder: (path) => ipcRenderer.invoke("show-item-in-folder", path) as Promise<void>,
   readFileText: (path) => ipcRenderer.invoke("read-file-text", path) as Promise<FileText>,
   listWorkspaceFiles: (directory, sinceMs) => ipcRenderer.invoke("list-workspace-files", directory, sinceMs) as Promise<string[]>,
   getPreviewUrl: (path) => ipcRenderer.invoke("preview-url", path) as Promise<string>,

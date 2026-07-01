@@ -464,6 +464,7 @@ export interface MimoApi {
   getRegistry(kind: RegistryKind): Promise<ChatRef[]>
   saveRegistry(kind: RegistryKind, items: ChatRef[]): Promise<void>
   openPath(path: string): Promise<string>
+  showItemInFolder(path: string): Promise<void>
   readFileText(path: string): Promise<FileText>
   // Files under a working dir modified since a timestamp (workspace outputs,
   // including bash-created artifacts). Re-derived from disk, so it persists.
