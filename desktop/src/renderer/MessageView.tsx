@@ -280,6 +280,12 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
   React.useEffect(() => {
     if (editMode && !text) setText(getUserText(msg))
   }, [editMode])
+  React.useEffect(() => {
+    if (editMode && text && taRef.current) {
+      taRef.current.style.height = "auto"
+      taRef.current.style.height = taRef.current.scrollHeight + "px"
+    }
+  }, [editMode, text])
 
   if (editMode) {
     return (
@@ -288,8 +294,13 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
           ref={taRef}
           className="msg-edit-input"
           value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={2}
+          onChange={(e) => {
+            setText(e.target.value)
+            if (taRef.current) {
+              taRef.current.style.height = "auto"
+              taRef.current.style.height = taRef.current.scrollHeight + "px"
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault()
