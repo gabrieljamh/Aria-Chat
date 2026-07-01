@@ -179,6 +179,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
     await bootPromise
     return ensureClient().getMessages(sessionID, directory)
   })
+  ipcMain.handle("get-subagent-messages", async (_e, sessionID: string, agentID: string, directory?: string) => {
+    await bootPromise
+    return ensureClient().getSubagentMessages(sessionID, agentID, directory)
+  })
   ipcMain.handle("prompt", async (_e, input: PromptInput) => {
     await bootPromise
     return ensureClient().prompt(input)

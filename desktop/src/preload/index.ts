@@ -39,6 +39,7 @@ const api: MimoApi = {
   listSessions: (directory) => ipcRenderer.invoke("list-sessions", directory) as Promise<SessionInfo[]>,
   createSession: (opts) => ipcRenderer.invoke("create-session", opts) as Promise<SessionInfo>,
   getMessages: (sessionID, directory) => ipcRenderer.invoke("get-messages", sessionID, directory) as Promise<MessageWithParts[]>,
+  getSubagentMessages: (sessionID, agentID, directory) => ipcRenderer.invoke("get-subagent-messages", sessionID, agentID, directory) as Promise<MessageWithParts[]>,
   prompt: (input: PromptInput) => ipcRenderer.invoke("prompt", input) as Promise<void>,
   sendCommand: (input: CommandInput) => ipcRenderer.invoke("send-command", input) as Promise<void>,
   abort: (sessionID, directory) => ipcRenderer.invoke("abort", sessionID, directory) as Promise<void>,

@@ -147,7 +147,12 @@ export async function evalScript(body: string, hooks: Record<string, HostFn>, op
     const argsHandle = marshalIn(vm, opts.args ?? null)
     vm.setProp(vm.global, "args", argsHandle)
     argsHandle.dispose()
-    const wrapped = `(async () => {\n${body}\n})()`
+    // Strip ES module `export` keywords — QuickJS doesn't support ESM syntax.
+    // Handles `export const`, `export function`, `export default`, `export let`,
+    // `export var`, `export class`, `export {`, and `export *`. The `export`
+    // keyword is replaced with equal-length whitespace to preserve line numbers.
+    const stripped = body.replace(/^(\s*)export\s+/gm, (_, lead) => lead + " ".repeat(7))
+    const wrapped = `(async () => {\n${stripped}\n})()`
     const evalRes = vm.evalCode(wrapped)
     if (evalRes.error) {
       const err = vm.dump(evalRes.error)

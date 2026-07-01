@@ -88,6 +88,10 @@ export class MimoClient extends EventEmitter {
     return this.json<MessageWithParts[]>(`session/${encodeURIComponent(sessionID)}/message`, undefined, { directory })
   }
 
+  getSubagentMessages(sessionID: string, agentID: string, directory?: string): Promise<MessageWithParts[]> {
+    return this.json<MessageWithParts[]>(`session/${encodeURIComponent(sessionID)}/message`, undefined, { directory, agent_id: agentID })
+  }
+
   async prompt(input: PromptInput): Promise<void> {
     const parts: Record<string, unknown>[] = [{ type: "text", text: input.text }]
     for (const f of input.files ?? []) {

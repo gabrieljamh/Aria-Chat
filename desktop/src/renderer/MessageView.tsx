@@ -1,9 +1,9 @@
-import React, { useState } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { ansiToHtml } from "./ansi"
 import { DiffView } from "./DiffView"
 import { WriteView } from "./WriteView"
 import { ReadView } from "./ReadView"
-import type { Part } from "@shared/types"
+import type { MessageWithParts, Part } from "@shared/types"
 import type { ConvMessage } from "./useConversation"
 import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork, IconChevronDown, IconChevronRight } from "./Icons"
 import { Markdown } from "./Markdown"
@@ -21,6 +21,144 @@ function CollapsibleReasoning({ text }: { text: string }) {
       </div>
     </div>
   )
+}
+
+function SubagentMessageRow({ msg }: { msg: MessageWithParts }) {
+  const [toolOpen, setToolOpen] = useState(false)
+  const role = msg.info.role
+  const textParts = msg.parts.filter((p) => p.type === "text" && (p as any).text && !(p as any).synthetic)
+  const text = textParts.map((p) => (p as any).text).join("\n")
+  const toolParts = msg.parts.filter((p) => p.type === "tool") as Extract<Part, { type: "tool" }>[]
+
+  if (role === "user") {
+    return (
+      <div className="subagent-msg subagent-user">
+        <span className="subagent-role">You</span>
+        <span className="subagent-text">{text}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="subagent-msg subagent-assistant">
+      <span className="subagent-role">Aria</span>
+      <div className="subagent-body">
+        {text && <Markdown>{text}</Markdown>}
+        {toolParts.map((tp) => {
+          const tStatus = tp.state.status
+          const tTitle = tp.state.title || tp.tool
+          const prefix = tp.tool === "edit" ? "← Edit " : tp.tool === "write" ? "# Wrote " : tp.tool === "read" ? "→ Read " : tp.tool === "grep" ? "✱ Grep " : tp.tool === "glob" ? "✱ Glob " : ""
+          const out = tp.state.output
+          const m = tp.state.metadata ?? {}
+          const diff = m.diff as string | undefined
+          const isEditDiff = diff && tp.tool === "edit"
+          return (
+            <div key={tp.id} className="subagent-tool">
+              <div className="subagent-tool-head" onClick={() => setToolOpen((o) => !o)} style={{ cursor: "pointer" }}>
+                <span className="subagent-tool-name">{prefix}{tTitle}</span>
+                <span className={`subagent-tool-status ${tStatus}`}>{tStatus}</span>
+              </div>
+              {toolOpen && isEditDiff && <DiffView diff={diff} filePath={(tp.state.input as any)?.filePath as string | undefined} />}
+              {toolOpen && !isEditDiff && typeof out === "string" && <pre className="ansi" dangerouslySetInnerHTML={{ __html: ansiToHtml(out).slice(0, 8000) }} />}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ActorToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
+  const [open, setOpen] = useState(false)
+  const [messages, setMessages] = useState<MessageWithParts[]>([])
+  const [loading, setLoading] = useState(false)
+  const status = part.state.status
+  try {
+    const metadata = (part.state.metadata ?? {}) as Record<string, unknown>
+    const input = part.state.input as Record<string, unknown> | undefined
+    const op = (input?.operation ?? input) as Record<string, unknown> | undefined
+    const action = String(op?.action ?? "run")
+    const description = String(op?.description ?? part.state.title ?? "")
+    const subagentType = String(op?.subagent_type ?? "general")
+
+    const actorId = String(metadata.actorId ?? metadata.actor_id ?? "")
+    const sessionId = String(metadata.sessionId ?? metadata.session_id ?? part.sessionID ?? "")
+    const model = metadata.model ? String(metadata.model) : undefined
+
+    const isRunning = status === "running" || status === "pending"
+    const typeLabel = (subagentType ?? "general").charAt(0).toUpperCase() + (subagentType ?? "general").slice(1)
+
+    const loadLog = useCallback(async () => {
+      if (!actorId || !sessionId) return
+      setLoading(true)
+      try {
+        const msgs = await window.mimo.getSubagentMessages(sessionId, actorId)
+        setMessages(msgs)
+      } catch {
+        setMessages([])
+      }
+      setLoading(false)
+    }, [actorId, sessionId])
+
+    useEffect(() => {
+      if (open && actorId && sessionId) loadLog()
+    }, [open, actorId, sessionId, loadLog])
+
+    if (action !== "run" && action !== "spawn") {
+      const controlLabel = action === "status" ? "Checking status"
+        : action === "wait" ? "Waiting"
+        : action === "cancel" ? "Cancelling"
+        : action === "send" ? "Sending message"
+        : action
+      return (
+        <div className="tool actor-tool">
+          <div className="tool-head" onClick={() => setOpen((o) => !o)} style={{ cursor: "pointer" }}>
+            <span className="tool-name">│ {controlLabel}{actorId ? ` ${actorId.slice(0, 12)}` : ""}</span>
+            <span className={`tool-status ${status}`}>{status}</span>
+          </div>
+        </div>
+      )
+    }
+
+    const toolCount = messages.reduce((n, m) => n + m.parts.filter((p) => p.type === "tool").length, 0)
+    return (
+      <div className="tool actor-tool">
+        <div className="tool-head actor-head" onClick={() => setOpen((o) => !o)} style={{ cursor: "pointer" }}>
+          <span className="actor-icon">{isRunning ? "⏳" : status === "completed" ? "✓" : status === "error" ? "✗" : "│"}</span>
+          <span className="tool-name">{typeLabel} Task — {description}</span>
+          {!open && !isRunning && messages.length > 0 && <span className="actor-badge">{messages.length} msgs · {toolCount} tools</span>}
+          {model && <span className="actor-model">{model}</span>}
+          <span className={`tool-status ${status}`}>{isRunning ? "running" : status}</span>
+        </div>
+        {isRunning && (
+          <div className="actor-live-hint">
+            <span className="actor-pulse" /> Subagent is working…
+          </div>
+        )}
+        {open && (
+          <div className="actor-log">
+            {loading && <div className="actor-log-loading">Loading subagent log…</div>}
+            {!loading && messages.length === 0 && !isRunning && actorId && sessionId && (
+              <div className="actor-log-empty">No messages recorded for this subagent.</div>
+            )}
+            {!loading && messages.length === 0 && (!actorId || !sessionId) && (
+              <div className="actor-log-empty">Subagent ID not available.</div>
+            )}
+            {!loading && messages.map((msg) => <SubagentMessageRow key={msg.info.id} msg={msg} />)}
+          </div>
+        )}
+      </div>
+    )
+  } catch {
+    return (
+      <div className="tool actor-tool">
+        <div className="tool-head" style={{ cursor: "pointer" }}>
+          <span className="tool-name">│ Subagent</span>
+          <span className={`tool-status ${status}`}>{status}</span>
+        </div>
+      </div>
+    )
+  }
 }
 
 function ToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
@@ -70,7 +208,9 @@ function PartView({ part }: { part: Part }) {
         <CollapsibleReasoning text={(part as any).text} />
       ) : null
     case "tool":
-      return <ToolView part={part as Extract<Part, { type: "tool" }>} />
+      return (part as Extract<Part, { type: "tool" }>).tool === "actor"
+        ? <ActorToolView part={part as Extract<Part, { type: "tool" }>} />
+        : <ToolView part={part as Extract<Part, { type: "tool" }>} />
     case "file":
       return (
         <div className="file-item">

@@ -420,6 +420,7 @@ export interface MimoApi {
   listSessions(directory?: string): Promise<SessionInfo[]>
   createSession(opts?: { directory?: string; title?: string }): Promise<SessionInfo>
   getMessages(sessionID: string, directory?: string): Promise<MessageWithParts[]>
+  getSubagentMessages(sessionID: string, agentID: string, directory?: string): Promise<MessageWithParts[]>
   prompt(input: PromptInput): Promise<void>
   sendCommand(input: CommandInput): Promise<void>
   abort(sessionID: string, directory?: string): Promise<void>
