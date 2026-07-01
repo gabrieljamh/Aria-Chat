@@ -101,6 +101,7 @@ export function App() {
   const prevQCount = useRef(0)
   const prevBusy = useRef(state.busy)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const chatTitle = activeRef?.title ?? "Chat"
   useEffect(() => {
     const wasBusy = prevBusy.current
     prevBusy.current = state.busy
@@ -110,25 +111,33 @@ export function App() {
         if (enabled === false) return
         window.mimo.getSetting("notifIdleDelay").then((delay) => {
           const ms = typeof delay === "number" ? delay * 1000 : 3000
-          idleTimer.current = setTimeout(() => { window.mimo.notify("Aria Chat", "Response complete") }, ms)
+          const title = `Aria Chat \u2014 ${chatTitle}`
+          const body = "Aria has finished working on your request, come take a look!"
+          idleTimer.current = setTimeout(() => { window.mimo.notify(title, body) }, ms)
         })
       })
     }
-  }, [state.busy])
+  }, [state.busy, chatTitle])
   useEffect(() => {
     const len = state.permissions.length
     if (len > prevPermCount.current && len > 0) {
-      window.mimo.getSetting("notifApproval").then((v) => { if (v !== false) window.mimo.notify("Approval Required", "A tool is requesting permission") })
+      window.mimo.getSetting("notifApproval").then((v) => {
+        if (v === false) return
+        window.mimo.notify(`Aria Chat \u2014 ${chatTitle}`, "Aria needs your approval to run a tool \u2014 swing by and grant it!")
+      })
     }
     prevPermCount.current = len
-  }, [state.permissions.length])
+  }, [state.permissions.length, chatTitle])
   useEffect(() => {
     const len = state.questions.length
     if (len > prevQCount.current && len > 0) {
-      window.mimo.getSetting("notifQuestion").then((v) => { if (v !== false) window.mimo.notify("Question Asked", "The assistant needs your input") })
+      window.mimo.getSetting("notifQuestion").then((v) => {
+        if (v === false) return
+        window.mimo.notify(`Aria Chat \u2014 ${chatTitle}`, "Aria has a question for you \u2014 drop in and help out!")
+      })
     }
     prevQCount.current = len
-  }, [state.questions.length])
+  }, [state.questions.length, chatTitle])
 
   /* ----------------------------- server status ---------------------------- */
   useEffect(() => {
