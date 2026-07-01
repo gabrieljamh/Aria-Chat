@@ -3274,6 +3274,58 @@ button {
   margin-top: -1px;
 }
 
+.skills-pop {
+  min-width: 220px;
+}
+.skills-pop-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 2px 2px 4px;
+  padding: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  background: var(--bg-inset);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.skills-pop-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: "SF Mono", "Cascadia Code", monospace;
+  cursor: pointer;
+}
+.skills-pop-row:hover {
+  background: var(--bg-hover);
+}
+.skills-pop-manage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border-soft);
+  border-radius: 0 0 11px 11px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.skills-pop-manage:hover {
+  color: var(--accent);
+}
+
 /* composer: attached-file chips */
 .composer-attachments {
   display: flex;
