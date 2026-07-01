@@ -16,7 +16,7 @@ interface Props {
 }
 
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "ok"; msg: string } | { kind: "error"; msg: string }
-type Page = "general" | "models" | "providers" | "skills" | "connectors" | "server" | "conversations" | "about"
+type Page = "general" | "notifications" | "models" | "providers" | "skills" | "connectors" | "server" | "conversations" | "about"
 
 interface PageDef {
   id: Page
@@ -41,6 +41,16 @@ const PAGES: PageDef[] = [
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
       </svg>
     ),
   },
@@ -200,6 +210,9 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [aiSuggestions, setAiSuggestions] = useState(false)
   const [accentHue, setAccentHue] = useState(0)
   const [accentDarkText, setAccentDarkText] = useState<boolean | null>(null)
+  const [notifApproval, setNotifApproval] = useState(true)
+  const [notifQuestion, setNotifQuestion] = useState(true)
+  const [notifIdle, setNotifIdle] = useState(true)
   const [visionRedirect, setVisionRedirect] = useState(false)
   const [visionModel, setVisionModel] = useState("")
   const [audioRedirect, setAudioRedirect] = useState(false)
@@ -277,6 +290,12 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
         applyAccentHue(n, d ?? undefined)
       })
     })
+  }, [])
+
+  useEffect(() => {
+    window.mimo.getSetting("notifApproval").then((v) => setNotifApproval(v !== false))
+    window.mimo.getSetting("notifQuestion").then((v) => setNotifQuestion(v !== false))
+    window.mimo.getSetting("notifIdle").then((v) => setNotifIdle(v !== false))
   }, [])
 
   useEffect(() => {
@@ -421,6 +440,12 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       window.mimo.setSetting("aiSuggestions", next).catch(() => {})
       return next
     })
+  }
+
+  const toggleNotif = (key: string, current: boolean, set: (v: boolean) => void) => {
+    const next = !current
+    set(next)
+    window.mimo.setSetting(key, next).catch(() => {})
   }
 
   useEffect(() => {
@@ -1122,6 +1147,63 @@ const saveEditModel = async () => {
               <div className="hint">Used only for AI-generated greetings and suggestion chips on the home screen.</div>
             </div>
           )}
+        </>
+      )}
+
+      {page === "notifications" && (
+        <>
+          <h3 className="settings-page-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg> Notifications</h3>
+
+          <div className="settings-row" onClick={() => toggleNotif("notifApproval", notifApproval, setNotifApproval)} role="button">
+            <div className="settings-row-text">
+              <div className="settings-row-title">Approval required</div>
+              <div className="settings-row-desc">
+                Notify when a tool requests permission to run.
+              </div>
+            </div>
+            <button
+              type="button"
+              className={"toggle" + (notifApproval ? " on" : "")}
+              aria-pressed={notifApproval}
+              onClick={(e) => { e.stopPropagation(); toggleNotif("notifApproval", notifApproval, setNotifApproval) }}
+            >
+              <span className="knob" />
+            </button>
+          </div>
+
+          <div className="settings-row" onClick={() => toggleNotif("notifQuestion", notifQuestion, setNotifQuestion)} role="button">
+            <div className="settings-row-text">
+              <div className="settings-row-title">Question asked</div>
+              <div className="settings-row-desc">
+                Notify when the assistant needs your input via the question tool.
+              </div>
+            </div>
+            <button
+              type="button"
+              className={"toggle" + (notifQuestion ? " on" : "")}
+              aria-pressed={notifQuestion}
+              onClick={(e) => { e.stopPropagation(); toggleNotif("notifQuestion", notifQuestion, setNotifQuestion) }}
+            >
+              <span className="knob" />
+            </button>
+          </div>
+
+          <div className="settings-row" onClick={() => toggleNotif("notifIdle", notifIdle, setNotifIdle)} role="button">
+            <div className="settings-row-text">
+              <div className="settings-row-title">Response complete</div>
+              <div className="settings-row-desc">
+                Notify when the assistant finishes responding and the busy state clears.
+              </div>
+            </div>
+            <button
+              type="button"
+              className={"toggle" + (notifIdle ? " on" : "")}
+              aria-pressed={notifIdle}
+              onClick={(e) => { e.stopPropagation(); toggleNotif("notifIdle", notifIdle, setNotifIdle) }}
+            >
+              <span className="knob" />
+            </button>
+          </div>
         </>
       )}
 

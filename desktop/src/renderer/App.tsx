@@ -103,16 +103,22 @@ export function App() {
   useEffect(() => {
     const wasBusy = prevBusy.current
     prevBusy.current = state.busy
-    if (wasBusy && !state.busy) window.mimo.notify("Aria Chat", "Response complete")
+    if (wasBusy && !state.busy) {
+      window.mimo.getSetting("notifIdle").then((v) => { if (v !== false) window.mimo.notify("Aria Chat", "Response complete") })
+    }
   }, [state.busy])
   useEffect(() => {
     const len = state.permissions.length
-    if (len > prevPermCount.current && len > 0) window.mimo.notify("Approval Required", "A tool is requesting permission")
+    if (len > prevPermCount.current && len > 0) {
+      window.mimo.getSetting("notifApproval").then((v) => { if (v !== false) window.mimo.notify("Approval Required", "A tool is requesting permission") })
+    }
     prevPermCount.current = len
   }, [state.permissions.length])
   useEffect(() => {
     const len = state.questions.length
-    if (len > prevQCount.current && len > 0) window.mimo.notify("Question Asked", "The assistant needs your input")
+    if (len > prevQCount.current && len > 0) {
+      window.mimo.getSetting("notifQuestion").then((v) => { if (v !== false) window.mimo.notify("Question Asked", "The assistant needs your input") })
+    }
     prevQCount.current = len
   }, [state.questions.length])
 
