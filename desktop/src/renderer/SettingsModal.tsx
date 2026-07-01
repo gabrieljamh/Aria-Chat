@@ -213,6 +213,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [notifApproval, setNotifApproval] = useState(true)
   const [notifQuestion, setNotifQuestion] = useState(true)
   const [notifIdle, setNotifIdle] = useState(true)
+  const [notifIdleDelay, setNotifIdleDelay] = useState(3)
   const [visionRedirect, setVisionRedirect] = useState(false)
   const [visionModel, setVisionModel] = useState("")
   const [audioRedirect, setAudioRedirect] = useState(false)
@@ -296,6 +297,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     window.mimo.getSetting("notifApproval").then((v) => setNotifApproval(v !== false))
     window.mimo.getSetting("notifQuestion").then((v) => setNotifQuestion(v !== false))
     window.mimo.getSetting("notifIdle").then((v) => setNotifIdle(v !== false))
+    window.mimo.getSetting("notifIdleDelay").then((v) => setNotifIdleDelay(typeof v === "number" ? v : 3))
   }, [])
 
   useEffect(() => {
@@ -1204,6 +1206,26 @@ const saveEditModel = async () => {
               <span className="knob" />
             </button>
           </div>
+
+          {notifIdle && (
+            <div className="settings-field">
+              <label htmlFor="notif-idle-delay">Idle delay (seconds)</label>
+              <input
+                id="notif-idle-delay"
+                type="number"
+                min={1}
+                max={60}
+                step={1}
+                value={notifIdleDelay}
+                onChange={(e) => {
+                  const v = Math.max(1, Math.min(60, Number(e.target.value) || 3))
+                  setNotifIdleDelay(v)
+                  window.mimo.setSetting("notifIdleDelay", v).catch(() => {})
+                }}
+              />
+              <div className="hint">Wait this many seconds after busy clears before notifying. Prevents spam from mid-message pauses. Default: 3.</div>
+            </div>
+          )}
         </>
       )}
 
