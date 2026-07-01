@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { applyAccentHue } from "./accent"
 import type {
   AgentInfo,
   ChatRef,
@@ -105,6 +106,7 @@ export function App() {
     window.mimo.getSetting("aiGreetings").then((v) => setAiGreetings(v === true))
     window.mimo.getSetting("aiSuggestions").then((v) => setAiSuggestions(v === true))
     window.mimo.getSetting("userName").then((v) => setUserName(typeof v === "string" ? v : ""))
+    window.mimo.getSetting("accentHue").then((v) => { if (typeof v === "number") applyAccentHue(v) })
   }, [])
 
   // Load (and reload when the settings modal closes) the auto-compaction

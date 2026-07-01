@@ -2993,6 +2993,67 @@ button {
   background: var(--bg-hover);
 }
 
+/* settings: accent hue slider */
+.accent-hue-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.accent-hue-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right,
+    hsl(0,90%,66%), hsl(30,90%,66%), hsl(60,90%,66%),
+    hsl(90,90%,66%), hsl(120,90%,66%), hsl(150,90%,66%),
+    hsl(180,90%,66%), hsl(210,90%,66%), hsl(240,90%,66%),
+    hsl(270,90%,66%), hsl(300,90%,66%), hsl(330,90%,66%),
+    hsl(360,90%,66%));
+  outline: none;
+  cursor: pointer;
+}
+.accent-hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: grab;
+}
+.accent-hue-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+.accent-hue-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  border: 2px solid var(--border);
+}
+.accent-hue-reset {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.accent-hue-reset:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
 /* settings: single global close button (replaces per-page Close buttons) */
 .settings-modal { position: relative; }
 .settings-close {

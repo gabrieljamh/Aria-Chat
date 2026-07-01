@@ -3,6 +3,7 @@ import type { AppInfo, CustomModel, McpConfig, McpStatus, ModelRef, ProviderConf
 import { useCustomModels, saveCustomModels, loadCustomModels } from "./customModels"
 import ariaTextRaw from "@shared/img/aria-text.svg?raw"
 import { ModelSearchSelect } from "./ModelSearchSelect"
+import { applyAccentHue, accentHex } from "./accent"
 
 interface Props {
   initialPage?: string
@@ -197,6 +198,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [promptStatus, setPromptStatus] = useState<Status>({ kind: "idle" })
   const [aiGreetings, setAiGreetings] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState(false)
+  const [accentHue, setAccentHue] = useState(0)
   const [visionRedirect, setVisionRedirect] = useState(false)
   const [visionModel, setVisionModel] = useState("")
   const [audioRedirect, setAudioRedirect] = useState(false)
@@ -265,6 +267,11 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   useEffect(() => {
     window.mimo.getSetting("aiGreetings").then((v) => setAiGreetings(v === true))
     window.mimo.getSetting("aiSuggestions").then((v) => setAiSuggestions(v === true))
+    window.mimo.getSetting("accentHue").then((v) => {
+      const n = typeof v === "number" ? v : 0
+      setAccentHue(n)
+      applyAccentHue(n)
+    })
   }, [])
 
   useEffect(() => {
@@ -386,6 +393,12 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       window.mimo.setSetting("aiGreetings", next).catch(() => {})
       return next
     })
+  }
+
+  const changeAccentHue = (offset: number) => {
+    setAccentHue(offset)
+    applyAccentHue(offset)
+    window.mimo.setSetting("accentHue", offset).catch(() => {})
   }
   const toggleAiSuggestions = () => {
     setAiSuggestions((v) => {
@@ -972,6 +985,24 @@ const saveEditModel = async () => {
                     {userStatus.kind === "saving" ? "Saving…" : "Save"}
                   </button>
                 </div>
+              </div>
+
+              <div className="settings-field">
+                <label>Accent color</label>
+                <div className="accent-hue-row">
+                  <input
+                    type="range"
+                    className="accent-hue-slider"
+                    min={0}
+                    max={360}
+                    step={1}
+                    value={accentHue}
+                    onChange={(e) => changeAccentHue(Number(e.target.value))}
+                  />
+                  <span className="accent-hue-swatch" style={{ background: accentHex(accentHue) }} />
+                  <button className="accent-hue-reset" onClick={() => changeAccentHue(0)} title="Reset to default">↺</button>
+                </div>
+                <div className="hint">Shift the hue of the accent color used throughout the UI. Default is violet (258°).</div>
               </div>
 
               <div className="settings-field">
