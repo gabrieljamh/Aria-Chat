@@ -148,12 +148,13 @@ export async function evalScript(body: string, hooks: Record<string, HostFn>, op
     vm.setProp(vm.global, "args", argsHandle)
     argsHandle.dispose()
     // Strip ES module `export` keywords — QuickJS doesn't support ESM syntax.
-    // `export default` → both words stripped; `export const/function/let/var/class`
-    // → only `export` stripped. Whitespace replaces removed chars to preserve line
-    // numbers. After stripping, `export default async function foo()` becomes
-    // just `async function foo()` — valid plain-script JS that QuickJS can run.
+    // `export default <expr>` → `return <expr>` (preserves return value).
+    // `export const/function/let/var/class` → only `export` stripped (whitespace
+    // replaces removed chars to preserve line numbers). After stripping,
+    // `export default async function foo()` becomes `return async function foo()`,
+    // and `export default 42` becomes `return 42`.
     const stripped = body
-      .replace(/^(\s*)export\s+default\s+/gm, (_, lead) => lead + " ".repeat(15))
+      .replace(/^(\s*)export\s+default\s+/gm, (_, lead) => lead + " ".repeat(7) + "return ")
       .replace(/^(\s*)export\s+/gm, (_, lead) => lead + " ".repeat(7))
     // Auto-invoke top-level named function/async function declarations.
     // After export stripping, an inline script like `export async function run()`
