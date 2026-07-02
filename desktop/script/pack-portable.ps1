@@ -118,7 +118,7 @@ Copy-Item (Join-Path $electronDist $electronExe) (Join-Path $distDir "aria-chat.
 # rcedit is a devDependency that patches the .exe resources.
 Push-Location $root
 try {
-  $rceditResult = node -e "require('rcedit')('$distDir\\aria-chat.exe', { 'icon-path': '$root\\src\\shared\\img\\aria-icon.ico' }).then(() => console.log('ok')).catch(e => { console.error(e.message); process.exit(1) })"
+  $rceditResult = node -e "import('rcedit').then(m => m.rcedit('$distDir\\aria-chat.exe', { icon: '$root\\src\\shared\\img\\aria-icon.ico' })).then(() => console.log('ok')).catch(e => { console.error(e.message); process.exit(1) })"
   if ($LASTEXITCODE -eq 0) { Write-Host "  Replaced exe icon with aria-icon.ico" }
   else { Write-Host "  Warning: rcedit failed, exe will show default Electron icon" -ForegroundColor Yellow }
 } finally { Pop-Location }
