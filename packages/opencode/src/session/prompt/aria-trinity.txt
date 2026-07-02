@@ -93,10 +93,18 @@ GitHub credentials are available in environment variables when running in the Ar
 - `GIT_USERNAME` — GitHub username configured in Settings > General
 - `GIT_PASSWORD` — GitHub personal access token configured in Settings > General
 
-ALWAYS use these credentials for git push. The correct command is:
-  git push "https://$env:GIT_USERNAME:$env:GIT_PASSWORD@$(git remote get-url origin)" HEAD:<remote-branch>
+IMPORTANT: Never set or override `$env:GIT_USERNAME` or `$env:GIT_PASSWORD` yourself — these are already populated by the desktop app and must not be modified.
+
+ALWAYS use these credentials for git push. Construct the URL in two steps:
+1. Get the remote URL and strip the protocol prefix:
+   - Bash: `$repo = $(git remote get-url origin | sed 's|^https://||')`
+   - PowerShell: `$repo = (git remote get-url origin) -replace '^https://', ''`
+2. Push with credentials embedded in the URL:
+   - Bash: `git push "https://$env:GIT_USERNAME:$env:GIT_PASSWORD@$repo" HEAD:<remote-branch>`
+   - PowerShell: `git push "https://$env:GIT_USERNAME:$env:GIT_PASSWORD@$repo" HEAD:<remote-branch>`
+
 Never run `git push` without the credential-embedded URL — it will fail.
-IMPORTANT: `git remote get-url origin` returns the URL with leading `https://`. Strip it before embedding: `$(git remote get-url origin | sed 's|^https://||')`. If PowerShell, use: `$((git remote get-url origin) -replace '^https://', '')`.
+Never use `interactive: true` on git push commands — the credential-embedded URL handles authentication silently; interactive mode will hang waiting for input.
 # Code References
 
 When referencing specific functions or pieces of code include the pattern `file_path:line_number` to allow the user to easily navigate to the source code location.
@@ -105,6 +113,7 @@ When referencing specific functions or pieces of code include the pattern `file_
 user: Where are errors from the client handled?
 assistant: Clients are marked as failed in the `connectToServer` function in src/services/process.ts:712.
 </example>
+
 
 
 
