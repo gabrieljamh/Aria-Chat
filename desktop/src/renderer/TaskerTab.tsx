@@ -46,6 +46,8 @@ interface Props {
   onOpenSettings: () => void
   onDelete: (ref: ChatRef) => void
   onRename: (id: string, title: string) => void
+  favoriteIds: Set<string>
+  onPin: (id: string) => void
   rightCollapsed: boolean
   onToggleRight: () => void
   greeting?: string | null
@@ -111,7 +113,7 @@ export function TaskerTab(props: Props) {
   return (
     <>
       <Sidebar
-        favoriteIds={new Set()}
+        favoriteIds={props.favoriteIds}
         newLabel="New task"
         items={props.items}
         activeId={props.activeId}
@@ -121,11 +123,10 @@ export function TaskerTab(props: Props) {
         onToggleCollapse={props.onToggleCollapse}
         emptyText="No tasks yet"
         onOpenSettings={props.onOpenSettings}
-        onPin={() => {}}
+        onPin={props.onPin}
         onRename={props.onRename}
         onDelete={props.onDelete}
         deleteMessage="This will remove the task from your list. Your project files will not be affected."
-        showPin={false}
       />
 
       <div className="cowork">
