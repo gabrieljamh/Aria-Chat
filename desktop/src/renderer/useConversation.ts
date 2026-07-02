@@ -318,6 +318,7 @@ export function useConversation(sessionID: string | null, directory?: string | n
       dispatch({ kind: "reset", messages: [], todos: [], tasks: [] })
       return
     }
+    dispatch({ kind: "reset", messages: [], todos: [], tasks: [] })
     populatedRef.current = false
     let cancelled = false
     const sid = sessionID
