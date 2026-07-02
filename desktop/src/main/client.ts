@@ -131,7 +131,9 @@ export class MimoClient extends EventEmitter {
       command: input.command,
       arguments: input.arguments,
     }
-    if (input.model) body.model = input.model
+    if (input.model) {
+      body.model = typeof input.model === "string" ? input.model : `${input.model.providerID}/${input.model.modelID}`
+    }
     if (input.agent) body.agent = input.agent
     try {
       await this.json(
