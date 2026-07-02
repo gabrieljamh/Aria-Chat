@@ -622,11 +622,13 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       providerInfo = provider ? { name: provider.name, npm: provider.npm, options: provider.options } : undefined
     } catch { /* fall through to CustomModel data */ }
 
-    const caps = modelInfo?.capabilities ?? c.capabilities
-    const lim = modelInfo?.limit ?? c.limit
-    const cost = modelInfo?.cost ?? c.cost
+    // Custom model caps win over server live data — server may return empty/default
+    // caps for proxied models (e.g. AgentBridge), which would overwrite user edits.
+    const caps = c.capabilities ?? modelInfo?.capabilities
+    const lim = c.limit ?? modelInfo?.limit
+    const cost = c.cost ?? modelInfo?.cost
 
-    setEditName(modelInfo?.name ?? c.name ?? "")
+    setEditName(c.name ?? modelInfo?.name ?? "")
     setEditFamily(c.family ?? "")
     setEditCtxLimit(lim?.context ? String(lim.context) : "")
     setEditInLimit(lim?.input ? String(lim.input) : "")
