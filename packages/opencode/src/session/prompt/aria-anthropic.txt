@@ -121,11 +121,8 @@ GitHub credentials are available in environment variables when running in the Ar
 - `GIT_PASSWORD` — GitHub personal access token configured in Settings > General
 
 ALWAYS use these credentials for git push. The correct command is:
-  git push "https://$env:GIT_USERNAME:$env:GIT_PASSWORD@github.com/gabrieljamh/Aria-Chat.git" refs/heads/main:refs/heads/main
-Never run `git push` without the credential-embedded URL — it will fail. Adjust the remote URL if the repo is different.
-
-
-
+  git push "https://$env:GIT_USERNAME:$env:GIT_PASSWORD@$(git remote get-url origin)" HEAD:<remote-branch>
+Never run `git push` without the credential-embedded URL — it will fail.
 # Avoid unnecessary sleep commands
 - Do not sleep between commands that can run immediately — just run them.
 - If your command is long running, use run_in_background. No sleep needed.
@@ -164,3 +161,5 @@ When referencing specific functions or pieces of code include the pattern `file_
 user: Where are errors from the client handled?
 assistant: Clients are marked as failed in the `connectToServer` function in src/services/process.ts:712.
 </example>
+
+

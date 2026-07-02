@@ -11,5 +11,5 @@ GitHub credentials are available in environment variables when running in the Ar
 - `GIT_PASSWORD` — GitHub personal access token configured in Settings > General
 
 ALWAYS use these credentials for git push. The correct command is:
-  git push "https://$env:GIT_USERNAME:$env:GIT_PASSWORD@github.com/gabrieljamh/Aria-Chat.git" refs/heads/main:refs/heads/main
-Never run `git push` without the credential-embedded URL — it will fail. Adjust the remote URL if the repo is different.
+  git push "https://$env:GIT_USERNAME:$env:GIT_PASSWORD@$(git remote get-url origin)" HEAD:<remote-branch>
+Never run `git push` without the credential-embedded URL — it will fail.

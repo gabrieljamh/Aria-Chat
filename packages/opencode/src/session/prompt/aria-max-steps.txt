@@ -14,3 +14,5 @@ Response must include:
 - Recommendations for what should be done next
 
 Any attempt to use tools is a critical violation. Respond with text ONLY.
+
+
