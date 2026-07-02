@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react"
 import { Markdown } from "./Markdown"
+import hljs from "./highlight"
+import "highlight.js/styles/github-dark.min.css"
 
 function basename(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p
@@ -14,6 +16,51 @@ function kindOf(p: string): Kind {
   if (/\.(mp3|wav|ogg|flac|aac|m4a|wma|opus)$/i.test(p)) return "audio"
   if (/\.(mp4|webm|mkv|avi|mov|wmv|flv|m4v|ogv)$/i.test(p)) return "video"
   return "other"
+}
+
+const langByExt: Record<string, string> = {
+  ".ts": "typescript", ".tsx": "typescript",
+  ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+  ".json": "json", ".jsonc": "json",
+  ".py": "python", ".pyi": "python",
+  ".rs": "rust",
+  ".go": "go",
+  ".java": "java",
+  ".c": "c", ".h": "c", ".cpp": "c", ".hpp": "c", ".cc": "c", ".cxx": "c",
+  ".cs": "csharp",
+  ".rb": "ruby",
+  ".swift": "swift",
+  ".kt": "kotlin", ".kts": "kotlin",
+  ".scala": "scala",
+  ".sh": "bash", ".bash": "bash", ".zsh": "bash",
+  ".sql": "sql",
+  ".css": "css", ".scss": "css", ".less": "css",
+  ".html": "html", ".htm": "html", ".xml": "xml", ".svg": "xml",
+  ".yaml": "yaml", ".yml": "yaml",
+  ".md": "markdown", ".mdx": "markdown",
+  ".toml": "ini",
+  ".ini": "ini", ".cfg": "ini",
+  ".env": "bash",
+  ".dockerfile": "dockerfile",
+  ".lua": "lua",
+  ".r": "r",
+  ".php": "php",
+}
+function detectLang(path: string): string | null {
+  const ext = path.match(/\.\w+$/)?.[0]?.toLowerCase()
+  if (ext && langByExt[ext]) return langByExt[ext]
+  const base = basename(path).toLowerCase()
+  if (base === "makefile" || base === "gnumakefile") return "makefile"
+  if (base === "dockerfile") return "dockerfile"
+  return null
+}
+
+function highlightContent(content: string, path: string): string {
+  const lang = detectLang(path)
+  if (lang && hljs.getLanguage(lang)) {
+    return hljs.highlight(content, { language: lang }).value
+  }
+  return hljs.highlightAuto(content).value
 }
 
 interface Props {
@@ -91,7 +138,7 @@ export function FileViewer({ path, onClose }: Props) {
         />
       )
     }
-    return <pre className="file-viewer-pre">{content}</pre>
+    return <pre className="file-viewer-pre" dangerouslySetInnerHTML={{ __html: highlightContent(content, path) }} />
   }
 
   return (
