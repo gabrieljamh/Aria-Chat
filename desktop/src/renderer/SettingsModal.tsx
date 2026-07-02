@@ -184,6 +184,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [page, setPage] = useState<Page>((initialPage as Page) || "general")
   const [serverUrl, setServerUrl] = useState("")
   const [serverStatus, setServerStatus] = useState<Status>({ kind: "idle" })
+  const [advancedServer, setAdvancedServer] = useState(false)
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [skillsLoading, setSkillsLoading] = useState(false)
   const [skillsStatus, setSkillsStatus] = useState<Status>({ kind: "idle" })
@@ -268,6 +269,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
 
   useEffect(() => {
     window.mimo.getSetting("serverUrl").then((v) => setServerUrl(typeof v === "string" ? v : ""))
+    window.mimo.getSetting("advancedServer").then((v) => setAdvancedServer(v === true))
   }, [])
 
   useEffect(() => {
@@ -790,11 +792,27 @@ const saveEditModel = async () => {
     }
   }
 
+  const toggleAdvancedServer = () => {
+    setAdvancedServer((v) => {
+      const next = !v
+      window.mimo.setSetting("advancedServer", next).catch(() => {})
+      if (!next) {
+        setServerUrl("")
+        window.mimo.setSetting("serverUrl", "").catch(() => {})
+      }
+      return next
+    })
+  }
+
   const saveServerUrl = async () => {
+    const url = serverUrl.trim()
+    if (url && !/^https?:\/\/.+/.test(url)) {
+      setServerStatus({ kind: "error", msg: "Invalid URL — must start with http:// or https://." })
+      return
+    }
     setServerStatus({ kind: "saving" })
     try {
-      const url = serverUrl.trim() || null
-      const st = await window.mimo.reconnectServer(url, null)
+      const st = await window.mimo.reconnectServer(url || null, null)
       if (st.state === "error") {
         setServerStatus({ kind: "error", msg: (st as { message?: string }).message || "Could not connect." })
       } else {
@@ -1661,26 +1679,45 @@ const saveEditModel = async () => {
             <>
               <h3 className="settings-page-title"><ServerIcon /> Server</h3>
 
-              <div className="settings-field">
-                <label>Custom server URL</label>
-                <input
-                  value={serverUrl}
-                  placeholder="http://127.0.0.1:4096 — leave blank to auto-launch"
-                  onChange={(e) => setServerUrl(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") saveServerUrl() }}
-                />
-                <div className="hint">
-                  Leave blank to let the app launch its own server. Set a URL to attach to an already-running MiMo Code
-                  server instead — applied immediately, no restart needed.
+              <div className="settings-row" onClick={toggleAdvancedServer} role="button">
+                <div className="settings-row-text">
+                  <div className="settings-row-title">Advanced server settings</div>
+                  <div className="settings-row-desc">
+                    Attach to a custom server. Mistakes can crash Aria — use only when you know what you&apos;re doing.
+                  </div>
                 </div>
-                {serverStatus.kind === "ok" && <div className="form-msg ok">{serverStatus.msg}</div>}
-                {serverStatus.kind === "error" && <div className="form-msg err">{serverStatus.msg}</div>}
-                <div className="settings-inline-actions">
-                  <button className="primary" onClick={saveServerUrl} disabled={serverStatus.kind === "saving"}>
-                    {serverStatus.kind === "saving" ? "Connecting…" : "Save & connect"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className={"toggle" + (advancedServer ? " on" : "")}
+                  aria-pressed={advancedServer}
+                  onClick={(e) => { e.stopPropagation(); toggleAdvancedServer() }}
+                >
+                  <span className="knob" />
+                </button>
               </div>
+
+              {advancedServer && (
+                <div className="settings-field">
+                  <label>Custom server URL</label>
+                  <input
+                    value={serverUrl}
+                    placeholder="http://127.0.0.1:4096 — leave blank to auto-launch"
+                    onChange={(e) => setServerUrl(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveServerUrl() }}
+                  />
+                  <div className="hint">
+                    Leave blank to let the app launch its own server. Set a URL to attach to an already-running MiMo Code
+                    server instead — applied immediately, no restart needed.
+                  </div>
+                  {serverStatus.kind === "ok" && <div className="form-msg ok">{serverStatus.msg}</div>}
+                  {serverStatus.kind === "error" && <div className="form-msg err">{serverStatus.msg}</div>}
+                  <div className="settings-inline-actions">
+                    <button className="primary" onClick={saveServerUrl} disabled={serverStatus.kind === "saving"}>
+                      {serverStatus.kind === "saving" ? "Connecting…" : "Save & connect"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
