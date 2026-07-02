@@ -149,3 +149,5 @@ GitHub credentials are available in environment variables when running in the Ar
 ALWAYS use these credentials for git push. The correct command is:
   git push "https://$env:GIT_USERNAME:$env:GIT_PASSWORD@$(git remote get-url origin)" HEAD:<remote-branch>
 Never run `git push` without the credential-embedded URL — it will fail.
+IMPORTANT: `git remote get-url origin` returns the URL with leading `https://`. Strip it before embedding: `$(git remote get-url origin | sed 's|^https://||')`. If PowerShell, use: `$((git remote get-url origin) -replace '^https://', '')`.
+
