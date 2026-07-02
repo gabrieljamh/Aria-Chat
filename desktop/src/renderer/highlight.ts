@@ -13,6 +13,16 @@ import rust from "highlight.js/lib/languages/rust"
 import sql from "highlight.js/lib/languages/sql"
 import typescript from "highlight.js/lib/languages/typescript"
 import yaml from "highlight.js/lib/languages/yaml"
+import csharp from "highlight.js/lib/languages/csharp"
+import ruby from "highlight.js/lib/languages/ruby"
+import swift from "highlight.js/lib/languages/swift"
+import kotlin from "highlight.js/lib/languages/kotlin"
+import scala from "highlight.js/lib/languages/scala"
+import ini from "highlight.js/lib/languages/ini"
+import dockerfile from "highlight.js/lib/languages/dockerfile"
+import lua from "highlight.js/lib/languages/lua"
+import r from "highlight.js/lib/languages/r"
+import php from "highlight.js/lib/languages/php"
 
 hljs.registerLanguage("bash", bash)
 hljs.registerLanguage("c", c)
@@ -29,5 +39,15 @@ hljs.registerLanguage("rust", rust)
 hljs.registerLanguage("sql", sql)
 hljs.registerLanguage("typescript", typescript)
 hljs.registerLanguage("yaml", yaml)
+hljs.registerLanguage("csharp", csharp)
+hljs.registerLanguage("ruby", ruby)
+hljs.registerLanguage("swift", swift)
+hljs.registerLanguage("kotlin", kotlin)
+hljs.registerLanguage("scala", scala)
+hljs.registerLanguage("ini", ini)
+hljs.registerLanguage("dockerfile", dockerfile)
+hljs.registerLanguage("lua", lua)
+hljs.registerLanguage("r", r)
+hljs.registerLanguage("php", php)
 
 export default hljs
