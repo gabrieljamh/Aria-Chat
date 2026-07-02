@@ -731,6 +731,8 @@ export function App() {
             onManageConnectors={() => openSettings("connectors")}
             onDelete={deleteCowork}
             onRename={renameCowork}
+            favoriteIds={favoriteIds}
+            onPin={togglePin}
             onQuestionReply={questionReply}
             onQuestionReject={questionReject}
             onDeleteMessage={deleteMessage}
