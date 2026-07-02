@@ -107,18 +107,20 @@ export class MimoClient extends EventEmitter {
         { directory: input.directory },
       )
     } catch (err) {
-      // The POST /message handler runs the WHOLE agent turn before it responds,
-      // so for a long turn the response can exceed Node/undici's default 300s
-      // headers timeout (UND_ERR_HEADERS_TIMEOUT) or the socket may drop. That
-      // is not a real failure: the turn keeps running server-side and the UI is
-      // driven entirely by the SSE stream (tokens, tool calls, session.idle).
-      // The POST body is redundant with SSE, so we swallow an in-flight drop and
-      // let SSE own the turn lifecycle. Genuine send-time errors (server
-      // unreachable, HTTP 4xx/5xx, bad request) are NOT in-flight drops and
-      // still propagate.
+      // When the POST /message HTTP connection drops mid-turn and the desktop
+      // swallows it, the server's client-disconnect handler auto-cancels the
+      // runner (session.ts:994). This causes the SSE stream to show session.idle
+      // prematurely while the provider is still streaming — the cancelled turn
+      // appears to the user as a random stop followed by a re-send.
+      //
+      // Fix: on an in-flight drop, explicitly abort the session server-side so
+      // the runner cleanly transitions to Idle (with MessageAbortedError). The
+      // SSE then receives session.error + session.idle, and the renderer shows
+      // a proper error message with retry instead of silently becoming idle.
       if (isInFlightDrop(err)) {
-        console.warn("[mimo-client] prompt response not awaited; turn continues via SSE:", errCode(err))
-        return
+        console.warn("[mimo-client] prompt connection dropped, aborting turn:", errCode(err))
+        this.abort(input.sessionID, input.directory).catch(() => {})
+        throw err
       }
       throw err
     }
@@ -139,8 +141,9 @@ export class MimoClient extends EventEmitter {
       )
     } catch (err) {
       if (isInFlightDrop(err)) {
-        console.warn("[mimo-client] command response not awaited; turn continues via SSE:", errCode(err))
-        return
+        console.warn("[mimo-client] command connection dropped, aborting turn:", errCode(err))
+        this.abort(input.sessionID, input.directory).catch(() => {})
+        throw err
       }
       throw err
     }
