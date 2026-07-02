@@ -67,7 +67,8 @@ const STATIC_SUGGESTIONS: Suggestion[] = [
 export function ChatTab(props: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { state } = props
-  const isEmpty = state.order.length === 0 && !state.busy
+  const isLoading = state.loading && state.order.length === 0
+  const isEmpty = state.order.length === 0 && !state.busy && !state.loading
   const [prefill, setPrefill] = useState({ text: "", n: 0 })
   const suggestions = props.suggestions ?? STATIC_SUGGESTIONS
 
@@ -119,7 +120,12 @@ export function ChatTab(props: Props) {
       />
 
       <main className="main">
-        {isEmpty ? (
+        {isLoading ? (
+          <div className="loading-overlay">
+            <div className="loading-spinner" />
+            <span>Loading chat...</span>
+          </div>
+        ) : isEmpty ? (
           <div className="greeting">
             <h1>
               {props.greeting ? (

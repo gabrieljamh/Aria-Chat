@@ -22,6 +22,7 @@ export interface State {
   permissions: Permission[]
   questions: QuestionState[]
   busy: boolean
+  loading: boolean
   error: string | null
   _subagentMsgIds: Set<string>
 }
@@ -35,12 +36,14 @@ const empty: State = {
   permissions: [],
   questions: [],
   busy: false,
+  loading: false,
   error: null,
   _subagentMsgIds: new Set(),
 }
 
 type Action =
   | { kind: "reset"; messages: ConvMessage[]; todos: Todo[]; tasks: TaskInfo[]; busy?: boolean; files?: string[] }
+  | { kind: "loading"; loading: boolean }
   | { kind: "files"; files: string[] }
   | { kind: "event"; event: ServerEvent }
   | { kind: "busy"; busy: boolean }
@@ -72,6 +75,8 @@ function upsertPart(state: State, part: Part): State {
 
 function reducer(state: State, action: Action): State {
   switch (action.kind) {
+    case "loading":
+      return { ...state, loading: action.loading }
     case "reset": {
       const messages: Record<string, ConvMessage> = {}
       const order: string[] = []
@@ -291,6 +296,7 @@ export function useConversation(sessionID: string | null, directory?: string | n
   const sinceRef = useRef(since)
   sinceRef.current = since
   const populatedRef = useRef(false)
+  const populatedForRef = useRef<string | null>(null)
 
   const setCurrentSession = (sid: string) => {
     sessionRef.current = sid
@@ -315,11 +321,14 @@ export function useConversation(sessionID: string | null, directory?: string | n
   useEffect(() => {
     if (!sessionID) {
       populatedRef.current = false
+      populatedForRef.current = null
       dispatch({ kind: "reset", messages: [], todos: [], tasks: [] })
       return
     }
-    dispatch({ kind: "reset", messages: [], todos: [], tasks: [] })
     populatedRef.current = false
+    populatedForRef.current = null
+    dispatch({ kind: "reset", messages: [], todos: [], tasks: [] })
+    dispatch({ kind: "loading", loading: true })
     let cancelled = false
     const sid = sessionID
     ;(async () => {
@@ -348,10 +357,13 @@ export function useConversation(sessionID: string | null, directory?: string | n
       if (sessionRef.current !== sid) {
         return
       }
-      if (populatedRef.current) {
+      if (populatedForRef.current === sid) {
+        dispatch({ kind: "loading", loading: false })
         return
       }
+      populatedForRef.current = sid
       dispatch({ kind: "reset", messages, todos, tasks, busy: seededBusy, files: seededFiles })
+      dispatch({ kind: "loading", loading: false })
     })()
     return () => {
       cancelled = true

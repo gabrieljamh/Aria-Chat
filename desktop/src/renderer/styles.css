@@ -2581,6 +2581,25 @@ button {
     transform: rotate(360deg);
   }
 }
+.loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  width: 100%;
+  color: var(--text-dim);
+  font-size: 13.5px;
+}
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--accent);
+  animation: splash-spin 0.8s linear infinite;
+}
 .splash-message {
   font-size: 13.5px;
   color: var(--text-dim);

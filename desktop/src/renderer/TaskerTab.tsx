@@ -72,7 +72,8 @@ function basename(p: string): string {
 export function TaskerTab(props: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { state } = props
-  const isEmpty = state.order.length === 0 && !state.busy
+  const isLoading = state.loading && state.order.length === 0
+  const isEmpty = state.order.length === 0 && !state.busy && !state.loading
   const [prefill, setPrefill] = useState({ text: "", n: 0 })
   const tasks = props.suggestions ?? STATIC_TASKS
 
@@ -135,7 +136,12 @@ export function TaskerTab(props: Props) {
             </button>
           </div>
 
-          {isEmpty ? (
+          {isLoading ? (
+            <div className="loading-overlay">
+              <div className="loading-spinner" />
+              <span>Loading chat...</span>
+            </div>
+          ) : isEmpty ? (
             <div className="greeting" style={{ justifyContent: "flex-start", paddingTop: 36 }}>
               <h1 style={{ fontSize: 32 }}>{props.greeting || "What should we work on?"}</h1>
               <div className="active-task-card">
