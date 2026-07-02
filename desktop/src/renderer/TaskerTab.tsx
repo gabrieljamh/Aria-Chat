@@ -45,6 +45,7 @@ interface Props {
   onOpenFile: (path: string) => void
   onOpenSettings: () => void
   onDelete: (ref: ChatRef) => void
+  onRename: (id: string, title: string) => void
   rightCollapsed: boolean
   onToggleRight: () => void
   greeting?: string | null
@@ -121,7 +122,7 @@ export function TaskerTab(props: Props) {
         emptyText="No tasks yet"
         onOpenSettings={props.onOpenSettings}
         onPin={() => {}}
-        onRename={() => {}}
+        onRename={props.onRename}
         onDelete={props.onDelete}
         deleteMessage="This will remove the task from your list. Your project files will not be affected."
         showPin={false}

@@ -465,6 +465,13 @@ export function App() {
     persist("chats", list)
   }, [persist])
 
+  const renameCowork = useCallback((id: string, title: string) => {
+    const list = coworkRef.current.map((c) =>
+      c.id === id ? { ...c, title } : c,
+    )
+    persist("cowork", list)
+  }, [persist])
+
   const deleteChat = useCallback((ref: ChatRef) => {
     const list = chatsRef.current.filter((c) => c.id !== ref.id)
     persist("chats", list)
@@ -723,6 +730,7 @@ export function App() {
             onManageSkills={() => openSettings("skills")}
             onManageConnectors={() => openSettings("connectors")}
             onDelete={deleteCowork}
+            onRename={renameCowork}
             onQuestionReply={questionReply}
             onQuestionReject={questionReject}
             onDeleteMessage={deleteMessage}
