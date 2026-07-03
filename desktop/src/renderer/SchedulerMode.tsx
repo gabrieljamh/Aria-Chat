@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react"
 import type { SchedulerRule, SchedulerTrigger, SchedulerTarget, SchedulerAction, McpStatus, McpToolDef, ExecutionLogEntry, SchedulerStats, RunningProcess } from "@shared/types"
-import { IconPlus, IconRefresh } from "./Icons"
+import { IconPlus, IconRefresh, IconTrash } from "./Icons"
 import { RightPanel } from "./RightPanel"
 import type { Suggestion } from "./generate"
 
@@ -213,6 +213,11 @@ export function SchedulerMode(props: Props) {
     setEditing(null)
   }
 
+  const handleDeleteRule = (rule: SchedulerRule) => {
+    save(rules.filter((r) => r.id !== rule.id))
+    setEditing(null)
+  }
+
   const handleSuggestionClick = (sug: Suggestion) => {
     const rule = newRule()
     rule.name = sug.label
@@ -381,6 +386,7 @@ export function SchedulerMode(props: Props) {
           rule={editing}
           isNew={isNew}
           onSave={handleSaveRule}
+          onDelete={handleDeleteRule}
           onClose={() => setEditing(null)}
         />
       )}
@@ -470,15 +476,17 @@ type EditorProps = {
   rule: SchedulerRule
   isNew: boolean
   onSave: (rule: SchedulerRule) => void
+  onDelete: (rule: SchedulerRule) => void
   onClose: () => void
 }
 
-function SchedulerEditor({ rule: initial, isNew, onSave, onClose }: EditorProps) {
+function SchedulerEditor({ rule: initial, isNew, onSave, onDelete, onClose }: EditorProps) {
   const [rule, setRule] = useState<SchedulerRule>(initial)
   const [mcpServers, setMcpServers] = useState<Record<string, McpStatus>>({})
   const [mcpTools, setMcpTools] = useState<McpToolDef[]>([])
   const [argsText, setArgsText] = useState("{}")
   const [argsError, setArgsError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const update = (patch: Partial<SchedulerRule>) => setRule((r) => ({ ...r, ...patch }))
 
@@ -870,6 +878,12 @@ function SchedulerEditor({ rule: initial, isNew, onSave, onClose }: EditorProps)
         <div className="editor-actions">
           <button className="editor-save" onClick={() => onSave(rule)}>Save</button>
           <button className="editor-cancel" onClick={onClose}>Cancel</button>
+          {!isNew && !confirmDelete && (
+            <button className="editor-delete" title="Delete rule" onClick={() => setConfirmDelete(true)}><IconTrash size={15} /></button>
+          )}
+          {!isNew && confirmDelete && (
+            <button className="editor-delete confirm" title="Confirm delete" onClick={() => onDelete(rule)}><IconTrash size={15} /> Delete</button>
+          )}
         </div>
       </div>
     </div>
