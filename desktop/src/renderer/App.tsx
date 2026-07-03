@@ -385,15 +385,20 @@ export function App() {
     return ref
   }, [coworkDir, persist, setCurrentSession])
 
-  // Pull the auto-generated title from MiMo after a turn and store it.
+  // Pull the auto-generated title from MiMo after a turn — but only if the
+  // local title is still the default/empty. We never overwrite a user rename.
   const refreshTitle = useCallback(
     async (ref: ChatRef) => {
       const sessions = await window.mimo.listSessions(ref.directory).catch(() => [])
       const s = sessions.find((x) => x.id === ref.sessionID)
-      const title = s?.title?.trim()
+      const serverTitle = s?.title?.trim()
+      if (!serverTitle) return
       const list = ref.mode === "chats" ? chatsRef.current : coworkRef.current
+      const local = list.find((c) => c.id === ref.id)
+      // Skip if the user has already set a custom title (non-default, non-empty).
+      if (local?.title && local.title !== "New chat" && local.title !== "New task") return
       const updated = list.map((c) =>
-        c.id === ref.id ? { ...c, title: title || c.title, updatedAt: Date.now() } : c,
+        c.id === ref.id ? { ...c, title: serverTitle, updatedAt: Date.now() } : c,
       )
       persist(ref.mode, updated)
     },
@@ -518,6 +523,8 @@ export function App() {
       c.id === id ? { ...c, title } : c,
     )
     persist("chats", list)
+    const ref = chatsRef.current.find((c) => c.id === id)
+    if (ref) window.mimo.updateSession(ref.sessionID, title, ref.directory).catch(() => {})
   }, [persist])
 
   const renameCowork = useCallback((id: string, title: string) => {
@@ -525,6 +532,8 @@ export function App() {
       c.id === id ? { ...c, title } : c,
     )
     persist("cowork", list)
+    const ref = coworkRef.current.find((c) => c.id === id)
+    if (ref) window.mimo.updateSession(ref.sessionID, title, ref.directory).catch(() => {})
   }, [persist])
 
   const deleteChat = useCallback((ref: ChatRef) => {
