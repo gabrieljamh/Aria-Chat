@@ -1185,6 +1185,11 @@ button {
   background: var(--accent-soft);
   color: var(--accent);
 }
+.msg-context-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
 
 /* ------------------------------ Composer ------------------------------ */
 .composer-wrap {
