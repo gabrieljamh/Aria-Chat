@@ -5,8 +5,44 @@ import { WriteView } from "./WriteView"
 import { ReadView } from "./ReadView"
 import type { MessageWithParts, Part } from "@shared/types"
 import type { ConvMessage } from "./useConversation"
-import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork, IconChevronDown, IconChevronRight } from "./Icons"
+import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork, IconChevronDown, IconChevronRight, IconCopy } from "./Icons"
 import { Markdown } from "./Markdown"
+
+interface ContextMenuState {
+  x: number
+  y: number
+  text: string
+}
+
+function MsgContextMenu({ state, onClose }: { state: ContextMenuState; onClose: () => void }) {
+  React.useEffect(() => {
+    const close = () => onClose()
+    document.addEventListener("click", close)
+    document.addEventListener("contextmenu", close)
+    return () => {
+      document.removeEventListener("click", close)
+      document.removeEventListener("contextmenu", close)
+    }
+  }, [onClose])
+  return (
+    <div
+      className="msg-context-menu"
+      style={{ left: state.x, top: state.y }}
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation() }}
+    >
+      <button
+        className="msg-context-item"
+        onClick={() => {
+          navigator.clipboard.writeText(state.text).catch(() => {})
+          onClose()
+        }}
+      >
+        <IconCopy size={14} /> Copy text
+      </button>
+    </div>
+  )
+}
 
 function CollapsibleReasoning({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
@@ -242,6 +278,17 @@ function getUserText(msg: ConvMessage): string {
     .join("\n")
 }
 
+function getAssistantText(msg: ConvMessage): string {
+  return msg.parts
+    .filter((p) => (p.type === "text" || p.type === "reasoning") && (p as any).text)
+    .map((p) => (p.type === "reasoning" ? `[Reasoning]\n${(p as any).text}` : (p as any).text))
+    .join("\n\n")
+}
+
+function getMessageText(msg: ConvMessage): string {
+  return msg.info.role === "user" ? getUserText(msg) : getAssistantText(msg)
+}
+
 function extractErrorMessage(info: ConvMessage["info"]): string | null {
   if (!info) return null
   const err = (info as any).error
@@ -274,8 +321,19 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
   const id = msg.info.id
   const isUser = msg.info.role === "user"
   const [text, setText] = useState("")
+  const [copied, setCopied] = useState(false)
   const taRef = React.useRef<HTMLTextAreaElement>(null)
   const timestamp = msg.info.time?.created ? new Date(msg.info.time.created).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : null
+
+  const copyMessage = async () => {
+    const text = getMessageText(msg)
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {}
+  }
 
   React.useEffect(() => {
     if (editMode && !text) setText(getUserText(msg))
@@ -325,6 +383,7 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
         ) : (
           <>
             <span className="msg-role-badge">You</span>
+            <button className="msg-act" title="Copy message" onClick={copyMessage}>{copied ? <IconCheck size={13} /> : <IconCopy size={13} />} {copied ? "Copied" : "Copy"}</button>
             <button className="msg-act" title="Edit message" onClick={onStartEdit}><IconEdit size={13} /> Edit</button>
             <button className="msg-act" title="Delete from here" onClick={() => onDelete?.(id)}><IconTrash size={13} /> Delete</button>
             <button className="msg-act" title="Return to this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Return</button>
@@ -338,6 +397,7 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
             <button className="msg-act" title="Regenerate" onClick={() => onRegen?.(id)}><IconRefresh size={13} /> Regen</button>
             <button className="msg-act" title="Return to this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Return</button>
             <button className="msg-act" title="Delete message" onClick={() => onDelete?.(id)}><IconTrash size={13} /> Delete</button>
+            <button className="msg-act" title="Copy message" onClick={copyMessage}>{copied ? <IconCheck size={13} /> : <IconCopy size={13} />} {copied ? "Copied" : "Copy"}</button>
             <span className="msg-role-badge">Aria</span>
           </>
         )
@@ -356,10 +416,17 @@ export function MessageView({ message, showDots, busy, ...actions }: MsgActions 
   )
   const [editMode, setEditMode] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
   const saveEdit = (newText: string) => {
     if (!newText.trim()) return
     actions.onEdit?.(message.info.id, newText)
     setEditMode(false)
+  }
+  const onCtx = (e: React.MouseEvent) => {
+    const t = getMessageText(message)
+    if (!t) return
+    e.preventDefault()
+    setCtxMenu({ x: e.clientX, y: e.clientY, text: t })
   }
 
   if (isUser) {
@@ -376,7 +443,7 @@ export function MessageView({ message, showDots, busy, ...actions }: MsgActions 
     }
     return (
       <>
-        <div className="msg user">
+        <div className="msg user" onContextMenu={onCtx}>
           {fileParts.length > 0 && (
             <div className="msg-attachments">
               {fileParts.map((p) => {
@@ -410,6 +477,7 @@ export function MessageView({ message, showDots, busy, ...actions }: MsgActions 
           {body && <div className="bubble"><Markdown>{body}</Markdown></div>}
         </div>
 <MsgFooter msg={message} actions={actions} editMode={editMode} busy={busy} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
+        {ctxMenu && <MsgContextMenu state={ctxMenu} onClose={() => setCtxMenu(null)} />}
         {previewUrl && (
           <div className="attach-preview-overlay" onClick={() => setPreviewUrl(null)}>
             <div className="attach-preview-box">
@@ -424,7 +492,7 @@ export function MessageView({ message, showDots, busy, ...actions }: MsgActions 
 
   return (
     <>
-      <div className="msg assistant">
+      <div className="msg assistant" onContextMenu={onCtx}>
         <div className="role">Aria</div>
         {!hasContent ? (
           extractErrorMessage(message.info) ? (
@@ -452,6 +520,7 @@ export function MessageView({ message, showDots, busy, ...actions }: MsgActions 
         )}
       </div>
       <MsgFooter msg={message} actions={actions} editMode={editMode} busy={busy} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
+      {ctxMenu && <MsgContextMenu state={ctxMenu} onClose={() => setCtxMenu(null)} />}
       {previewUrl && (
         <div className="attach-preview-overlay" onClick={() => setPreviewUrl(null)}>
           <div className="attach-preview-box">
