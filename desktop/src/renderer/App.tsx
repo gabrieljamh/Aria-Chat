@@ -38,6 +38,31 @@ function uuid(): string {
   return (crypto as any).randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+let rgbRaf = 0
+let rgbLast = 0
+let rgbHue = 0
+let rgbDark: boolean | undefined
+let rgbText = ""
+function startRgbCycle(initialHue: number, dark?: boolean) {
+  rgbHue = initialHue
+  rgbDark = dark
+  if (rgbRaf) cancelAnimationFrame(rgbRaf)
+  rgbLast = performance.now()
+  let lastUi = 0
+  const tick = (now: number) => {
+    const dt = now - rgbLast
+    rgbLast = now
+    rgbHue = (rgbHue + dt * 0.03) % 360
+    applyAccentHue(rgbHue, rgbDark)
+    if (now - lastUi > 100) {
+      lastUi = now
+      window.mimo.setSetting("accentHue", rgbHue).catch(() => {})
+    }
+    rgbRaf = requestAnimationFrame(tick)
+  }
+  rgbRaf = requestAnimationFrame(tick)
+}
+
 export function App() {
   const [tab, setTab] = useState<Tab>("chat")
   const [status, setStatus] = useState<ServerStatus>({ state: "starting" })
@@ -150,12 +175,42 @@ export function App() {
     window.mimo.getSetting("aiSuggestions").then((v) => setAiSuggestions(v === true))
     window.mimo.getSetting("userName").then((v) => setUserName(typeof v === "string" ? v : ""))
     window.mimo.getSetting("accentHue").then((hv) => {
-      if (typeof hv !== "number") return
+      const n = typeof hv === "number" ? hv : 0
       window.mimo.getSetting("accentDarkText").then((dv) => {
-        applyAccentHue(hv, dv === true || dv === false ? dv : undefined)
+        const d = dv === true || dv === false ? dv : undefined
+        window.mimo.getSetting("accentRgb").then((rgb) => {
+          if (rgb === true) {
+            startRgbCycle(n, d)
+          } else {
+            applyAccentHue(n, d)
+          }
+        })
       })
     })
   }, [])
+
+  // Re-check RGB mode when settings modal closes — user may have toggled it.
+  useEffect(() => {
+    if (settingsOpen) return
+    window.mimo.getSetting("accentRgb").then((rgb) => {
+      if (rgb === true) {
+        window.mimo.getSetting("accentHue").then((hv) => {
+          const n = typeof hv === "number" ? hv : 0
+          window.mimo.getSetting("accentDarkText").then((dv) => {
+            startRgbCycle(n, dv === true || dv === false ? dv : undefined)
+          })
+        })
+      } else {
+        if (rgbRaf) { cancelAnimationFrame(rgbRaf); rgbRaf = 0 }
+        window.mimo.getSetting("accentHue").then((hv) => {
+          const n = typeof hv === "number" ? hv : 0
+          window.mimo.getSetting("accentDarkText").then((dv) => {
+            applyAccentHue(n, dv === true || dv === false ? dv : undefined)
+          })
+        })
+      }
+    })
+  }, [settingsOpen])
 
   // Load (and reload when the settings modal closes) the auto-compaction
   // threshold for the Stats bar. Only surfaced when auto-compaction is enabled.
