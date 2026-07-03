@@ -256,5 +256,75 @@ export const McpRoutes = lazy(() =>
           yield* mcp.disconnect(name)
           return true
         }),
+    )
+    .get(
+      "/:name/tools",
+      describeRoute({
+        summary: "List MCP tools",
+        description: "Get the cached tool definitions for a connected MCP server.",
+        operationId: "mcp.tools.list",
+        responses: {
+          200: {
+            description: "Tool definitions",
+            content: {
+              "application/json": {
+                schema: resolver(z.array(z.object({
+                  name: z.string(),
+                  description: z.string().optional(),
+                  inputSchema: z.record(z.string(), z.unknown()).optional(),
+                }))),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      async (c) =>
+        jsonRequest("McpRoutes.tools", c, function* () {
+          const { name } = c.req.valid("param")
+          const mcp = yield* MCP.Service
+          return yield* mcp.getTools(name)
+        }),
+    )
+    .post(
+      "/:name/tools/call",
+      describeRoute({
+        summary: "Call MCP tool",
+        description: "Invoke a tool on a connected MCP server directly, bypassing the AI session loop.",
+        operationId: "mcp.tools.call",
+        responses: {
+          200: {
+            description: "Tool call result",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({
+                  content: z.array(z.record(z.string(), z.unknown())),
+                  isError: z.boolean().optional(),
+                  structuredContent: z.record(z.string(), z.unknown()).optional(),
+                })),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ name: z.string() })),
+      validator(
+        "json",
+        z.object({
+          tool: z.string(),
+          arguments: z.record(z.string(), z.unknown()).optional(),
+        }),
+      ),
+      async (c) =>
+        jsonRequest("McpRoutes.tools.call", c, function* () {
+          const { name } = c.req.valid("param")
+          const { tool, arguments: args } = c.req.valid("json")
+          const mcp = yield* MCP.Service
+          const result = yield* mcp.callTool(name, tool, args ?? {})
+          if (!result) return c.json({ error: "MCP server not connected" }, 404)
+          return result
+        }),
     ),
 )

@@ -320,6 +320,17 @@ export interface McpRemoteConfig {
 
 export type McpConfig = McpLocalConfig | McpRemoteConfig
 
+export interface McpToolDef {
+  name: string
+  description?: string
+  inputSchema?: Record<string, unknown>
+}
+
+export interface McpToolCallResult {
+  content: unknown[]
+  isError?: boolean
+}
+
 export interface PathInfo {
   home: string
   state: string
@@ -547,6 +558,8 @@ export interface MimoApi {
   disconnectMcp(name: string, directory?: string): Promise<boolean>
   authenticateMcp(name: string, directory?: string): Promise<McpStatus>
   removeMcpAuth(name: string, directory?: string): Promise<boolean>
+  listMcpTools(server: string, directory: string): Promise<McpToolDef[]>
+  callMcpTool(server: string, tool: string, args: Record<string, unknown>, directory: string): Promise<McpToolCallResult>
 
   // app info
   getAppInfo(): Promise<AppInfo>
@@ -554,10 +567,92 @@ export interface MimoApi {
   // questions
   questionReply(requestID: string, answers: string[][], directory?: string): Promise<void>
   questionReject(requestID: string, directory?: string): Promise<void>
+
+  // scheduler
+  getSchedulerRules(): Promise<SchedulerRule[]>
+  setSchedulerRules(rules: SchedulerRule[]): Promise<boolean>
+  getSchedulerStats(): Promise<SchedulerStats | null>
+  getSchedulerHistory(): Promise<ExecutionLogEntry[]>
+  getRunningProcesses(): Promise<RunningProcess[]>
+  killProcess(pid: number): Promise<boolean>
+  schedulerRunNow(ruleId: string): Promise<boolean>
 }
 
 declare global {
   interface Window {
     mimo: MimoApi
   }
+}
+
+/* ---------------------------- Scheduler types ---------------------------- */
+
+export type SchedulerTrigger =
+  | { type: "on-startup" }
+  | { type: "daily"; time: string }          // "HH:MM" (24h)
+  | { type: "weekly"; days: number[]; time: string }  // 0=Sun…6=Sat
+  | { type: "interval"; minutes: number }
+
+export type SchedulerTarget =
+  | { type: "sandbox" }
+  | { type: "project"; dir: string }
+  | { type: "none" }                           // bash only, no session
+
+export type SchedulerAction =
+  | { type: "prompt"; text: string; model?: ModelRef; agent?: string }
+  | { type: "command"; command: string; args?: string }
+  | { type: "bash"; command: string; cwd?: string }
+  | { type: "bash-detached"; command: string; cwd?: string }
+  | { type: "notify"; title: string; body: string }
+  | { type: "mcp"; server: string; tool: string; arguments: Record<string, unknown> }
+
+export interface SchedulerRule {
+  id: string
+  enabled: boolean
+  name: string
+  trigger: SchedulerTrigger
+  target: SchedulerTarget
+  action: SchedulerAction
+  options: {
+    fireIfMissed: boolean       // default false
+    disposeAfter: boolean      // default true (sandbox only)
+    notifications: boolean     // default true
+  }
+  lastFired?: number            // epoch ms
+}
+
+/* ---------------------------- Scheduler runtime types ---------------------------- */
+
+export type ExecutionStatus = "running" | "success" | "failed"
+
+export interface ExecutionLogEntry {
+  id: string
+  ruleId: string
+  ruleName: string
+  actionType: SchedulerAction["type"]
+  triggerType: SchedulerTrigger["type"]
+  status: ExecutionStatus
+  startedAt: number
+  finishedAt?: number
+  detail?: string
+  targetLabel: string
+}
+
+export interface SchedulerStats {
+  total: number
+  success: number
+  running: number
+  failed: number
+  lastSuccess?: ExecutionLogEntry
+  lastFailure?: ExecutionLogEntry
+  sandboxesCreated: number
+  sandboxesDestroyed: number
+  sessionsCreated: number
+}
+
+export interface RunningProcess {
+  pid: number
+  ruleId: string
+  ruleName: string
+  command: string
+  startedAt: number
 }

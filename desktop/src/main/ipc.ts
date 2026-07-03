@@ -18,8 +18,9 @@ import {
 } from "./workspaces"
 import { ServerManager } from "./server"
 import { getStore } from "./store"
+import { Scheduler, loadRules, saveRules } from "./scheduler"
 import { allowPreviewRoot } from "./preview"
-import type { AuthInfo, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo, SessionInfoFull, ProjectInfo } from "@shared/types"
+import type { AuthInfo, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo, SessionInfoFull, ProjectInfo, SchedulerRule } from "@shared/types"
 
 // Sanitize config: remove undefined values from cost/limit objects that cause validation errors
 function sanitizeConfig(obj: any): any {
@@ -147,6 +148,17 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
 
   // Kick off boot immediately; renderer can also query status.
   connect()
+
+  // Scheduler: init after server is ready (chained on bootPromise).
+  let scheduler: Scheduler | null = null
+  ;(async () => {
+    await bootPromise!
+    scheduler = new Scheduler(() => {
+      if (!client) throw new Error("Server is not ready yet.")
+      return client
+    })
+    await scheduler.init()
+  })().catch((err) => console.error("[scheduler] init failed:", err))
 
   // Clean up orphaned generation sandboxes from previous sessions (deferred so
   // it never blocks startup). Runs once, before any new generation can occur.
@@ -457,6 +469,14 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
     await bootPromise
     return ensureClient().removeMcpAuth(name, directory)
   })
+  ipcMain.handle("mcp-list-tools", async (_e, server: string, directory: string) => {
+    await bootPromise
+    return ensureClient().listMcpTools(server, directory)
+  })
+  ipcMain.handle("mcp-call-tool", async (_e, server: string, tool: string, args: Record<string, unknown>, directory: string) => {
+    await bootPromise
+    return ensureClient().callMcpTool(server, tool, args, directory)
+  })
 
   /* --------------------- skills management --------------------------- */
   function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
@@ -649,8 +669,22 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
     arch: process.arch,
   }))
 
+  /* ---------------------------- scheduler ---------------------------- */
+  ipcMain.handle("get-scheduler-rules", () => loadRules())
+  ipcMain.handle("set-scheduler-rules", (_e, rules: SchedulerRule[]) => {
+    saveRules(rules)
+    scheduler?.reload()
+    return true
+  })
+  ipcMain.handle("get-scheduler-stats", () => scheduler?.getStats() ?? null)
+  ipcMain.handle("get-scheduler-history", () => scheduler?.getHistory() ?? [])
+  ipcMain.handle("get-running-processes", () => scheduler?.getRunningProcesses() ?? [])
+  ipcMain.handle("kill-process", (_e, pid: number) => scheduler?.killProcess(pid) ?? false)
+  ipcMain.handle("scheduler-run-now", (_e, ruleId: string) => scheduler?.runNow(ruleId) ?? false)
+
   return {
     dispose() {
+      scheduler?.dispose()
       client?.dispose()
       server.stop()
     },
@@ -698,6 +732,9 @@ const ATTACH_MIME: Record<string, string> = {
   ".rs": "text/plain", ".java": "text/plain", ".c": "text/plain", ".h": "text/plain",
   ".cpp": "text/plain", ".cs": "text/plain", ".rb": "text/plain", ".php": "text/plain",
   ".sh": "text/plain", ".css": "text/plain", ".scss": "text/plain", ".sql": "text/plain",
+  ".zip": "application/zip", ".tar": "application/x-tar",
+  ".tgz": "application/gzip", ".gz": "application/gzip",
+  ".7z": "application/x-7z-compressed", ".rar": "application/x-rar-compressed",
 }
 function attachmentMime(filePath: string): string {
   return ATTACH_MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream"

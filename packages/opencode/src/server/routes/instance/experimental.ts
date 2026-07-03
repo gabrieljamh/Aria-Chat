@@ -357,6 +357,7 @@ export const ExperimentalRoutes = lazy(() =>
           search: z.string().optional().meta({ description: "Filter sessions by title (case-insensitive)" }),
           limit: z.coerce.number().optional().meta({ description: "Maximum number of sessions to return" }),
           archived: z.coerce.boolean().optional().meta({ description: "Include archived sessions (default false)" }),
+          excludeSystem: z.coerce.boolean().optional().meta({ description: "Exclude system-spawned agent sessions (checkpoint-writer, dream, distill)" }),
         }),
       ),
       async (c) => {
@@ -371,6 +372,7 @@ export const ExperimentalRoutes = lazy(() =>
           search: query.search,
           limit: limit + 1,
           archived: query.archived,
+          excludeSystem: query.excludeSystem,
         })) {
           sessions.push(session)
         }

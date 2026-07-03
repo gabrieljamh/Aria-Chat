@@ -8,7 +8,7 @@ import { type ProviderMetadata, type LanguageModelUsage } from "ai"
 import { Flag } from "../flag/flag"
 import { InstallationVersion } from "../installation/version"
 
-import { Database, NotFoundError, eq, and, gte, isNull, desc, like, inArray, lt } from "../storage"
+import { Database, NotFoundError, eq, and, gte, isNull, desc, like, inArray, lt, not } from "../storage"
 import { SyncEvent } from "../sync"
 import type { SQL } from "../storage"
 import { PartTable, SessionTable, MessageTable } from "./session.sql"
@@ -838,6 +838,8 @@ export function* list(input?: {
   }
 }
 
+const SYSTEM_SESSION_PREFIXES = ["checkpoint-writer:", "dream:", "distill:"]
+
 export function* listGlobal(input?: {
   directory?: string
   roots?: boolean
@@ -846,6 +848,7 @@ export function* listGlobal(input?: {
   search?: string
   limit?: number
   archived?: boolean
+  excludeSystem?: boolean
 }) {
   const conditions: SQL[] = []
 
@@ -866,6 +869,11 @@ export function* listGlobal(input?: {
   }
   if (!input?.archived) {
     conditions.push(isNull(SessionTable.time_archived))
+  }
+  if (input?.excludeSystem) {
+    for (const prefix of SYSTEM_SESSION_PREFIXES) {
+      conditions.push(not(like(SessionTable.title, `${prefix}%`)))
+    }
   }
 
   const limit = input?.limit ?? 100

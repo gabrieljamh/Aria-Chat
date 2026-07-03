@@ -9,6 +9,8 @@ import type {
   FileText,
   McpConfig,
   McpStatus,
+  McpToolCallResult,
+  McpToolDef,
   MessageWithParts,
   MimoApi,
   PathInfo,
@@ -88,6 +90,8 @@ const api: MimoApi = {
   disconnectMcp: (name: string, directory) => ipcRenderer.invoke("mcp-disconnect", name, directory) as Promise<boolean>,
   authenticateMcp: (name: string, directory) => ipcRenderer.invoke("mcp-authenticate", name, directory) as Promise<McpStatus>,
   removeMcpAuth: (name: string, directory) => ipcRenderer.invoke("mcp-remove-auth", name, directory) as Promise<boolean>,
+  listMcpTools: (server: string, directory) => ipcRenderer.invoke("mcp-list-tools", server, directory) as Promise<McpToolDef[]>,
+  callMcpTool: (server: string, tool: string, args: Record<string, unknown>, directory) => ipcRenderer.invoke("mcp-call-tool", server, tool, args, directory) as Promise<McpToolCallResult>,
 
   createChatSandbox: () => ipcRenderer.invoke("chat-create-sandbox") as Promise<{ id: string; directory: string }>,
   ensureProjectMarker: (directory) => ipcRenderer.invoke("ensure-project-marker", directory) as Promise<void>,
@@ -116,6 +120,16 @@ const api: MimoApi = {
   gitPush: (opts: { directory: string; remote?: string; branch?: string; force?: boolean }) =>
     ipcRenderer.invoke("git-push", opts) as Promise<string>,
   getAppInfo: () => ipcRenderer.invoke("get-app-info") as Promise<import("@shared/types").AppInfo>,
+
+  // scheduler
+  getSchedulerRules: () => ipcRenderer.invoke("get-scheduler-rules") as Promise<import("@shared/types").SchedulerRule[]>,
+  setSchedulerRules: (rules: import("@shared/types").SchedulerRule[]) =>
+    ipcRenderer.invoke("set-scheduler-rules", rules) as Promise<boolean>,
+  getSchedulerStats: () => ipcRenderer.invoke("get-scheduler-stats") as Promise<import("@shared/types").SchedulerStats | null>,
+  getSchedulerHistory: () => ipcRenderer.invoke("get-scheduler-history") as Promise<import("@shared/types").ExecutionLogEntry[]>,
+  getRunningProcesses: () => ipcRenderer.invoke("get-running-processes") as Promise<import("@shared/types").RunningProcess[]>,
+  killProcess: (pid: number) => ipcRenderer.invoke("kill-process", pid) as Promise<boolean>,
+  schedulerRunNow: (ruleId: string) => ipcRenderer.invoke("scheduler-run-now", ruleId) as Promise<boolean>,
 }
 
 contextBridge.exposeInMainWorld("mimo", api)

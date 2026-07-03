@@ -314,9 +314,9 @@ export const layer: Layer.Layer<
         { concurrency: "unbounded" },
       ).pipe(Effect.map((arr) => arr.filter((x): x is string => x !== undefined)))
 
-      yield* db((d) =>
-        d
-          .insert(ProjectTable)
+          yield* db((d) =>
+            d
+              .insert(ProjectTable)
           .values({
             id: result.id,
             worktree: result.worktree,
@@ -333,7 +333,7 @@ export const layer: Layer.Layer<
           .onConflictDoUpdate({
             target: ProjectTable.id,
             set: {
-              worktree: result.worktree,
+              ...(result.id !== ProjectID.global ? { worktree: result.worktree } : {}),
               vcs: result.vcs ?? null,
               name: result.name,
               icon_url: result.icon?.url,

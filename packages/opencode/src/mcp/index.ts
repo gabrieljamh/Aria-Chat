@@ -243,6 +243,12 @@ export interface Interface {
     clientName: string,
     resourceUri: string,
   ) => Effect.Effect<Awaited<ReturnType<MCPClient["readResource"]>> | undefined>
+  readonly getTools: (clientName: string) => Effect.Effect<MCPToolDef[]>
+  readonly callTool: (
+    clientName: string,
+    toolName: string,
+    args?: Record<string, unknown>,
+  ) => Effect.Effect<Awaited<ReturnType<MCPClient["callTool"]>> | undefined>
   readonly startAuth: (mcpName: string) => Effect.Effect<{ authorizationUrl: string; oauthState: string }>
   readonly authenticate: (mcpName: string) => Effect.Effect<Status>
   readonly finishAuth: (mcpName: string, authorizationCode: string) => Effect.Effect<Status>
@@ -732,6 +738,44 @@ export const layer = Layer.effect(
       })
     })
 
+    const getTools = Effect.fn("MCP.getTools")(function* (clientName: string) {
+      const s = yield* InstanceState.get(state)
+      return s.defs[clientName] ?? []
+    })
+
+    const callTool = Effect.fn("MCP.callTool")(function* (
+      clientName: string,
+      toolName: string,
+      args?: Record<string, unknown>,
+    ) {
+      const s = yield* InstanceState.get(state)
+      const client = s.clients[clientName]
+      if (!client) {
+        log.warn("client not found for callTool", { clientName })
+        return undefined
+      }
+      const connected = s.status[clientName]?.status === "connected"
+      if (!connected) {
+        log.warn("client not connected for callTool", { clientName })
+        return undefined
+      }
+      const cfg = yield* cfgSvc.get()
+      const mcpConfig = cfg.mcp?.[clientName]
+      const entry = mcpConfig && isMcpConfigured(mcpConfig) ? mcpConfig : undefined
+      const timeout = entry?.timeout ?? cfg.experimental?.mcp_timeout
+      return yield* withClient(
+        clientName,
+        (c) =>
+          c.callTool(
+            { name: toolName, arguments: args ?? {} },
+            CallToolResultSchema,
+            { resetTimeoutOnProgress: true, timeout },
+          ),
+        "callTool",
+        { toolName },
+      )
+    })
+
     const getMcpConfig = Effect.fnUntraced(function* (mcpName: string) {
       const cfg = yield* cfgSvc.get()
       const mcpConfig = cfg.mcp?.[mcpName]
@@ -913,6 +957,8 @@ export const layer = Layer.effect(
       disconnect,
       getPrompt,
       readResource,
+      getTools,
+      callTool,
       startAuth,
       authenticate,
       finishAuth,
