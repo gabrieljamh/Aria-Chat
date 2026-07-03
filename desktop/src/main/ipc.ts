@@ -175,6 +175,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
     await bootPromise
     return ensureClient().createSession(opts ?? {})
   })
+  ipcMain.handle("update-session", async (_e, sessionID: string, title: string, directory?: string) => {
+    await bootPromise
+    return ensureClient().updateSession(sessionID, title, directory)
+  })
   ipcMain.handle("get-messages", async (_e, sessionID: string, directory?: string) => {
     await bootPromise
     return ensureClient().getMessages(sessionID, directory)

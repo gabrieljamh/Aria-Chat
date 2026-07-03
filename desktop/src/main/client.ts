@@ -84,6 +84,14 @@ export class MimoClient extends EventEmitter {
     )
   }
 
+  updateSession(sessionID: string, title: string, directory?: string): Promise<SessionInfo> {
+    return this.json<SessionInfo>(
+      `session/${encodeURIComponent(sessionID)}`,
+      { method: "PATCH", body: JSON.stringify({ title }) },
+      { directory },
+    )
+  }
+
   getMessages(sessionID: string, directory?: string): Promise<MessageWithParts[]> {
     return this.json<MessageWithParts[]>(`session/${encodeURIComponent(sessionID)}/message`, undefined, { directory })
   }
