@@ -2,6 +2,7 @@ import { app, BrowserWindow, nativeImage, session, shell } from "electron"
 import { join } from "node:path"
 import { registerIpc } from "./ipc"
 import { registerPreviewScheme, registerPreviewProtocol } from "./preview"
+import { migrateProjectsList } from "./workspaces"
 
 // Must be registered before the app is ready.
 registerPreviewScheme()
@@ -82,6 +83,7 @@ app.whenReady().then(() => {
     callback(!fromPreview)
   })
   registerPreviewProtocol()
+  migrateProjectsList()
   ipc = registerIpc(() => mainWindow)
   createWindow()
 

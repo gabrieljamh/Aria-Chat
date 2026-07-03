@@ -113,6 +113,7 @@ export const layer = Layer.effect(
           additions: diffs.reduce((sum, x) => sum + x.additions, 0),
           deletions: diffs.reduce((sum, x) => sum + x.deletions, 0),
           files: diffs.length,
+          diffs: diffs.length > 0 ? diffs : undefined,
         },
       })
       yield* storage.write(["session_diff", input.sessionID], diffs).pipe(Effect.ignore)

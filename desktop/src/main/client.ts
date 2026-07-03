@@ -11,12 +11,15 @@ import type {
   MessageWithParts,
   PathInfo,
   PermissionReply,
+  ProjectInfo,
   PromptInput,
   ProvidersResponse,
   ServerEvent,
   SessionInfo,
+  SessionInfoFull,
   SessionStatusInfo,
   TaskInfo,
+  FileDiff,
   Todo,
 } from "@shared/types"
 
@@ -74,6 +77,26 @@ export class MimoClient extends EventEmitter {
 
   listSessions(directory?: string): Promise<SessionInfo[]> {
     return this.json<SessionInfo[]>("session", undefined, { directory })
+  }
+
+  listProjectSessions(directory: string): Promise<SessionInfoFull[]> {
+    return this.json<SessionInfoFull[]>("experimental/session", undefined, { directory, limit: "200" })
+  }
+
+  listProjects(): Promise<ProjectInfo[]> {
+    return this.json<ProjectInfo[]>("project")
+  }
+
+  deleteSession(sessionID: string, directory?: string): Promise<boolean> {
+    return this.json<boolean>(`session/${encodeURIComponent(sessionID)}`, { method: "DELETE" }, { directory })
+  }
+
+  updateProject(projectID: string, patch: { name?: string }): Promise<ProjectInfo> {
+    return this.json<ProjectInfo>(`project/${encodeURIComponent(projectID)}`, { method: "PATCH", body: JSON.stringify(patch) })
+  }
+
+  getSessionDiff(sessionID: string, messageID?: string): Promise<FileDiff[]> {
+    return this.json<FileDiff[]>(`session/${encodeURIComponent(sessionID)}/diff`, undefined, messageID ? { messageID } : undefined)
   }
 
   createSession(opts: { directory?: string; title?: string } = {}): Promise<SessionInfo> {

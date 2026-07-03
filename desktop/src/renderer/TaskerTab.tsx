@@ -1,14 +1,16 @@
 // Tasker mode (formerly "Cowork" mode) — runs against a user-picked project folder.
 // If you see references to "cowork" internals, they refer to this same Tasker mode.
 import React, { useEffect, useRef, useState } from "react"
-import type { AgentInfo, ChatRef, ModelRef, PermissionReply, ProvidersResponse } from "@shared/types"
+import type { AgentInfo, ModelRef, PermissionReply, ProjectInfo, ProvidersResponse, SessionInfoFull } from "@shared/types"
 import type { State } from "./types-internal"
 import { Composer } from "./Composer"
 import { MessageView } from "./MessageView"
 import { ApprovalCard } from "./ApprovalCard"
 import { QuestionCard } from "./QuestionCard"
-import { Sidebar } from "./Sidebar"
-import { IconFolder, IconRefresh } from "./Icons"
+import { TaskerSidebar } from "./TaskerSidebar"
+import { ProjectDropdown } from "./ProjectDropdown"
+import { DiffGrid } from "./DiffGrid"
+import { IconRefresh } from "./Icons"
 import { RightPanel } from "./RightPanel"
 import { StatsPanel } from "./StatsPanel"
 import type { Suggestion } from "./generate"
@@ -24,14 +26,6 @@ interface Props {
   webSearch: boolean
   setWebSearch: (v: boolean) => void
   compactThreshold?: number | null
-  items: ChatRef[]
-  activeId: string | null
-  onSelect: (ref: ChatRef) => void
-  onNew: () => void
-  collapsed: boolean
-  onToggleCollapse: () => void
-  projectDir: string | null
-  onPickProject: () => void
   state: State
   onSend: (text: string, files?: FileAttachment[]) => void
   onAbort: () => void
@@ -44,21 +38,40 @@ interface Props {
   onEditMessage: (messageID: string, newText: string) => void
   onOpenFile: (path: string) => void
   onOpenSettings: () => void
-  onDelete: (ref: ChatRef) => void
-  onRename: (id: string, title: string) => void
-  favoriteIds: Set<string>
-  onPin: (id: string) => void
+  onManageSkills?: () => void
+  onManageConnectors?: () => void
+  sessionID?: string | null
+  onCompact?: () => void
+  onClear?: () => void
+  // Project dropdown props
+  projects: ProjectInfo[]
+  selectedProjectDir: string | null
+  onSelectProject: (dir: string) => void
+  onAddProject: () => void
+  projectsLoading: boolean
+  // Tasker sidebar props
+  sessionsByDir: Map<string, SessionInfoFull[]>
+  activeSessionId: string | null
+  onSelectSession: (sessionID: string, directory: string) => void
+  onRefreshProject: (directory: string) => void
+  onDeleteSession?: (sessionID: string, directory: string) => void
+  onRenameSession?: (sessionID: string, title: string, directory: string) => void
+  onRenameProject?: (projectID: string, name: string) => void
+  onPinProject?: (directory: string) => void
+  onHideProject?: (directory: string) => void
+  pinnedDirs: Set<string>
+  loadingDirs: Set<string>
+  registryDirs: string[]
+  // Sidebar collapse
+  collapsed: boolean
+  onToggleCollapse: () => void
+  onNew: () => void
   rightCollapsed: boolean
   onToggleRight: () => void
   greeting?: string | null
   suggestions?: Suggestion[] | null
   aiHome?: boolean
   onRegenerate?: () => void
-  onManageSkills?: () => void
-  onManageConnectors?: () => void
-  sessionID?: string | null
-  onCompact?: () => void
-  onClear?: () => void
 }
 
 const STATIC_TASKS: Suggestion[] = [
@@ -85,9 +98,10 @@ export function TaskerTab(props: Props) {
     if (el) el.scrollTop = el.scrollHeight
   }, [state.order, state.messages, state.permissions])
 
+  const projectDir = props.selectedProjectDir
   const composer = (
     <Composer
-      placeholder={props.projectDir ? `Work in ${basename(props.projectDir)}…` : "Pick a folder, then describe a task…"}
+      placeholder={projectDir ? `Work in ${basename(projectDir)}…` : "Pick a project, then describe a task…"}
       busy={state.busy}
       providers={props.providers}
       agents={props.agents}
@@ -100,7 +114,7 @@ export function TaskerTab(props: Props) {
       onWebSearchToggle={props.setWebSearch}
       onSend={props.onSend}
       onAbort={props.onAbort}
-      directory={props.projectDir ?? props.items.find((i) => i.id === props.activeId)?.directory ?? null}
+      directory={projectDir ?? null}
       prefill={prefill}
       onManageSkills={props.onManageSkills}
       onManageConnectors={props.onManageConnectors}
@@ -112,30 +126,39 @@ export function TaskerTab(props: Props) {
 
   return (
     <>
-      <Sidebar
-        favoriteIds={props.favoriteIds}
-        newLabel="New task"
-        items={props.items}
-        activeId={props.activeId}
-        onSelect={props.onSelect}
-        onNew={props.onNew}
+      <TaskerSidebar
+        projects={props.projects}
+        sessionsByDir={props.sessionsByDir}
+        activeSessionId={props.activeSessionId}
+        activeProjectDir={props.selectedProjectDir}
+        onSelectSession={props.onSelectSession}
+        onSelectProject={props.onSelectProject}
+        onNewTask={props.onNew}
+        onRefreshProject={props.onRefreshProject}
+        onAddProject={props.onAddProject}
+        onDeleteSession={props.onDeleteSession}
+        onRenameSession={props.onRenameSession}
+        onRenameProject={props.onRenameProject}
+        onPinProject={props.onPinProject}
+        onHideProject={props.onHideProject}
+        pinnedDirs={props.pinnedDirs}
         collapsed={props.collapsed}
         onToggleCollapse={props.onToggleCollapse}
-        emptyText="No tasks yet"
         onOpenSettings={props.onOpenSettings}
-        onPin={props.onPin}
-        onRename={props.onRename}
-        onDelete={props.onDelete}
-        deleteMessage="This will remove the task from your list. Your project files will not be affected."
+        loadingDirs={props.loadingDirs}
+        registryDirs={props.registryDirs}
       />
 
       <div className="cowork">
         <div className="center">
           <div className="cowork-bar">
-            <button className="dir" onClick={props.onPickProject} title="Choose project folder">
-              <IconFolder size={15} />
-              {props.projectDir ? props.projectDir : "Choose a project folder"}
-            </button>
+            <ProjectDropdown
+              projects={props.projects}
+              selectedDir={props.selectedProjectDir}
+              onSelect={props.onSelectProject}
+              onAddProject={props.onAddProject}
+              loading={props.projectsLoading}
+            />
           </div>
 
           {isLoading ? (
@@ -144,7 +167,15 @@ export function TaskerTab(props: Props) {
               <span>Loading chat...</span>
             </div>
           ) : isEmpty ? (
-            <div className="greeting" style={{ justifyContent: "flex-start", paddingTop: 36 }}>
+            <div className="greeting greeting-scroll" style={{ justifyContent: "flex-start", paddingTop: 36 }}>
+              {projectDir && props.sessionsByDir.get(projectDir) && (
+                <DiffGrid
+                  sessions={props.sessionsByDir.get(projectDir)!}
+                  activeSessionId={props.activeSessionId}
+                  onSelectSession={(sid) => props.onSelectSession(sid, projectDir)}
+                  getDiffs={(sid) => window.mimo.getSessionDiff(sid)}
+                />
+              )}
               <h1 style={{ fontSize: 32 }}>{props.greeting || "What should we work on?"}</h1>
               <div className="active-task-card">
                 <span style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--accent)" }} />

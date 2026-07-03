@@ -1,6 +1,6 @@
 import { app } from "electron"
 import { randomUUID } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, rmSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 
 /**
@@ -68,23 +68,87 @@ export function createChatSandbox(): { id: string; directory: string } {
 
 export function getRegistry(kind: RegistryKind): ChatRef[] {
   const file = registryFile(kind)
-  if (!existsSync(file)) return []
-  try {
-    const data = JSON.parse(readFileSync(file, "utf8"))
-    return Array.isArray(data?.items) ? (data.items as ChatRef[]) : []
-  } catch {
-    return []
+  const bak = file + ".bak"
+  for (const f of [file, bak]) {
+    if (!existsSync(f)) continue
+    try {
+      const data = JSON.parse(readFileSync(f, "utf8"))
+      const items = Array.isArray(data?.items) ? (data.items as ChatRef[]) : []
+      return items.filter((r) => r && typeof r.sessionID === "string" && typeof r.title === "string")
+    } catch {
+      // corrupt JSON — try next file (e.g. .bak)
+    }
   }
+  return []
 }
 
 export function saveRegistry(kind: RegistryKind, items: ChatRef[]) {
   const file = registryFile(kind)
-  ensureDir(kind === "chats" ? chatsRoot() : projectsRoot())
+  const root = kind === "chats" ? chatsRoot() : projectsRoot()
+  ensureDir(root)
   try {
-    writeFileSync(file, JSON.stringify({ items }, null, 2))
+    // Back up previous file before writing the new one.
+    if (existsSync(file)) copyFileSync(file, file + ".bak")
+    // Atomic write: temp file → rename (crash-safe on same volume).
+    const tmp = file + ".tmp"
+    writeFileSync(tmp, JSON.stringify({ items }, null, 2))
+    renameSync(tmp, file)
   } catch {
     /* best-effort */
   }
+}
+
+/**
+ * Phase 4 migration: Deduplicate ProjectsList.json from one-entry-per-session
+ * to one-entry-per-directory. KEEPS the original sessionID/title values on the
+ * surviving entry so the old (pre-rework) version stays compatible — it can
+ * still find the session by sessionID and display the title.
+ *
+ * Runs once on startup. Idempotent — if already 1 entry per directory, no-op.
+ * Keeps a .bak backup of the pre-migration file.
+ */
+export function migrateProjectsList(): void {
+  const file = registryFile("cowork")
+  if (!existsSync(file)) return
+  const bak = file + ".bak"
+
+  let items: ChatRef[]
+  try {
+    const data = JSON.parse(readFileSync(file, "utf8"))
+    items = Array.isArray(data?.items) ? (data.items as ChatRef[]) : []
+  } catch {
+    return // corrupt or unreadable — skip migration
+  }
+
+  // Check if already migrated: if every directory appears at most once, no-op
+  const dirs = items.map((r) => r?.directory).filter((d) => typeof d === "string")
+  const uniqueDirs = new Set(dirs)
+  if (dirs.length === uniqueDirs.size) return // already 1 entry per directory
+
+  // Group by directory, keeping the most recently updated entry (with its
+  // original sessionID + title intact — backward compat with old version).
+  const byDir = new Map<string, ChatRef>()
+  for (const item of items) {
+    if (!item || typeof item.directory !== "string") continue
+    const existing = byDir.get(item.directory)
+    if (!existing || (item.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+      byDir.set(item.directory, { ...item })
+    }
+  }
+
+  const migrated = Array.from(byDir.values())
+
+  // Back up the old file before writing the migrated version
+  try {
+    copyFileSync(file, bak)
+  } catch {
+    /* best-effort */
+  }
+
+  // Atomic write
+  const tmp = file + ".tmp"
+  writeFileSync(tmp, JSON.stringify({ items: migrated }, null, 2))
+  renameSync(tmp, file)
 }
 
 const MAX_PREVIEW_BYTES = 512 * 1024 // 512 KB
