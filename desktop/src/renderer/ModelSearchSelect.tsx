@@ -11,6 +11,7 @@ interface Props {
 export function ModelSearchSelect({ value, options, onChange, placeholder, id }: Props) {
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState("")
+  const [dropUp, setDropUp] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -29,6 +30,12 @@ export function ModelSearchSelect({ value, options, onChange, placeholder, id }:
     if (open) {
       setInput("")
       inputRef.current?.focus()
+      // Measure available space — if not enough below, flip upward.
+      const rect = ref.current?.getBoundingClientRect()
+      if (rect) {
+        const spaceBelow = window.innerHeight - rect.bottom
+        setDropUp(spaceBelow < 300 && rect.top > spaceBelow)
+      }
     }
   }, [open])
 
@@ -63,7 +70,7 @@ export function ModelSearchSelect({ value, options, onChange, placeholder, id }:
         }}
       />
       {open && (
-        <div className="model-search-dropdown">
+        <div className="model-search-dropdown" style={dropUp ? { top: "auto", bottom: "100%", marginTop: 0, marginBottom: 4 } : undefined}>
           {filtered.length === 0 && <div className="model-search-empty">{input ? "No models match" : "No models available"}</div>}
           {filtered.map((o) => (
             <div
