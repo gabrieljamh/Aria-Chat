@@ -9,15 +9,28 @@
   --text: #f2ece3; /* cream / off-white */
   --text-dim: #b6b0a6;
   --text-faint: #807a71;
-  --accent: #8B5CF6; /* warm violet (Aria brand) */
-  --accent-hover: #9D6FF8;
-  --accent-soft: rgba(139, 92, 246, 0.14);
-  --accent-soft-hover: rgba(139, 92, 246, 0.2);
+
+  /* Accent: single hue variable, all derived colors computed in CSS.
+     @property lets the browser optimize recalc — only --accent-hue changes per frame. */
+  @property --accent-hue {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 258;
+  }
+  --accent-hue: 258;
+  --accent-s: 90%;
+  --accent-l: 66%;
+  --accent-l-hover: 73%;
+  --accent: hsl(var(--accent-hue), var(--accent-s), var(--accent-l));
+  --accent-hover: hsl(var(--accent-hue), var(--accent-s), var(--accent-l-hover));
+  --accent-soft: hsla(var(--accent-hue), var(--accent-s), var(--accent-l), 0.14);
+  --accent-soft-hover: hsla(var(--accent-hue), var(--accent-s), var(--accent-l), 0.2);
+  --accent-border: hsla(var(--accent-hue), var(--accent-s), var(--accent-l), 0.35);
+  --accent-glow: hsla(var(--accent-hue), var(--accent-s), var(--accent-l), 0.45);
+  --accent-glow-end: hsla(var(--accent-hue), var(--accent-s), var(--accent-l), 0);
+  --accent-soft-bg: hsla(var(--accent-hue), var(--accent-s), var(--accent-l), 0.06);
   --accent-text: #ffffff;
-  --accent-border: rgba(139, 92, 246, 0.35);
-  --accent-glow: rgba(139, 92, 246, 0.45);
-  --accent-glow-end: rgba(139, 92, 246, 0);
-  --accent-soft-bg: rgba(139, 92, 246, 0.06);
+
   --danger: #d96a5a;
   --good: #8bb88f;
   --serif: "Georgia", "Iowan Old Style", "Apple Color Emoji", "Segoe UI Emoji", "Times New Roman", serif;
