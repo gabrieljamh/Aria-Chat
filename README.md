@@ -5,28 +5,40 @@
 
 A desktop AI assistant built with Electron, powered by [MiMo Code](https://github.com/XiaomiMiMo/MiMo-Code).
 
-Aria Chat wraps the MiMo Code local server in a clean, Claude-desktop-style UI — two modes, real-time streaming, inline approvals, and a live workspace panel. No cloud dependencies; everything runs locally.
+Aria Chat wraps the MiMo Code local server in a clean, Claude-desktop-style UI — three modes, real-time streaming, inline approvals, scheduler automation, and a live workspace panel. No cloud dependencies; everything runs locally.
 
 Built by [Junji at Project BomberCraft](https://github.com/gabrieljamh/Aria-Chat).
 
 ---
 
-**Version: 0.3.0** — MCP implemented on UI and more bugfixes!
+**Version: 1.1.0** — Scheduler Mode, archive extraction, attachment MIME fixes, and more!
 
 ## Features
 
+### Three Modes
+
 - **Chat mode** — throwaway sandboxed conversations. Each chat gets its own isolated folder so file operations never touch your real projects.
-- **Tasker mode** — point at a project folder and describe a task. A live **Progress** checklist and **Files** panel track what the agent creates or edits alongside the conversation. Suggestion cards are constrained (max-width 360px, flex grid) with building/coding focused prompts: create files, implement features, debug, refactor, understand code, setup projects, write tests.
+- **Tasker mode** — point at a project folder and describe a task. A live **Progress** checklist and **Files** panel track what the agent creates or edits alongside the conversation. Includes project dropdown, sidebar tree, DiffGrid visualization, favorites/pinning, and session rename/delete with server sync.
+- **Scheduler mode** — automate your workflow with recurring rules. Configure triggers (on-startup, interval, daily, weekly), targets (sandbox, project, none), and actions (AI prompt, bash command, detached background process, desktop notification, MCP tool call). Live stats panel tracks success/running/failed runs, history log, and kill-by-PID for background processes.
+
+### Core Capabilities
+
 - **Real-time streaming** — tokens, tool calls, reasoning, and file changes stream live over SSE.
 - **Inline approvals** — permission requests appear as cards in the conversation. Approve once, always allow, or deny without leaving the flow.
-- **Multiple model/providers** — the model selector is populated live from the server. Add any OpenAI-compatible provider with an API key and base URL.
-- **Multi-modal input** — attach images, audio recordings, video, and files via the composer. Vision/audio/video model redirects let you route attachments to specialized models.
+- **Multiple model/providers** — the model selector is populated live from the server with searchable/filterable dropdowns. Add any OpenAI-compatible provider with an API key and base URL.
+- **Multi-modal input** — attach images, audio, video, PDFs, and files via the composer. Vision/audio/video model redirects let you route attachments to specialized models.
+- **Archive extraction** — attach `.zip`, `.tar`, `.tar.gz`/`.tgz`, `.7z`, `.rar`, or `.gz` archives and Aria extracts them server-side, inlining text files (up to 20 files / 500KB) and listing binary contents. Uses system tools (`Expand-Archive`, `tar`, `7z`, `unrar`) with `Bun.gunzipSync` for single `.gz` files. Graceful error messages when extraction tools aren't installed.
 - **Custom instructions** — per-conversation guidance saved into the global server config.
 - **Auto-compaction** — keep long conversations within context limits with configurable token thresholds and an optional dedicated model.
 - **Skills** — extend the agent with installable skill packs (`.skill` files, SKILL.md folders).
-- **Settings** — General, Conversations, Models, Providers, Skills, Server, and About pages with full configuration.
+- **MCP integration** — Model Context Protocol server connections managed from Settings. Exposes `listTools` and `callTool` for use in Scheduler rules and agent conversations.
+- **Settings** — General, Conversations, Models, Providers, Skills, MCP, Server, and About pages with full configuration.
+- **System notifications** — configurable notifications for approvals, questions, and idle state with per-type toggles and warm, personalized copy.
+- **Accent color theming** — choose any hue, with auto-dark/light text detection on accent backgrounds, and optional cycling mode.
 - **GitHub integration** — configure GitHub username and personal access token in Settings > General for authenticated git push.
-- **Personalized greetings** — Aria addresses you by name (from settings) in chat mode greetings.
+- **AI greetings & suggestions** — personalized, AI-generated greetings and suggestion cards per mode (toggle in Settings). Scheduler suggestions infer trigger/action from keyword matching.
+- **Context menu** — right-click messages for copy, copy selected, delete, fork, and regenerate actions.
+- **Syntax-highlighted file viewer** — preview files with highlight.js syntax highlighting and media/image lightbox.
 
 ## Getting started
 
@@ -160,6 +172,18 @@ When editing a provider's model metadata (limits/pricing/capabilities), the old 
 
 14 new system prompt files (`aria-anthropic`, `aria-beast`, `aria-codex`, `aria-compose`, `aria-deepseek`, `aria-gemini`, `aria-glm`, `aria-gpt`, `aria-kimi`, `aria-trinity`, `aria-max-steps`, `aria-copilot-gpt-5`, `aria-build-switch`, `aria-minimax`) created in `packages/opencode/src/session/prompt/`. Each adapts the corresponding MiMo-Code prompt by replacing "MiMo Code" → "Aria Chat", "MiMo" → "Aria", updating help text to reference Aria Chat, and setting identity to "You are Aria". All include Git credentials section documenting `GIT_USERNAME`/`GIT_PASSWORD` env vars for HTTPS git operations.
 
+### 10. Archive extraction — `packages/opencode/src/util/archive.ts` + `packages/opencode/src/session/prompt.ts`
+
+Server-side extraction of compressed archives attached to conversations. When a `.zip`/`.tar`/`.tar.gz`/`.7z`/`.rar`/`.gz` file is attached, `resolvePart` in `prompt.ts` detects the archive type (by MIME or extension), decodes the base64 data URL to bytes, writes to a temp directory, and extracts using system CLI tools (`Expand-Archive`/`unzip`/`tar`/`7z`/`unrar`) or `Bun.gunzipSync` for single `.gz` files. Text files are inlined as synthetic text parts (up to 20 files / 500KB total), binary files are listed by name/type/size. Graceful error messages when extraction tools aren't installed.
+
+### 11. Attachment MIME detection — `desktop/src/renderer/Composer.tsx` + `packages/opencode/src/session/prompt.ts`
+
+Two asymmetric MIME detection paths were unified: native file picker (`ipc.ts` `ATTACH_MIME` table) and drag-drop/paste (`Composer.tsx` `EXT_MIME` table). Server-side safety net in `prompt.ts` reclassifies `application/octet-stream` data URLs as `text/plain` when they decode to valid UTF-8, and `transform.ts` returns readable error text for unrecognized MIME types instead of forwarding opaque binary to the model.
+
+### 12. MCP tool call exposure — `packages/opencode/src/mcp/index.ts`
+
+The `MCP.Interface` now exposes `callTool(clientName, toolName, args?)` and `getTools(clientName)` methods, with REST routes `GET /mcp/:name/tools` and `POST /mcp/:name/tools/call`. Used by the Scheduler mode MCP action type and the desktop MCP settings manager.
+
 ## Development
 
 | Command | Description |
@@ -183,6 +207,9 @@ Single CSS file: `desktop/src/renderer/styles.css`. CSS variables for theming. N
 
 **Models not showing in the selector**
 → Open **Settings → Providers**, add a provider with an API key and model ID, then save. The model appears in the composer dropdown immediately.
+
+**Archive extraction fails**
+→ `.zip` uses `Expand-Archive` (Windows built-in) or `unzip` (macOS/Linux). `.tar`/`.tar.gz` uses `tar` (built-in on all platforms since Windows 10). `.gz` uses Bun's built-in decompression (no CLI needed). `.7z` requires the `7z` CLI tool. `.rar` requires the `unrar` CLI tool. Install missing tools or attach files individually.
 
 ## License
 
