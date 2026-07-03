@@ -80,6 +80,7 @@ export function Sidebar(props: Props) {
         <>
           <div className="section-label">Favorites</div>
           {favorites.map((ref) => renderItem(ref))}
+          <div className="sidebar-divider" />
         </>
       )}
 

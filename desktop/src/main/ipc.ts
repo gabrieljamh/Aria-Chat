@@ -19,7 +19,7 @@ import {
 import { ServerManager } from "./server"
 import { getStore } from "./store"
 import { allowPreviewRoot } from "./preview"
-import type { AuthInfo, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo } from "@shared/types"
+import type { AuthInfo, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo, SessionInfoFull, ProjectInfo } from "@shared/types"
 
 // Sanitize config: remove undefined values from cost/limit objects that cause validation errors
 function sanitizeConfig(obj: any): any {
@@ -170,6 +170,26 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
   ipcMain.handle("list-sessions", async (_e, directory?: string) => {
     await bootPromise
     return ensureClient().listSessions(directory)
+  })
+  ipcMain.handle("list-project-sessions", async (_e, directory: string) => {
+    await bootPromise
+    return ensureClient().listProjectSessions(directory)
+  })
+  ipcMain.handle("list-projects", async () => {
+    await bootPromise
+    return ensureClient().listProjects()
+  })
+  ipcMain.handle("delete-session", async (_e, sessionID: string, directory?: string) => {
+    await bootPromise
+    return ensureClient().deleteSession(sessionID, directory)
+  })
+  ipcMain.handle("update-project", async (_e, projectID: string, patch: { name?: string }) => {
+    await bootPromise
+    return ensureClient().updateProject(projectID, patch)
+  })
+  ipcMain.handle("get-session-diff", async (_e, sessionID: string, messageID?: string) => {
+    await bootPromise
+    return ensureClient().getSessionDiff(sessionID, messageID)
   })
   ipcMain.handle("create-session", async (_e, opts: { directory?: string; title?: string }) => {
     await bootPromise

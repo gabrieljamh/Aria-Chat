@@ -172,6 +172,44 @@ export interface SessionInfo {
   [key: string]: unknown
 }
 
+/** Per-file diff data from a session snapshot. */
+export interface FileDiff {
+  file: string
+  patch: string
+  additions: number
+  deletions: number
+  status?: "added" | "deleted" | "modified"
+}
+
+/** Summary of changes in a session, returned inline by listSessions. */
+export interface SessionSummary {
+  additions: number
+  deletions: number
+  files: number
+  diffs?: FileDiff[]
+}
+
+/** Extended session info with summary (matches server Session.Info shape). */
+export interface SessionInfoFull extends SessionInfo {
+  slug?: string
+  projectID?: string
+  directory?: string
+  parentID?: string
+  summary?: SessionSummary
+  version?: string
+  time?: { created: number; updated: number; compacting?: number; archived?: number }
+}
+
+/** A project known to the MiMo Code server. */
+export interface ProjectInfo {
+  id: string
+  worktree: string
+  name?: string
+  icon?: { url?: string; color?: string }
+  time?: { created: number; updated: number; initialized?: number }
+  sandboxes?: string[]
+}
+
 export interface ModelRef {
   providerID: string
   modelID: string
@@ -418,8 +456,13 @@ export interface MimoApi {
 
   // REST
   listSessions(directory?: string): Promise<SessionInfo[]>
+  listProjectSessions(directory: string): Promise<SessionInfoFull[]>
+  listProjects(): Promise<ProjectInfo[]>
   createSession(opts?: { directory?: string; title?: string }): Promise<SessionInfo>
   updateSession(sessionID: string, title: string, directory?: string): Promise<SessionInfo>
+  deleteSession(sessionID: string, directory?: string): Promise<boolean>
+  getSessionDiff(sessionID: string, messageID?: string): Promise<FileDiff[]>
+  updateProject(projectID: string, patch: { name?: string }): Promise<ProjectInfo>
   getMessages(sessionID: string, directory?: string): Promise<MessageWithParts[]>
   getSubagentMessages(sessionID: string, agentID: string, directory?: string): Promise<MessageWithParts[]>
   prompt(input: PromptInput): Promise<void>

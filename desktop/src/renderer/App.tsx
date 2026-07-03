@@ -6,9 +6,11 @@ import type {
   CommandInfo,
   ModelRef,
   PermissionReply,
+  ProjectInfo,
   ProvidersResponse,
   RegistryKind,
   ServerStatus,
+  SessionInfoFull,
 } from "@shared/types"
 import { useConversation } from "./useConversation"
 import { ChatTab } from "./ChatTab"
@@ -103,6 +105,13 @@ export function App() {
   const [activeCoworkId, setActiveCoworkId] = useState<string | null>(null)
   const [coworkDir, setCoworkDir] = useState<string | null>(null)
 
+  // Tasker mode: project + session tree state (Phase 1 rework)
+  const [projects, setProjects] = useState<ProjectInfo[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+  const [sessionsByDir, setSessionsByDir] = useState<Map<string, SessionInfoFull[]>>(new Map())
+  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
+  const [pinnedDirs, setPinnedDirs] = useState<Set<string>>(new Set())
+
   // Synchronous mirrors of the registries. React state updates are async, so
   // within one async action (create chat -> send -> refresh title) reading the
   // state closure would be stale and could clobber the registry. The refs are
@@ -118,6 +127,7 @@ export function App() {
 
   const activeSession = activeRef?.sessionID ?? null
   const activeDir = activeRef?.directory ?? null
+  const taskerProjectDir = activeRef?.directory ?? coworkDir
 
   const { state, setBusy, setError, setCurrentSession } = useConversation(activeSession, activeDir, activeRef?.createdAt)
 
@@ -295,12 +305,81 @@ export function App() {
       const favs = (await window.mimo.getSetting("favoriteIds").catch(() => [])) as string[]
       if (cancelled) return
       if (Array.isArray(favs)) setFavoriteIds(new Set(favs))
+      // Restore pinned project dirs
+      const pinned = (await window.mimo.getSetting("pinnedProjectDirs").catch(() => [])) as string[]
+      if (cancelled) return
+      if (Array.isArray(pinned)) setPinnedDirs(new Set(pinned))
       setDataLoaded(true)
     })()
     return () => {
       cancelled = true
     }
   }, [status.state])
+
+  // Phase 1: Fetch projects from server when ready. Also merge in existing
+  // cowork registry directories (backward compat — dirs registered before
+  // the rework that might not be in the server's project list yet).
+  useEffect(() => {
+    if (status.state !== "ready") return
+    let cancelled = false
+    ;(async () => {
+      setProjectsLoading(true)
+      const isChatDir = (d: string) => d.includes("\\chats\\") || d.includes("/chats/")
+      const serverProjects = (await window.mimo.listProjects().catch(() => []))
+        .filter((p) => !isChatDir(p.worktree))
+      if (cancelled) return
+      // Merge registry dirs not in server list — read from coworkRef (sync ref)
+      const registryDirs = coworkRef.current.map((c) => c.directory)
+        .filter((d) => !serverProjects.some((p) => p.worktree === d) && !isChatDir(d))
+      const merged = [
+        ...serverProjects,
+        ...registryDirs.map((d) => ({
+          id: "registry:" + d,
+          worktree: d,
+          time: { created: 0, updated: 0 },
+        } as ProjectInfo)),
+      ].filter((p, i, arr) => arr.findIndex((q) => q.worktree === p.worktree) === i)
+      setProjects(merged)
+      setProjectsLoading(false)
+      // Fetch sessions for project directories that aren't cached yet
+      const dirsToFetch = merged.map((p) => p.worktree).filter((d) => !sessionsByDir.has(d))
+      await Promise.allSettled(dirsToFetch.map((d) => fetchSessions(d)))
+    })()
+    return () => { cancelled = true }
+  }, [status.state, cowork.length])
+
+  // Fetch sessions for a specific project directory (used by sidebar tree expand + refresh)
+  const fetchSessions = useCallback(async (directory: string) => {
+    setLoadingDirs((prev) => {
+      const n = new Set(prev)
+      n.add(directory)
+      return n
+    })
+    const sessions = (await window.mimo.listProjectSessions(directory).catch(() => []))
+      .filter((s) => {
+        const t = s.title ?? ""
+        return !t.startsWith("checkpoint-writer:") && !t.startsWith("dream:") && !t.startsWith("distill:")
+      })
+    setSessionsByDir((prev) => {
+      const n = new Map(prev)
+      n.set(directory, sessions)
+      return n
+    })
+    setLoadingDirs((prev) => {
+      const n = new Set(prev)
+      n.delete(directory)
+      return n
+    })
+  }, [])
+
+  // Auto-fetch sessions for the active Tasker project when switching to the
+  // Tasker tab or when the project changes. This drives the sidebar tree.
+  useEffect(() => {
+    if (tab !== "cowork" || !taskerProjectDir) return
+    if (!sessionsByDir.has(taskerProjectDir)) {
+      fetchSessions(taskerProjectDir)
+    }
+  }, [tab, taskerProjectDir, fetchSessions, sessionsByDir])
 
   const refreshProviders = useCallback(async () => {
     const provs = await window.mimo.getProviders(activeDir ?? undefined).catch(() => null)
@@ -362,7 +441,7 @@ export function App() {
   }, [persist, setCurrentSession])
 
   const createCowork = useCallback(async (): Promise<ChatRef | null> => {
-    let dir = coworkDir
+    let dir = taskerProjectDir ?? coworkDir
     if (!dir) {
       dir = await window.mimo.pickDirectory()
       if (!dir) return null
@@ -382,8 +461,40 @@ export function App() {
     persist("cowork", [ref, ...coworkRef.current])
     setCurrentSession(session.id)
     setActiveCoworkId(ref.id)
+    // Refresh the sessions list for this directory so the new session appears
+    fetchSessions(dir)
     return ref
-  }, [coworkDir, persist, setCurrentSession])
+  }, [taskerProjectDir, coworkDir, persist, setCurrentSession, fetchSessions])
+
+  // Phase 1: Select a session from the project tree. Finds or creates the
+  // matching ChatRef in the cowork registry so the existing useConversation
+  // flow works unchanged.
+  const handleSelectSession = useCallback((sessionID: string, directory: string) => {
+    // Check if we already have a ChatRef for this sessionID
+    const existing = coworkRef.current.find((c) => c.sessionID === sessionID)
+    if (existing) {
+      setActiveCoworkId(existing.id)
+      setCoworkDir(directory)
+      setCurrentSession(sessionID)
+      return
+    }
+    // Create a new ChatRef entry for this session
+    const sessions = sessionsByDir.get(directory) ?? []
+    const sess = sessions.find((s) => s.id === sessionID)
+    const ref: ChatRef = {
+      id: uuid(),
+      sessionID,
+      title: sess?.title || "Untitled",
+      directory,
+      mode: "cowork",
+      createdAt: sess?.time?.created ?? Date.now(),
+      updatedAt: sess?.time?.updated ?? Date.now(),
+    }
+    persist("cowork", [ref, ...coworkRef.current])
+    setActiveCoworkId(ref.id)
+    setCoworkDir(directory)
+    setCurrentSession(sessionID)
+  }, [persist, sessionsByDir, setCurrentSession])
 
   // Pull the auto-generated title from MiMo after a turn — but only if the
   // local title is still the default/empty. We never overwrite a user rename.
@@ -500,13 +611,88 @@ export function App() {
     [activeDir],
   )
 
-  const pickProject = useCallback(async () => {
+  const selectProject = useCallback(async (dir: string) => {
+    setCoworkDir(dir)
+    setActiveCoworkId(null)
+    // Fetch sessions for this project if not already loaded
+    if (!sessionsByDir.has(dir)) {
+      fetchSessions(dir)
+    }
+  }, [fetchSessions, sessionsByDir])
+
+  const addProject = useCallback(async () => {
     const d = await window.mimo.pickDirectory()
-    if (d) {
-      setCoworkDir(d)
-      setActiveCoworkId(null) // start a fresh task in the new project
+    if (!d) return
+    await window.mimo.ensureProjectMarker(d)
+    setCoworkDir(d)
+    setActiveCoworkId(null)
+    // Add to cowork registry so it persists
+    const ref: ChatRef = {
+      id: uuid(),
+      sessionID: "",
+      title: d.split(/[\\/]/).filter(Boolean).pop() ?? d,
+      directory: d,
+      mode: "cowork",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    persist("cowork", [ref, ...coworkRef.current])
+    // Add to projects list immediately
+    setProjects((prev) => {
+      if (prev.some((p) => p.worktree === d)) return prev
+      return [...prev, { id: "registry:" + d, worktree: d, time: { created: 0, updated: 0 } } as ProjectInfo]
+    })
+    // Fetch sessions for the new project
+    fetchSessions(d)
+  }, [persist, fetchSessions])
+
+  const refreshProject = useCallback((dir: string) => {
+    fetchSessions(dir)
+  }, [fetchSessions])
+
+  // Rename a project on the server via PATCH /project/:projectID
+  const renameProject = useCallback(async (projectID: string, name: string) => {
+    if (projectID.startsWith("registry:")) return // can't rename registry-only entries
+    const res = await window.mimo.updateProject(projectID, { name }).catch((e) => { console.error("renameProject error:", e); return null })
+    if (res) {
+      setProjects((prev) => prev.map((p) => p.id === projectID ? { ...p, name } : p))
     }
   }, [])
+
+  const pinProject = useCallback((dir: string) => {
+    setPinnedDirs((prev) => {
+      const n = new Set(prev)
+      if (n.has(dir)) n.delete(dir)
+      else n.add(dir)
+      window.mimo.setSetting("pinnedProjectDirs", [...n]).catch(() => {})
+      return n
+    })
+  }, [])
+
+  const hideProject = useCallback((dir: string) => {
+    // Remove from cowork registry (keeps files + server sessions intact)
+    const list = coworkRef.current.filter((c) => c.directory !== dir)
+    persist("cowork", list)
+    // Remove from projects state
+    setProjects((prev) => prev.filter((p) => p.worktree !== dir))
+    // Remove from sessions cache
+    setSessionsByDir((prev) => {
+      const n = new Map(prev)
+      n.delete(dir)
+      return n
+    })
+    // Unpin if pinned
+    setPinnedDirs((prev) => {
+      const n = new Set(prev)
+      n.delete(dir)
+      window.mimo.setSetting("pinnedProjectDirs", [...n]).catch(() => {})
+      return n
+    })
+    // Clear active if we hid the active project
+    if (taskerProjectDir === dir) {
+      setActiveCoworkId(null)
+    }
+  }, [persist, taskerProjectDir])
 
   const togglePin = useCallback((id: string) => {
     setFavoriteIds((prev) => {
@@ -548,6 +734,45 @@ export function App() {
     persist("cowork", list)
     if (activeCoworkId === ref.id) setActiveCoworkId(null)
   }, [persist, activeCoworkId])
+
+  // Phase 2: Delete cascade — delete session from server first, then remove
+  // from local registry. If server delete fails, keep the entry.
+  const handleDeleteSession = useCallback(async (sessionID: string, directory: string) => {
+    const success = await window.mimo.deleteSession(sessionID, directory).catch(() => false)
+    if (!success) {
+      console.error("Failed to delete session on server:", sessionID)
+      return
+    }
+    // Remove from cowork registry
+    const list = coworkRef.current.filter((c) => c.sessionID !== sessionID)
+    persist("cowork", list)
+    // Remove from sessionsByDir cache
+    setSessionsByDir((prev) => {
+      const n = new Map(prev)
+      const sessions = n.get(directory)
+      if (sessions) n.set(directory, sessions.filter((s) => s.id !== sessionID))
+      return n
+    })
+    // Clear active if we just deleted the active session
+    const active = coworkRef.current.find((c) => c.sessionID === sessionID)
+    if (active && activeCoworkId === active.id) {
+      setActiveCoworkId(null)
+    }
+  }, [persist, activeCoworkId])
+
+  const handleRenameSession = useCallback(async (sessionID: string, title: string, directory: string) => {
+    await window.mimo.updateSession(sessionID, title, directory).catch(() => {})
+    // Update cowork registry
+    const list = coworkRef.current.map((c) => c.sessionID === sessionID ? { ...c, title } : c)
+    persist("cowork", list)
+    // Update sessionsByDir cache
+    setSessionsByDir((prev) => {
+      const n = new Map(prev)
+      const sessions = n.get(directory)
+      if (sessions) n.set(directory, sessions.map((s) => s.id === sessionID ? { ...s, title } : s))
+      return n
+    })
+  }, [persist])
 
   const questionReply = useCallback((requestID: string, answers: string[][]) => {
     window.mimo.questionReply(requestID, answers, activeDir ?? undefined).catch((e) => { console.error("questionReply failed", e) })
@@ -774,17 +999,6 @@ export function App() {
         {tab === "cowork" && (
           <TaskerTab
             {...shared}
-            items={cowork}
-            activeId={activeCoworkId}
-            onSelect={(r) => {
-              setActiveCoworkId(r.id)
-              setCoworkDir(r.directory)
-            }}
-            onNew={newCowork}
-            collapsed={collapsed}
-            onToggleCollapse={() => setCollapsed((c) => !c)}
-            projectDir={activeRef?.directory ?? coworkDir}
-            onPickProject={pickProject}
             state={state}
             onSend={sendPrompt}
             onAbort={abort}
@@ -793,22 +1007,40 @@ export function App() {
             onOpenSettings={() => openSettings()}
             onManageSkills={() => openSettings("skills")}
             onManageConnectors={() => openSettings("connectors")}
-            onDelete={deleteCowork}
-            onRename={renameCowork}
-            favoriteIds={favoriteIds}
-            onPin={togglePin}
             onQuestionReply={questionReply}
             onQuestionReject={questionReject}
             onDeleteMessage={deleteMessage}
             onRegenMessage={regenMessage}
             onContinueFrom={continueFrom}
             onEditMessage={editMessage}
+            onNew={newCowork}
+            collapsed={collapsed}
+            onToggleCollapse={() => setCollapsed((c) => !c)}
             rightCollapsed={coworkRightCollapsed}
             onToggleRight={() => setCoworkRightCollapsed((c) => !c)}
             greeting={genGreeting.cowork ?? null}
             suggestions={genSuggest.cowork ?? null}
             aiHome={aiGreetings || aiSuggestions}
             onRegenerate={regenerateHome}
+            // Project dropdown
+            projects={projects}
+            selectedProjectDir={taskerProjectDir}
+            onSelectProject={selectProject}
+            onAddProject={addProject}
+            projectsLoading={projectsLoading}
+            // Tasker sidebar
+            sessionsByDir={sessionsByDir}
+            activeSessionId={activeRef?.sessionID ?? null}
+            onSelectSession={handleSelectSession}
+            onRefreshProject={refreshProject}
+            onDeleteSession={handleDeleteSession}
+            onRenameSession={handleRenameSession}
+            onPinProject={pinProject}
+            onHideProject={hideProject}
+            pinnedDirs={pinnedDirs}
+            registryDirs={coworkRef.current.map((c) => c.directory)}
+            loadingDirs={loadingDirs}
+            onRenameProject={renameProject}
           />
         )}
       </div>
