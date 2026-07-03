@@ -1,23 +1,18 @@
 const BASE_H = 258
 const BASE_S = 90
 const BASE_L = 66
-const L_HOVER = Math.min(BASE_L + 7, 100)
+
+let lastDarkText: boolean | undefined
 
 export function applyAccentHue(offset: number, darkText?: boolean) {
   const h = ((BASE_H + offset) % 360 + 360) % 360
   const root = document.documentElement.style
-  const s = `${BASE_S}%`
-  const l = `${BASE_L}%`
-  root.setProperty("--accent", `hsl(${h},${s},${l})`)
-  root.setProperty("--accent-hover", `hsl(${h},${s},${L_HOVER}%)`)
-  root.setProperty("--accent-soft", `hsla(${h},${s},${l},0.14)`)
-  root.setProperty("--accent-soft-hover", `hsla(${h},${s},${l},0.2)`)
-  root.setProperty("--accent-border", `hsla(${h},${s},${l},0.35)`)
-  root.setProperty("--accent-glow", `hsla(${h},${s},${l},0.45)`)
-  root.setProperty("--accent-glow-end", `hsla(${h},${s},${l},0)`)
-  root.setProperty("--accent-soft-bg", `hsla(${h},${s},${l},0.06)`)
+  root.setProperty("--accent-hue", String(h))
   const useDark = darkText !== undefined ? darkText : accentNeedsDarkText(offset)
-  root.setProperty("--accent-text", useDark ? "#1a1a1a" : "#ffffff")
+  if (useDark !== lastDarkText) {
+    lastDarkText = useDark
+    root.setProperty("--accent-text", useDark ? "#1a1a1a" : "#ffffff")
+  }
 }
 
 /** Auto-detect: return true when accent bg is light enough that dark text is needed. */
