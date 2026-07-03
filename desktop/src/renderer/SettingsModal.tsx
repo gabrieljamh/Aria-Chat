@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { AppInfo, CustomModel, McpConfig, McpStatus, ModelRef, ProviderConfigInput, ProviderModel, ProvidersResponse, SkillInfo } from "@shared/types"
 import { useCustomModels, saveCustomModels, loadCustomModels } from "./customModels"
 import ariaTextRaw from "@shared/img/aria-text.svg?raw"
@@ -211,6 +211,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [aiSuggestions, setAiSuggestions] = useState(false)
   const [accentHue, setAccentHue] = useState(0)
   const [accentDarkText, setAccentDarkText] = useState<boolean | null>(null)
+  const [accentRgb, setAccentRgb] = useState(false)
   const [notifApproval, setNotifApproval] = useState(true)
   const [notifQuestion, setNotifQuestion] = useState(true)
   const [notifIdle, setNotifIdle] = useState(true)
@@ -293,6 +294,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
         applyAccentHue(n, d ?? undefined)
       })
     })
+    window.mimo.getSetting("accentRgb").then((v) => setAccentRgb(v === true))
   }, [])
 
   useEffect(() => {
@@ -427,6 +429,51 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     setAccentHue(offset)
     applyAccentHue(offset, accentDarkText ?? undefined)
     window.mimo.setSetting("accentHue", offset).catch(() => {})
+  }
+
+  useEffect(() => {
+    if (!accentRgb) return
+    let raf = 0
+    let last = performance.now()
+    let lastUi = 0
+    let hue = accentHue
+    const tick = (now: number) => {
+      const dt = now - last
+      last = now
+      hue = (hue + dt * 0.03) % 360
+      applyAccentHue(hue, accentDarkText ?? undefined)
+      if (now - lastUi > 100) {
+        lastUi = now
+        setAccentHue(hue)
+        window.mimo.setSetting("accentHue", hue).catch(() => {})
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [accentRgb, accentDarkText])
+
+  const toggleAccentRgb = () => {
+    setAccentRgb((v) => {
+      const next = !v
+      window.mimo.setSetting("accentRgb", next).catch(() => {})
+      if (!next) {
+        applyAccentHue(accentHue, accentDarkText ?? undefined)
+      }
+      return next
+    })
+  }
+
+  const swatchClicks = useRef(0)
+  const swatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onSwatchClick = () => {
+    swatchClicks.current += 1
+    if (swatchTimer.current) clearTimeout(swatchTimer.current)
+    swatchTimer.current = setTimeout(() => {
+      if (swatchClicks.current >= 3) toggleAccentRgb()
+      swatchClicks.current = 0
+      swatchTimer.current = null
+    }, 500)
   }
 
   const changeAccentDarkText = (dark: boolean | null) => {
@@ -1059,10 +1106,15 @@ const saveEditModel = async () => {
                     max={360}
                     step={1}
                     value={accentHue}
+                    disabled={accentRgb}
                     onChange={(e) => changeAccentHue(Number(e.target.value))}
                   />
-                  <span className="accent-hue-swatch" style={{ background: accentHex(accentHue) }} />
-                  <button className="accent-hue-reset" onClick={() => changeAccentHue(0)} title="Reset to default">↺</button>
+                  <span
+                    className="accent-hue-swatch"
+                    style={{ background: accentHex(accentHue), cursor: "pointer" }}
+                    onClick={onSwatchClick}
+                  />
+                  {accentRgb ? null : <button className="accent-hue-reset" onClick={() => changeAccentHue(0)} title="Reset to default">↺</button>}
                 </div>
                 <div className="accent-text-row">
                   <span className="hint" style={{margin:0}}>Text on accent</span>
@@ -1072,7 +1124,7 @@ const saveEditModel = async () => {
                     <button className={"accent-text-opt" + (accentDarkText === false ? " active" : "")} onClick={() => changeAccentDarkText(false)} title="Force light text on accent backgrounds">Light</button>
                   </div>
                 </div>
-                <div className="hint">Shift the hue of the accent color. "Auto" picks dark or light text based on luminance.</div>
+                <div className="hint">{accentRgb ? "RGB mode active — accent cycles automatically. Triple-click the swatch to stop." : "Shift the hue of the accent color. \"Auto\" picks dark or light text based on luminance."}</div>
               </div>
 
               <div className="settings-field">

@@ -1,18 +1,21 @@
 const BASE_H = 258
 const BASE_S = 90
 const BASE_L = 66
+const L_HOVER = Math.min(BASE_L + 7, 100)
 
 export function applyAccentHue(offset: number, darkText?: boolean) {
   const h = ((BASE_H + offset) % 360 + 360) % 360
   const root = document.documentElement.style
-  root.setProperty("--accent", `hsl(${h}, ${BASE_S}%, ${BASE_L}%)`)
-  root.setProperty("--accent-hover", `hsl(${h}, ${BASE_S}%, ${Math.min(BASE_L + 7, 100)}%)`)
-  root.setProperty("--accent-soft", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0.14)`)
-  root.setProperty("--accent-soft-hover", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0.2)`)
-  root.setProperty("--accent-border", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0.35)`)
-  root.setProperty("--accent-glow", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0.45)`)
-  root.setProperty("--accent-glow-end", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0)`)
-  root.setProperty("--accent-soft-bg", `hsla(${h}, ${BASE_S}%, ${BASE_L}%, 0.06)`)
+  const s = `${BASE_S}%`
+  const l = `${BASE_L}%`
+  root.setProperty("--accent", `hsl(${h},${s},${l})`)
+  root.setProperty("--accent-hover", `hsl(${h},${s},${L_HOVER}%)`)
+  root.setProperty("--accent-soft", `hsla(${h},${s},${l},0.14)`)
+  root.setProperty("--accent-soft-hover", `hsla(${h},${s},${l},0.2)`)
+  root.setProperty("--accent-border", `hsla(${h},${s},${l},0.35)`)
+  root.setProperty("--accent-glow", `hsla(${h},${s},${l},0.45)`)
+  root.setProperty("--accent-glow-end", `hsla(${h},${s},${l},0)`)
+  root.setProperty("--accent-soft-bg", `hsla(${h},${s},${l},0.06)`)
   const useDark = darkText !== undefined ? darkText : accentNeedsDarkText(offset)
   root.setProperty("--accent-text", useDark ? "#1a1a1a" : "#ffffff")
 }
