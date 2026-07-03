@@ -41,7 +41,18 @@ function MsgContextMenu({ state, onClose }: { state: ContextMenuState; onClose: 
           onClose()
         }}
       >
-        <IconCopy size={14} /> Copy text
+        <IconCopy size={14} /> Copy message
+      </button>
+      <div className="msg-context-separator" />
+      <button
+        className="msg-context-item"
+        onClick={() => {
+          const sel = window.getSelection()?.toString() ?? ""
+          if (sel) navigator.clipboard.writeText(sel).catch(() => {})
+          onClose()
+        }}
+      >
+        <IconCopy size={14} /> Copy selected
       </button>
     </div>
   )
