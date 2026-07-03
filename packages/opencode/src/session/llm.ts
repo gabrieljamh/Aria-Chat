@@ -258,12 +258,16 @@ const live: Layer.Layer<
       // ID is resolved from the ALS-bound Instance with a safe fallback to
       // `ProjectID.global` (mirrors the pattern in session/checkpoint.ts so the
       // path the prompt advertises matches the path the writer actually writes).
-      // Skip for system-spawned actors (e.g. checkpoint-writer): they shouldn't
-      // see the user-facing memory instructions.
+      // Skip for system-spawned actors (e.g. checkpoint-writer) and native
+      // hidden computation agents (title/summary): they shouldn't see the
+      // user-facing memory instructions, which pollute the compact agents'
+      // system prompts — especially on OpenAI OAuth where the system array
+      // is flattened into `options.instructions`.
       const isSystemActor = input.agentID
         ? yield* actorReg.isSystemSpawned(SessionID.make(input.sessionID), input.agentID)
         : false
-      if (!isSystemActor) {
+      const isBoundedComputation = input.agent.native === true && input.agent.hidden === true
+      if (!isSystemActor && !isBoundedComputation) {
         const projectID =
           (yield* Effect.try({
             try: () => Instance.current?.project?.id as ProjectID | undefined,
