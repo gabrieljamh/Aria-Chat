@@ -17,9 +17,12 @@ interface ContextMenuState {
 function MsgContextMenu({ state, onClose }: { state: ContextMenuState; onClose: () => void }) {
   React.useEffect(() => {
     const close = () => onClose()
-    document.addEventListener("click", close)
-    document.addEventListener("contextmenu", close)
+    const t = setTimeout(() => {
+      document.addEventListener("click", close)
+      document.addEventListener("contextmenu", close)
+    }, 0)
     return () => {
+      clearTimeout(t)
       document.removeEventListener("click", close)
       document.removeEventListener("contextmenu", close)
     }
