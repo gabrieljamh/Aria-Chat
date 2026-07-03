@@ -16,6 +16,7 @@ import { useConversation } from "./useConversation"
 import { ChatTab } from "./ChatTab"
 // TaskerTab is the renamed CoworkTab (old internal name: "cowork")
 import { TaskerTab } from "./TaskerTab"
+import { SchedulerMode } from "./SchedulerMode"
 import { SettingsModal } from "./SettingsModal"
 import { FileViewer } from "./FileViewer"
 import { Splash } from "./Splash"
@@ -26,7 +27,7 @@ import type { FileAttachment } from "@shared/types"
 import ariaLogoRaw from "@shared/img/aria-logo.svg?raw"
 import ariaTextRaw from "@shared/img/aria-text.svg?raw"
 
-type Tab = "chat" | "cowork" // "cowork" = Tasker mode internal key
+type Tab = "chat" | "cowork" | "scheduler" // "cowork" = Tasker mode internal key
 
 async function resolveHomeModel(): Promise<ModelRef | null | undefined> {
   const on = await window.mimo.getSetting("homeRedirect").catch(() => null)
@@ -88,11 +89,12 @@ export function App() {
   // collapsed (a thin strip), Tasker starts open.
   const [chatRightCollapsed, setChatRightCollapsed] = useState(true)
   const [coworkRightCollapsed, setCoworkRightCollapsed] = useState(false)
+  const [schedulerRightCollapsed, setSchedulerRightCollapsed] = useState(false)
   // AI-generated home-screen content (per tab, cached for the app session).
   const [aiGreetings, setAiGreetings] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState(false)
-  const [genGreeting, setGenGreeting] = useState<{ chat?: string; cowork?: string }>({})
-  const [genSuggest, setGenSuggest] = useState<{ chat?: Suggestion[]; cowork?: Suggestion[] }>({})
+  const [genGreeting, setGenGreeting] = useState<{ chat?: string; cowork?: string; scheduler?: string }>({})
+  const [genSuggest, setGenSuggest] = useState<{ chat?: Suggestion[]; cowork?: Suggestion[]; scheduler?: Suggestion[] }>({})
   const genInflight = useRef<Set<string>>(new Set())
   const [viewerPath, setViewerPath] = useState<string | null>(null)
   const [brandMenuOpen, setBrandMenuOpen] = useState(false)
@@ -238,8 +240,11 @@ export function App() {
   // failure is swallowed so the static content remains.
   useEffect(() => {
     if (status.state !== "ready" || !model) return
-    const kind: "chat" | "cowork" | null =
-      tab === "chat" && activeChatId === null ? "chat" : tab === "cowork" && activeCoworkId === null ? "cowork" : null
+    const kind: "chat" | "cowork" | "scheduler" | null =
+      tab === "chat" && activeChatId === null ? "chat"
+      : tab === "cowork" && activeCoworkId === null ? "cowork"
+      : tab === "scheduler" ? "scheduler"
+      : null
     if (!kind) return
     if (aiGreetings && genGreeting[kind] === undefined && !genInflight.current.has("g-" + kind)) {
       genInflight.current.add("g-" + kind)
@@ -325,8 +330,9 @@ export function App() {
     ;(async () => {
       setProjectsLoading(true)
       const isChatDir = (d: string) => d.includes("\\chats\\") || d.includes("/chats/")
-      const serverProjects = (await window.mimo.listProjects().catch(() => []))
-        .filter((p) => !isChatDir(p.worktree))
+      const _rawProjects = await window.mimo.listProjects().catch(() => [])
+      const serverProjects = _rawProjects
+        .filter((p: any) => !isChatDir(p.worktree))
       if (cancelled) return
       // Merge registry dirs not in server list — read from coworkRef (sync ref)
       const registryDirs = coworkRef.current.map((c) => c.directory)
@@ -394,7 +400,8 @@ export function App() {
   // Drop the cached home-screen generations for the current tab so the effect
   // regenerates them (manual, opt-in — costs a token call only when clicked).
   const regenerateHome = useCallback(() => {
-    const kind: "chat" | "cowork" = tab === "cowork" ? "cowork" : "chat"
+    const kind: "chat" | "cowork" | "scheduler" =
+      tab === "cowork" ? "cowork" : tab === "scheduler" ? "scheduler" : "chat"
     genInflight.current.delete("g-" + kind)
     genInflight.current.delete("s-" + kind)
     setGenGreeting((s2) => { const n = { ...s2 }; delete n[kind]; return n })
@@ -927,13 +934,13 @@ export function App() {
           )}
           <span className="brand-logo brand-logo-aria-text" dangerouslySetInnerHTML={{ __html: ariaTextRaw }} />
           <div className="tabs-pill">
-            {(["chat", "cowork"] as Tab[]).map((t) => (
+            {(["chat", "cowork", "scheduler"] as Tab[]).map((t) => (
               <button
                 key={t}
                 className={tab === t ? "active" : ""}
                 onClick={() => setTab(t)}
               >
-                {t === "chat" ? "Chat" : "Tasker"}
+                {t === "chat" ? "Chat" : t === "cowork" ? "Tasker" : "Scheduler"}
               </button>
             ))}
           </div>
@@ -1041,6 +1048,19 @@ export function App() {
             registryDirs={coworkRef.current.map((c) => c.directory)}
             loadingDirs={loadingDirs}
             onRenameProject={renameProject}
+          />
+        )}
+        {tab === "scheduler" && (
+          <SchedulerMode
+            onOpenSettings={() => openSettings()}
+            onToggleCollapse={() => setCollapsed((c) => !c)}
+            collapsed={collapsed}
+            rightCollapsed={schedulerRightCollapsed}
+            onToggleRight={() => setSchedulerRightCollapsed((c) => !c)}
+            greeting={genGreeting.scheduler ?? null}
+            suggestions={genSuggest.scheduler ?? null}
+            aiHome={aiGreetings || aiSuggestions}
+            onRegenerate={regenerateHome}
           />
         )}
       </div>

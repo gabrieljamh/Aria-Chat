@@ -107,6 +107,8 @@ interface Props {
   onOpenFile: (path: string) => void
   // Show the Tasks section. Off in Chat mode (Tasker-only).
   showProgress?: boolean
+  // Show the Files section. Off in Scheduler mode (no file tracking).
+  showFiles?: boolean
   // Optional Stats section (context/tokens/cost/compaction), rendered on top.
   stats?: React.ReactNode
 }
@@ -117,14 +119,14 @@ interface Props {
  * file.edited). Clicking a file opens it in the in-app viewer. Collapsible like
  * the left sidebar — defaults differ per tab (collapsed in Chat, open in Tasker).
  */
-export function RightPanel({ collapsed, onToggleCollapse, tasks, files, onOpenFile, showProgress = true, stats }: Props) {
+export function RightPanel({ collapsed, onToggleCollapse, tasks, files, onOpenFile, showProgress = true, showFiles = true, stats }: Props) {
   if (collapsed) {
     return (
       <aside className="right-panel collapsed">
         <button className="icon-btn" title="Show tasks & files" onClick={onToggleCollapse}>
           «
         </button>
-        {files.length > 0 && <span className="right-collapsed-badge">{files.length}</span>}
+        {showFiles && files.length > 0 && <span className="right-collapsed-badge">{files.length}</span>}
       </aside>
     )
   }
@@ -172,21 +174,23 @@ export function RightPanel({ collapsed, onToggleCollapse, tasks, files, onOpenFi
         </div>
       )}
 
-      <div className="panel-section">
-        <h3>Files</h3>
-        {files.length === 0 ? (
-          <div className="panel-empty">Files the assistant creates or edits appear here.</div>
-        ) : (
-          <div className="file-cards">
-            {files.map((f) => (
-              <button key={f} className="file-card" title={f} onClick={() => onOpenFile(f)}>
-                <FileIcon path={f} />
-                <span className="file-card-name">{basename(f)}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {showFiles && (
+        <div className="panel-section">
+          <h3>Files</h3>
+          {files.length === 0 ? (
+            <div className="panel-empty">Files the assistant creates or edits appear here.</div>
+          ) : (
+            <div className="file-cards">
+              {files.map((f) => (
+                <button key={f} className="file-card" title={f} onClick={() => onOpenFile(f)}>
+                  <FileIcon path={f} />
+                  <span className="file-card-name">{basename(f)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </aside>
   )
 }

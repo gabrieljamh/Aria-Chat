@@ -137,7 +137,7 @@ export function TaskerSidebar(props: Props) {
           <button
             className="project-name"
             onClick={() => props.onSelectProject(dir)}
-            title={dir}
+            title={`${name} — ${basename(dir)}`}
             onDoubleClick={() => {
               if (canRename) setRenameTarget({ projectID: proj.id, name })
             }}

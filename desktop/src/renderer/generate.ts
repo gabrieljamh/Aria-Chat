@@ -6,7 +6,7 @@ export interface Suggestion {
   desc?: string // optional longer description (tasker cards)
 }
 
-export type GenKind = "chat" | "cowork"
+export type GenKind = "chat" | "cowork" | "scheduler"
 
 /**
  * Run a single prompt in a disposable sandbox session and return the assistant's
@@ -65,9 +65,16 @@ Tone: friendly, relaxed, like greeting a friend.
 Keep it to 1-2 short sentences. 
 No markdown, no formatting, no lists. 
 Do not mention capabilities or offer help.`
-      : `Write a brief, warm, focused greeting for a cowork/coding session with ${assistantName}. 
+      : kind === "cowork"
+      ? `Write a brief, warm, focused greeting for a cowork/coding session with ${assistantName}. 
 Address the user as "${name}". 
 Tone: professional but approachable, ready to build. 
+Keep it to 1-2 short sentences. 
+No markdown, no formatting, no lists. 
+Do not offer a menu of capabilities.`
+      : `Write a brief, warm greeting for a scheduler/automation session with ${assistantName}. 
+Address the user as "${name}". 
+Tone: organized and proactive, like a capable assistant ready to automate tasks and keep things on schedule. 
 Keep it to 1-2 short sentences. 
 No markdown, no formatting, no lists. 
 Do not offer a menu of capabilities.`
@@ -78,7 +85,7 @@ Do not offer a menu of capabilities.`
     .map((s) => s.trim())
     .filter(Boolean)[0]
   const clean = (line ?? "").replace(/^["'`*]+|["'`*]+$/g, "").trim()
-  if (!clean || clean.length > 64) throw new Error("greeting rejected")
+  if (!clean || clean.length > 120) throw new Error("greeting rejected")
   return clean
 }
 
@@ -93,9 +100,13 @@ export async function generateSuggestions(
     ? `Produce exactly 4 home-screen suggestion chips for a general-purpose AI assistant chat (not just coding — can talk about anything). The suggestions should be casual, fun, and varied — mix creative, helpful, curious, and everyday topics (e.g. brainstorming ideas, telling a story, planning something, answering a random question, getting advice). Avoid making all four coding-related. Respond with ONLY a JSON array (no markdown fences, no commentary): ` +
       `[{"label":"2 to 5 word button label","text":"the full prompt to insert into the input when the chip is clicked"}, ...]. ` +
       `Make the four varied and genuinely useful.`
-    : `Produce exactly 4 home-screen suggestion cards for an agentic coding assistant (Tasker mode) that performs tasks inside a chosen project folder. The suggestions should be building/coding focused: creating files, implementing features, debugging, refactoring, understanding code, setting up projects, writing tests, etc. Each should have a short label (2-5 words) and a longer description explaining the task. Respond with ONLY a JSON array (no markdown fences, no commentary): ` +
+    : kind === "cowork"
+    ? `Produce exactly 4 home-screen suggestion cards for an agentic coding assistant (Tasker mode) that performs tasks inside a chosen project folder. The suggestions should be building/coding focused: creating files, implementing features, debugging, refactoring, understanding code, setting up projects, writing tests, etc. Each should have a short label (2-5 words) and a longer description explaining the task. Respond with ONLY a JSON array (no markdown fences, no commentary): ` +
       `[{"label":"2 to 5 word button label","text":"the full prompt to insert into the input when the card is clicked","desc":"one sentence description of what this task does"}, ...]. ` +
       `Make the four varied and genuinely useful for a developer starting a coding session.`
+    : `Produce exactly 4 home-screen suggestion cards for a task scheduler/automation mode. The suggestions should be automation-focused: scheduling recurring code tasks, running dev servers, periodic git operations, scheduled notifications, etc. Each should have a short label (2-5 words) and a longer description explaining what the rule does. Respond with ONLY a JSON array (no markdown fences, no commentary): ` +
+      `[{"label":"2 to 5 word button label","text":"the full description of what this rule does","desc":"one sentence description of what this automation rule does"}, ...]. ` +
+      `Make the four varied and genuinely useful for a developer automating their workflow.`
 
   const raw = await oneShot(prompt, model, agent, overrideModel)
   const start = raw.indexOf("[")

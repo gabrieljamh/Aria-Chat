@@ -8,6 +8,8 @@ import type {
   ConfigPatch,
   McpConfig,
   McpStatus,
+  McpToolCallResult,
+  McpToolDef,
   MessageWithParts,
   PathInfo,
   PermissionReply,
@@ -80,7 +82,7 @@ export class MimoClient extends EventEmitter {
   }
 
   listProjectSessions(directory: string): Promise<SessionInfoFull[]> {
-    return this.json<SessionInfoFull[]>("experimental/session", undefined, { directory, limit: "200" })
+    return this.json<SessionInfoFull[]>("experimental/session", undefined, { directory, limit: "200", excludeSystem: "true" })
   }
 
   listProjects(): Promise<ProjectInfo[]> {
@@ -319,6 +321,14 @@ export class MimoClient extends EventEmitter {
   async removeMcpAuth(name: string, directory?: string): Promise<boolean> {
     await this.json(`mcp/${encodeURIComponent(name)}/auth`, { method: "DELETE" }, { directory })
     return true
+  }
+
+  listMcpTools(server: string, directory: string): Promise<McpToolDef[]> {
+    return this.json<McpToolDef[]>(`mcp/${encodeURIComponent(server)}/tools`, undefined, { directory })
+  }
+
+  callMcpTool(server: string, tool: string, args: Record<string, unknown>, directory: string): Promise<McpToolCallResult> {
+    return this.json<McpToolCallResult>(`mcp/${encodeURIComponent(server)}/tools/call`, { method: "POST", body: JSON.stringify({ tool, arguments: args }) }, { directory })
   }
 
   async questionReply(requestID: string, answers: string[][], directory?: string): Promise<void> {

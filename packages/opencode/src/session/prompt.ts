@@ -79,7 +79,8 @@ import { Shell } from "@/shell/shell"
 import { AppFileSystem } from "@mimo-ai/shared/filesystem"
 import { Truncate } from "@/tool"
 import { decodeDataUrl } from "@/util/data-url"
-import { Process } from "@/util"
+import { Process, Archive } from "@/util"
+import { isArchive, archiveTypeFromMime, archiveTypeFromExt, extMime, isTextExt } from "@/util/media"
 import { Cause, Effect, Exit, Layer, Option, Scope, Context } from "effect"
 import { EffectLogger } from "@/effect"
 import { InstanceState } from "@/effect"
@@ -95,6 +96,8 @@ import { ActorRegistry } from "@/actor/registry"
 import { Metrics } from "@/metrics"
 import { resolveInvocationStyle, type ToolStyleConfig } from "../tool/invocation-style"
 import { shouldAutoDream, shouldAutoDistill, DREAM_TASK, DISTILL_TASK, AUTO_DREAM_TITLE, AUTO_DISTILL_TITLE } from "./auto-dream"
+import fs from "node:fs"
+import crypto from "node:crypto"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1428,6 +1431,119 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         id: part.id ? PartID.make(part.id) : PartID.ascending(),
       })
 
+      const MAX_ARCHIVED_FILES = 20
+      const MAX_ARCHIVED_TEXT_BYTES = 500_000
+
+      const walkDir = (dir: string, base = dir): string[] => {
+        const results: string[] = []
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name)
+          if (entry.isDirectory()) {
+            results.push(...walkDir(full, base))
+          } else if (entry.isFile()) {
+            results.push(full)
+          }
+        }
+        return results
+      }
+
+      const extractArchiveToParts = Effect.fn(
+        "SessionPrompt.extractArchive",
+      )(function* (type: Archive.ArchiveType, dataUrl: string, filename: string, messageID: MessageID, sessionID: SessionID) {
+        const tmpDir = path.join(os.tmpdir(), `aria-arch-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`)
+        let cleanup = () => {
+          try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch { /* best-effort */ }
+        }
+
+        const tmpFile = path.join(tmpDir, filename)
+        fs.mkdirSync(tmpDir, { recursive: true })
+
+        // Decode data URL base64 to bytes
+        const commaIdx = dataUrl.indexOf(",")
+        if (commaIdx === -1) { cleanup(); return null }
+        const base64Body = dataUrl.slice(commaIdx + 1)
+        fs.writeFileSync(tmpFile, Buffer.from(base64Body, "base64"))
+
+        try {
+          yield* Effect.promise(() => Archive.extractArchive(tmpFile, type, tmpDir))
+        } catch (err) {
+          cleanup()
+          const tool = type === "7z" ? "7z" : type === "rar" ? "unrar" : type === "tar" || type === "tar.gz" ? "tar" : type === "gz" ? "Bun.gunzip" : "unzip/Expand-Archive"
+          return [{
+            messageID, sessionID, type: "text" as const, synthetic: true,
+            text: `ERROR: Could not extract "${filename}" (${type}). The extraction tool "${tool}" may not be installed or the archive may be corrupt. Inform the user.`,
+          }]
+        }
+
+        // Walk extracted files (excluding the original archive)
+        const allFiles = walkDir(tmpDir).filter((f) => f !== tmpFile)
+        if (allFiles.length === 0) {
+          cleanup()
+          return [{
+            messageID, sessionID, type: "text" as const, synthetic: true,
+            text: `Archive "${filename}" was extracted but contains no files.`,
+          }]
+        }
+
+        const textParts: Draft<MessageV2.Part>[] = []
+        let bytesInlined = 0
+        let filesInlined = 0
+        const skippedNames: string[] = []
+        const binaryListings: string[] = []
+
+        for (const filePath of allFiles) {
+          const relPath = path.relative(tmpDir, filePath)
+          const basename = path.basename(filePath)
+
+          if (isTextExt(basename)) {
+            if (filesInlined >= MAX_ARCHIVED_FILES || bytesInlined >= MAX_ARCHIVED_TEXT_BYTES) {
+              skippedNames.push(relPath)
+              continue
+            }
+            try {
+              const content = fs.readFileSync(filePath, "utf8")
+              const remaining = MAX_ARCHIVED_TEXT_BYTES - bytesInlined
+              const truncated = content.length > remaining
+              const text = truncated ? content.slice(0, remaining) + `\n... (truncated, ${content.length} bytes total)` : content
+              textParts.push({
+                messageID, sessionID, type: "text" as const, synthetic: true,
+                text: `Called the Read tool with the following input: ${JSON.stringify({ file_path: relPath })}`,
+              })
+              textParts.push({
+                messageID, sessionID, type: "text" as const, synthetic: true,
+                text,
+              })
+              bytesInlined += text.length
+              filesInlined++
+            } catch { /* skip unreadable */ }
+          } else {
+            const stat = fs.statSync(filePath)
+            const mime = extMime(basename)
+            binaryListings.push(`${relPath} (${mime}, ${Math.round(stat.size / 1024)}KB)`)
+          }
+        }
+
+        // Cleanup temp dir now that we've read everything into memory
+        cleanup()
+
+        const summary: string[] = [`Extracted archive: ${filename} (${allFiles.length} files)`]
+
+        if (textParts.length > 0) {
+          summary.push(`Inlined ${filesInlined} text file(s):`)
+        }
+        if (binaryListings.length > 0) {
+          summary.push(`Binary files: ${binaryListings.join(", ")}`)
+        }
+        if (skippedNames.length > 0) {
+          summary.push(`Also contains: ${skippedNames.join(", ")}`)
+        }
+
+        return [
+          { messageID, sessionID, type: "text" as const, synthetic: true, text: summary.join("\n") },
+          ...textParts,
+        ] as Draft<MessageV2.Part>[]
+      })
+
       const resolvePart: (part: PromptInput["parts"][number]) => Effect.Effect<Draft<MessageV2.Part>[]> = Effect.fn(
         "SessionPrompt.resolveUserPart",
       )(function* (part) {
@@ -1505,6 +1621,45 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   },
                   { ...part, messageID: info.id, sessionID: input.sessionID },
                 ]
+              }
+              // Safety net: octet-stream data URLs that decode to valid UTF-8 text
+              // (e.g. .md files misclassified by browser drag-drop) are inlined as text.
+              if (part.mime === "application/octet-stream") {
+                // Check if it's actually an archive by extension first
+                const archType = archiveTypeFromExt(part.filename ?? "")
+                if (archType) {
+                  const extracted = yield* extractArchiveToParts(archType, part.url, part.filename ?? "archive", info.id, input.sessionID)
+                  if (extracted) return extracted
+                }
+                // Not an archive — try UTF-8 text
+                const decoded = decodeDataUrl(part.url)
+                if (decoded && !decoded.includes("\uFFFD")) {
+                  return [
+                    {
+                      messageID: info.id,
+                      sessionID: input.sessionID,
+                      type: "text",
+                      synthetic: true,
+                      text: `Called the Read tool with the following input: ${JSON.stringify({ file_path: part.filename })}`,
+                    },
+                    {
+                      messageID: info.id,
+                      sessionID: input.sessionID,
+                      type: "text",
+                      synthetic: true,
+                      text: decoded,
+                    },
+                    { ...part, mime: "text/plain", messageID: info.id, sessionID: input.sessionID },
+                  ]
+                }
+              }
+              // Archive with proper MIME type
+              if (isArchive(part.mime)) {
+                const archType = archiveTypeFromMime(part.mime) ?? archiveTypeFromExt(part.filename ?? "")
+                if (archType) {
+                  const extracted = yield* extractArchiveToParts(archType, part.url, part.filename ?? "archive", info.id, input.sessionID)
+                  if (extracted) return extracted
+                }
               }
               break
             case "file:": {

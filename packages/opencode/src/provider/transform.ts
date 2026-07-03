@@ -387,7 +387,15 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
       const mime = part.type === "image" ? String(part.image).split(";")[0].replace("data:", "") : part.mediaType
       const filename = part.type === "file" ? part.filename : undefined
       const modality = mimeToModality(mime)
-      if (!modality) return part
+      if (!modality) {
+        // Unrecognized MIME (e.g. application/octet-stream that wasn't inlined as text).
+        // Don't pass opaque binary to the model — it will reject with "unexpected media format".
+        const name = filename ? `"${filename}"` : mime
+        return {
+          type: "text" as const,
+          text: `ERROR: Cannot read ${name} (unsupported file type: ${mime}). Inform the user and suggest they attach the file as text.`,
+        }
+      }
       const supported = modality === "image" ? supportsImageInput(model) : model.capabilities.input[modality]
       if (supported) return part
 

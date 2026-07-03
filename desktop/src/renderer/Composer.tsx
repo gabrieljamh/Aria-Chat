@@ -283,10 +283,30 @@ export function Composer(props: Props) {
 
   const toggleRecord = () => (recording ? stopRecording() : startRecording())
 
+  // Extension-based MIME fallback for drag-drop/paste, mirroring the ATTACH_MIME
+  // table in ipc.ts. Browsers return "" for many text extensions (.md, .ts, etc.).
+  const EXT_MIME: Record<string, string> = {
+    ".md": "text/plain", ".markdown": "text/plain", ".txt": "text/plain", ".log": "text/plain",
+    ".yml": "text/plain", ".yaml": "text/plain", ".toml": "text/plain", ".ini": "text/plain",
+    ".ts": "text/plain", ".tsx": "text/plain", ".js": "text/plain", ".jsx": "text/plain",
+    ".mjs": "text/plain", ".cjs": "text/plain", ".py": "text/plain", ".go": "text/plain",
+    ".rs": "text/plain", ".java": "text/plain", ".c": "text/plain", ".h": "text/plain",
+    ".cpp": "text/plain", ".cs": "text/plain", ".rb": "text/plain", ".php": "text/plain",
+    ".sh": "text/plain", ".css": "text/plain", ".scss": "text/plain", ".sql": "text/plain",
+    ".json": "application/json", ".csv": "text/csv", ".html": "text/html", ".htm": "text/html",
+    ".xml": "text/xml", ".pdf": "application/pdf",
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+    ".webp": "image/webp", ".avif": "image/avif", ".bmp": "image/bmp", ".svg": "image/svg+xml",
+    ".zip": "application/zip", ".tar": "application/x-tar",
+    ".tgz": "application/gzip", ".gz": "application/gzip",
+    ".7z": "application/x-7z-compressed", ".rar": "application/x-rar-compressed",
+  }
+
   const fileToAttachment = (file: File) =>
     new Promise<FileAttachment>((resolve, reject) => {
       const r = new FileReader()
-      r.onload = () => resolve({ filename: file.name, mime: file.type || "application/octet-stream", url: r.result as string })
+      const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
+      r.onload = () => resolve({ filename: file.name, mime: file.type || EXT_MIME[ext] || "application/octet-stream", url: r.result as string })
       r.onerror = () => reject(new Error("read failed"))
       r.readAsDataURL(file)
     })
