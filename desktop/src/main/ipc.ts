@@ -237,7 +237,25 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
   })
   ipcMain.handle("delete-message", async (_e, sessionID: string, messageID: string, directory?: string) => {
     await bootPromise
-    return ensureClient().deleteMessage(sessionID, messageID, directory)
+    const client = ensureClient()
+    // The server rejects message deletes while a turn is in flight (409
+    // Session.BusyError). That gate is correct for clean runs, but it makes it
+    // impossible to clean up a message that *caused* an error — the user clicks
+    // delete, the 409 comes back, the row stays in context for the next turn.
+    // So on a busy conflict, abort the active turn first and then retry the
+    // delete. The renderer relies on this landing so the SSE `message.removed`
+    // event can update local state.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await client.deleteMessage(sessionID, messageID, directory)
+      } catch (err) {
+        const isBusy = err instanceof Error && /\b409\b/.test(err.message)
+        if (!isBusy || attempt > 0) throw err
+        await client.abort(sessionID, directory).catch(() => {})
+        // Give the server a beat to transition to idle before retrying.
+        await new Promise((r) => setTimeout(r, 250))
+      }
+    }
   })
   ipcMain.handle("reply-permission", async (_e, requestID: string, reply: PermissionReply, directory?: string) => {
     await bootPromise
