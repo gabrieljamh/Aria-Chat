@@ -14,6 +14,7 @@ function mimeToModality(mime: string): Modality | undefined {
   if (mime.startsWith("audio/")) return "audio"
   if (mime.startsWith("video/")) return "video"
   if (mime === "application/pdf") return "pdf"
+  if (mime === "application/json" || mime === "text/json") return "text"
   return undefined
 }
 
