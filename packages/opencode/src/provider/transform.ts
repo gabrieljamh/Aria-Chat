@@ -2,19 +2,83 @@ import type { ModelMessage } from "ai"
 import { mergeDeep, unique } from "remeda"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import type { JSONSchema } from "zod/v4/core"
+import fs from "node:fs"
+import path from "node:path"
+import crypto from "node:crypto"
 import type * as Provider from "./provider"
 import type * as ModelsDev from "./models"
 import { iife } from "@/util/iife"
 import { Flag } from "@/flag/flag"
+import { Global } from "@/global"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
+
+const TEXT_MIME_TYPES = new Set<string>([
+  "application/json",
+  "application/xml",
+  "application/javascript",
+  "application/typescript",
+  "application/x-yaml",
+  "application/yaml",
+  "application/x-sh",
+  "application/xhtml+xml",
+  "application/sql",
+  "text/json",
+  "text/plain",
+  "text/markdown",
+  "text/html",
+  "text/css",
+  "text/csv",
+  "text/xml",
+  "text/javascript",
+  "text/typescript",
+  "text/yaml",
+  "text/x-yaml",
+  "text/x-shellscript",
+  "text/tab-separated-values",
+])
+
+// Inline decoded text up to this size (matches tool/truncate MAX_BYTES).
+// Larger text attachments spill to <data>/tool-output/ and the model is told
+// to retrieve the rest with the read tool, so a multi-MB JSON/CSV/YAML
+// attachment can't overflow a request.
+const MAX_INLINE_TEXT_BYTES = 50 * 1024
+
+const MIME_EXTENSIONS: Record<string, string> = {
+  "application/json": ".json",
+  "text/json": ".json",
+  "application/xml": ".xml",
+  "text/xml": ".xml",
+  "application/xhtml+xml": ".xhtml",
+  "application/javascript": ".js",
+  "text/javascript": ".js",
+  "application/typescript": ".ts",
+  "text/typescript": ".ts",
+  "application/x-yaml": ".yaml",
+  "application/yaml": ".yaml",
+  "text/yaml": ".yaml",
+  "text/x-yaml": ".yaml",
+  "application/x-sh": ".sh",
+  "text/x-shellscript": ".sh",
+  "application/sql": ".sql",
+  "text/plain": ".txt",
+  "text/markdown": ".md",
+  "text/html": ".html",
+  "text/css": ".css",
+  "text/csv": ".csv",
+  "text/tab-separated-values": ".tsv",
+}
+
+function mimeExtension(mime: string): string {
+  return MIME_EXTENSIONS[mime] ?? ".txt"
+}
 
 function mimeToModality(mime: string): Modality | undefined {
   if (mime.startsWith("image/")) return "image"
   if (mime.startsWith("audio/")) return "audio"
   if (mime.startsWith("video/")) return "video"
   if (mime === "application/pdf") return "pdf"
-  if (mime === "application/json" || mime === "text/json") return "text"
+  if (TEXT_MIME_TYPES.has(mime)) return "text"
   return undefined
 }
 
@@ -395,6 +459,50 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
         return {
           type: "text" as const,
           text: `ERROR: Cannot read ${name} (unsupported file type: ${mime}). Inform the user and suggest they attach the file as text.`,
+        }
+      }
+      // JSON (application/json, text/json) and other text-typed files aren't a
+      // first-class modality for most providers — the OpenAI/Copilot chat and
+      // responses converters only accept image/* and application/pdf as `file`
+      // parts and throw UnsupportedFunctionalityError for anything else. Decode
+      // and route through as plain text. When the content exceeds
+      // MAX_INLINE_TEXT_BYTES it is spilled to a temp file under
+      // <data>/tool-output/ and replaced with a head preview + a hint telling
+      // the model to retrieve the rest with the read tool — this mirrors the
+      // existing tool-output truncation policy and keeps huge attachments from
+      // blowing past a model's context window.
+      if (modality === "text" && part.type === "file") {
+        const decoded =
+          part.data instanceof URL ? part.data.toString()
+          : typeof part.data === "string" ? part.data
+          : new TextDecoder().decode(part.data)
+        const byteLength = Buffer.byteLength(decoded, "utf-8")
+        if (byteLength <= MAX_INLINE_TEXT_BYTES) {
+          return { type: "text" as const, text: decoded }
+        }
+        const ext = mimeExtension(mime)
+        const dir = path.join(Global.Path.data, "tool-output")
+        const file = path.join(dir, `attachment-${crypto.randomUUID().slice(0, 8)}${ext}`)
+        try {
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(file, decoded)
+        } catch {
+          // If the spill write fails (disk full, permissions), inline anyway —
+          // worst case the request is over-budget, which is recoverable, while
+          // dropping the attachment silently is not.
+          return { type: "text" as const, text: decoded }
+        }
+        const previewBytes = Math.floor(MAX_INLINE_TEXT_BYTES * 0.8)
+        const preview = decoded.slice(0, previewBytes)
+        const name = filename ? `"${filename}"` : `the attachment`
+        return {
+          type: "text" as const,
+          text:
+            `${name} was too large to inline (${byteLength} bytes; ${Math.round(byteLength / 1024)} KB). ` +
+            `Showing the first ${previewBytes} bytes — the full content has been saved to:\n${file}\n\n` +
+            `${preview}\n\n` +
+            `...(truncated, ${byteLength} bytes total) — use the read tool with file_path="${file}" and offset/limit to inspect the rest. ` +
+            `Do NOT read the full file yourself — use Grep to search it or Read with offset/limit for specific sections.`,
         }
       }
       const supported = modality === "image" ? supportsImageInput(model) : model.capabilities.input[modality]
