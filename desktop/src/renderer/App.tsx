@@ -821,7 +821,7 @@ export function App() {
     const serverDir = activeRef.directory
     for (const id of msgsToDelete) {
       const m = state.messages[id]
-      if (m) await window.mimo.deleteMessage(activeSession!, m.info.id, serverDir).catch(() => {})
+      if (m) await window.mimo.deleteMessage(activeSession!, m.info.id, serverDir).catch((e) => console.error("deleteMessage failed", e))
     }
     // Re-send the user's text
     setBusy(true)
@@ -837,7 +837,7 @@ export function App() {
     const serverDir = activeRef.directory
     for (const id of toDelete) {
       const m = state.messages[id]
-      if (m) await window.mimo.deleteMessage(activeSession!, m.info.id, serverDir).catch(() => {})
+      if (m) await window.mimo.deleteMessage(activeSession!, m.info.id, serverDir).catch((e) => console.error("deleteMessage failed", e))
     }
   }, [activeRef, activeSession, state.order, state.messages])
 
@@ -851,7 +851,7 @@ export function App() {
     const serverDir = activeRef.directory
     for (const id of toDelete) {
       const m = state.messages[id]
-      if (m) await window.mimo.deleteMessage(activeSession!, m.info.id, serverDir).catch(() => {})
+      if (m) await window.mimo.deleteMessage(activeSession!, m.info.id, serverDir).catch((e) => console.error("deleteMessage failed", e))
     }
     // Send the edited text
     sendPrompt(newText)
