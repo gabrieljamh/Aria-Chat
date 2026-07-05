@@ -215,6 +215,8 @@ export function TaskerTab(props: Props) {
                       message={state.messages[id]}
                       showDots={state.busy}
                       busy={state.busy}
+                      actorVersion={state.actorVersion}
+                      actors={state.actors}
                       onDelete={props.onDeleteMessage}
                       onRegen={props.onRegenMessage}
                       onContinueFrom={props.onContinueFrom}

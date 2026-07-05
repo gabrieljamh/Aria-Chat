@@ -140,19 +140,27 @@ export function App() {
   const prevQCount = useRef(0)
   const prevBusy = useRef(state.busy)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const busyRef = useRef(state.busy)
+  busyRef.current = state.busy
   const chatTitle = activeRef?.title ?? "Chat"
   useEffect(() => {
     const wasBusy = prevBusy.current
     prevBusy.current = state.busy
     if (idleTimer.current) { clearTimeout(idleTimer.current); idleTimer.current = null }
     if (wasBusy && !state.busy) {
+      const busyAtSchedule = busyRef.current
       window.mimo.getSetting("notifIdle").then((enabled) => {
         if (enabled === false) return
+        if (busyRef.current !== busyAtSchedule) return
         window.mimo.getSetting("notifIdleDelay").then((delay) => {
+          if (busyRef.current !== busyAtSchedule) return
           const ms = typeof delay === "number" ? delay * 1000 : 3000
           const title = `Aria Chat \u2014 ${chatTitle}`
           const body = "Aria has finished working on your request, come take a look!"
-          idleTimer.current = setTimeout(() => { window.mimo.notify(title, body) }, ms)
+          idleTimer.current = setTimeout(() => {
+            if (busyRef.current !== busyAtSchedule) return
+            window.mimo.notify(title, body)
+          }, ms)
         })
       })
     }

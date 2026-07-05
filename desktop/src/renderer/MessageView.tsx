@@ -4,7 +4,7 @@ import { DiffView } from "./DiffView"
 import { WriteView } from "./WriteView"
 import { ReadView } from "./ReadView"
 import type { MessageWithParts, Part } from "@shared/types"
-import type { ConvMessage } from "./useConversation"
+import type { ConvMessage, ActorState } from "./useConversation"
 import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork, IconChevronDown, IconChevronRight, IconCopy } from "./Icons"
 import { Markdown } from "./Markdown"
 
@@ -118,7 +118,7 @@ function SubagentMessageRow({ msg }: { msg: MessageWithParts }) {
   )
 }
 
-function ActorToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
+function ActorToolView({ part, actorVersion, actors }: { part: Extract<Part, { type: "tool" }>; actorVersion: number; actors: Record<string, ActorState> }) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<MessageWithParts[]>([])
   const [loading, setLoading] = useState(false)
@@ -135,7 +135,11 @@ function ActorToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
     const sessionId = String(metadata.sessionId ?? metadata.session_id ?? part.sessionID ?? "")
     const model = metadata.model ? String(metadata.model) : undefined
 
-    const isRunning = status === "running" || status === "pending"
+    const liveActor = actorId ? actors[actorId] : undefined
+    const liveStatus = liveActor?.status ?? undefined
+    const liveTurnCount = liveActor?.turnCount ?? 0
+
+    const isRunning = status === "running" || status === "pending" || liveStatus === "running" || liveStatus === "pending"
     const typeLabel = (subagentType ?? "general").charAt(0).toUpperCase() + (subagentType ?? "general").slice(1)
 
     const loadLog = useCallback(async () => {
@@ -152,7 +156,7 @@ function ActorToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
 
     useEffect(() => {
       if (open && actorId && sessionId) loadLog()
-    }, [open, actorId, sessionId, loadLog])
+    }, [open, actorId, sessionId, loadLog, actorVersion])
 
     if (action !== "run" && action !== "spawn") {
       const controlLabel = action === "status" ? "Checking status"
@@ -177,12 +181,13 @@ function ActorToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
           <span className="actor-icon">{isRunning ? "⏳" : status === "completed" ? "✓" : status === "error" ? "✗" : "│"}</span>
           <span className="tool-name">{typeLabel} Task — {description}</span>
           {!open && !isRunning && messages.length > 0 && <span className="actor-badge">{messages.length} msgs · {toolCount} tools</span>}
+          {!open && isRunning && liveActor && <span className="actor-badge">{liveTurnCount} turns</span>}
           {model && <span className="actor-model">{model}</span>}
           <span className={`tool-status ${status}`}>{isRunning ? "running" : status}</span>
         </div>
         {isRunning && (
           <div className="actor-live-hint">
-            <span className="actor-pulse" /> Subagent is working…
+            <span className="actor-pulse" /> {liveActor?.stuck ? `Stuck: ${liveActor.stuck.description}` : "Subagent is working…"}
           </div>
         )}
         {open && (
@@ -245,7 +250,7 @@ function ToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
   )
 }
 
-function PartView({ part }: { part: Part }) {
+function PartView({ part, actorVersion, actors }: { part: Part; actorVersion: number; actors: Record<string, ActorState> }) {
   switch (part.type) {
     case "text":
       return (part as any).text ? (
@@ -259,7 +264,7 @@ function PartView({ part }: { part: Part }) {
       ) : null
     case "tool":
       return (part as Extract<Part, { type: "tool" }>).tool === "actor"
-        ? <ActorToolView part={part as Extract<Part, { type: "tool" }>} />
+        ? <ActorToolView part={part as Extract<Part, { type: "tool" }>} actorVersion={actorVersion} actors={actors} />
         : <ToolView part={part as Extract<Part, { type: "tool" }>} />
     case "file":
       return (
@@ -421,13 +426,15 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
   )
 }
 
-export function MessageView({ message, showDots, busy, ...actions }: MsgActions & { message: ConvMessage; showDots?: boolean; busy?: boolean }) {
+export function MessageView({ message, showDots, busy, actorVersion, actors, ...actions }: MsgActions & { message: ConvMessage; showDots?: boolean; busy?: boolean; actorVersion?: number; actors?: Record<string, ActorState> }) {
   const role = message.info.role
   const isUser = role === "user"
   const textParts = message.parts.filter((p) => p.type === "text" && (p as any).text && !(p as any).synthetic)
   const hasContent = message.parts.some(
     (p) => (p.type === "text" || p.type === "reasoning") && (p as any).text || p.type === "tool" || p.type === "file",
   )
+  const _actorVersion = actorVersion ?? 0
+  const _actors = actors ?? {}
   const [editMode, setEditMode] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
@@ -450,7 +457,7 @@ export function MessageView({ message, showDots, busy, ...actions }: MsgActions 
     if (compactionPart && !body && fileParts.length === 0) {
       return (
         <div className="msg user">
-          <PartView part={compactionPart} />
+          <PartView part={compactionPart} actorVersion={_actorVersion} actors={_actors} />
         </div>
       )
       // Don't show footers for compaction-only messages — they're system-generated.
@@ -524,7 +531,7 @@ export function MessageView({ message, showDots, busy, ...actions }: MsgActions 
           )
         ) : (
           <>
-            {message.parts.map((p) => <PartView key={p.id} part={p} />)}
+            {message.parts.map((p) => <PartView key={p.id} part={p} actorVersion={_actorVersion} actors={_actors} />)}
             {extractErrorMessage(message.info) && (
               <div className="error-message">
                 {extractErrorMessage(message.info)}

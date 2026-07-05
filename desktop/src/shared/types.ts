@@ -156,6 +156,9 @@ export type ServerEvent =
   | { type: "session.status"; properties: { sessionID: string; status: SessionStatusInfo } }
   | { type: "session.updated"; properties: { info: SessionInfo } }
   | { type: "session.error"; properties: { sessionID?: string; error?: unknown } }
+  | { type: "actor.registered"; properties: { sessionID: string; actorID: string; mode: string; parentActorID?: string; description: string; agent: string; background: boolean } }
+  | { type: "actor.status"; properties: { sessionID: string; actorID: string; status: string; lastOutcome?: string; turnCount: number; lastTurnTime: number; error?: string } }
+  | { type: "actor.stuck"; properties: { sessionID: string; actorID: string; description: string; lastTurnTime: number; stuckDuration: number } }
 
 // Transport-level event: any of the known events above, or some other event
 // type the server emits that this UI does not specifically handle. The known

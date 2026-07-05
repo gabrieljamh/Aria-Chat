@@ -13,6 +13,19 @@ export interface QuestionState {
   tool?: QuestionInfo["tool"]
 }
 
+export interface ActorState {
+  actorID: string
+  status: string
+  lastOutcome?: string
+  turnCount: number
+  lastTurnTime: number
+  error?: string
+  description?: string
+  agent?: string
+  background?: boolean
+  stuck?: { description: string; stuckDuration: number }
+}
+
 export interface State {
   order: string[]
   messages: Record<string, ConvMessage>
@@ -21,6 +34,8 @@ export interface State {
   files: string[]
   permissions: Permission[]
   questions: QuestionState[]
+  actors: Record<string, ActorState>
+  actorVersion: number
   busy: boolean
   loading: boolean
   error: string | null
@@ -35,6 +50,8 @@ const empty: State = {
   files: [],
   permissions: [],
   questions: [],
+  actors: {},
+  actorVersion: 0,
   busy: false,
   loading: false,
   error: null,
@@ -230,6 +247,56 @@ function reducer(state: State, action: Action): State {
           }
           return { ...state, busy: false, error: stringifyError(err) }
         }
+        case "actor.registered": {
+          const p = e.properties as any
+          const actor: ActorState = {
+            actorID: p.actorID,
+            status: "running",
+            turnCount: 0,
+            lastTurnTime: Date.now(),
+            description: p.description,
+            agent: p.agent,
+            background: p.background,
+          }
+          return {
+            ...state,
+            actors: { ...state.actors, [p.actorID]: actor },
+            actorVersion: state.actorVersion + 1,
+          }
+        }
+        case "actor.status": {
+          const p = e.properties as any
+          const existing = state.actors[p.actorID]
+          if (!existing) return state
+          const actor: ActorState = {
+            ...existing,
+            status: p.status,
+            lastOutcome: p.lastOutcome,
+            turnCount: p.turnCount,
+            lastTurnTime: p.lastTurnTime,
+            error: p.error,
+            stuck: undefined,
+          }
+          return {
+            ...state,
+            actors: { ...state.actors, [p.actorID]: actor },
+            actorVersion: state.actorVersion + 1,
+          }
+        }
+        case "actor.stuck": {
+          const p = e.properties as any
+          const existing = state.actors[p.actorID]
+          if (!existing) return state
+          const actor: ActorState = {
+            ...existing,
+            stuck: { description: p.description, stuckDuration: p.stuckDuration },
+          }
+          return {
+            ...state,
+            actors: { ...state.actors, [p.actorID]: actor },
+            actorVersion: state.actorVersion + 1,
+          }
+        }
         default:
           return state
       }
@@ -402,7 +469,10 @@ export function useConversation(
         t === "permission.asked" ||
         t === "question.asked" ||
         t === "question.replied" ||
-        t === "question.rejected"
+        t === "question.rejected" ||
+        t === "actor.registered" ||
+        t === "actor.status" ||
+        t === "actor.stuck"
       ) {
         populatedRef.current = true
       }
