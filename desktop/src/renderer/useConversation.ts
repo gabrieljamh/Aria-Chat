@@ -287,7 +287,12 @@ function stringifyError(error: unknown): string {
   }
 }
 
-export function useConversation(sessionID: string | null, directory?: string | null, since?: number) {
+export function useConversation(
+  sessionID: string | null,
+  directory?: string | null,
+  since?: number,
+  onAgentSync?: (agent: string) => void,
+) {
   const [state, dispatch] = useReducer(reducer, empty)
   const sessionRef = useRef(sessionID)
   sessionRef.current = sessionID
@@ -295,6 +300,8 @@ export function useConversation(sessionID: string | null, directory?: string | n
   directoryRef.current = directory
   const sinceRef = useRef(since)
   sinceRef.current = since
+  const onAgentSyncRef = useRef(onAgentSync)
+  onAgentSyncRef.current = onAgentSync
   const populatedRef = useRef(false)
   const populatedForRef = useRef<string | null>(null)
 
@@ -377,6 +384,13 @@ export function useConversation(sessionID: string | null, directory?: string | n
       const evtSession = eventSessionId(event)
       if (evtSession && evtSession !== sid) return
       const t = event.type
+      // Sync agent mode dropdown when server changes agent (slash command / tool)
+      if (t === "message.updated") {
+        const info = (event as any).properties?.info
+        if (info?.role === "user" && typeof info.agent === "string" && info.agent) {
+          onAgentSyncRef.current?.(info.agent)
+        }
+      }
       if (
         t === "message.updated" ||
         t === "message.part.updated" ||
