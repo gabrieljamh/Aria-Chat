@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess, spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { existsSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs"
+import { dirname, join, relative, sep } from "node:path"
 import { EventEmitter } from "node:events"
 import type { ServerStatus } from "@shared/types"
 import { sanitizeGlobalConfig } from "./ipc"
@@ -108,8 +108,6 @@ export class ServerManager extends EventEmitter {
   /** Spawn the child, health-check it, and mark ready. Shared by start + restart. */
   private async bringUp(port: number): Promise<ServerHandle> {
     this.lastStartAt = Date.now()
-    // Sanitize global config before server reads it (removes undefined values)
-    await sanitizeGlobalConfig()
     const url = await this.spawn(port)
     // The "listening on" line means the HTTP server is up, but confirm it
     // actually answers /global/health before declaring ready. This also catches
@@ -163,6 +161,130 @@ export class ServerManager extends EventEmitter {
     return null
   }
 
+  /**
+   * Dev-mode optimization: build a native `mimo` binary once and cache it,
+   * rebuilding only when server sources change. Hashes all .ts/.tsx files
+   * under packages/opencode/src/ (mtime+size) plus key config files; if the
+   * hash matches a cached binary, returns it instantly. Otherwise runs
+   * `bun build:dev` to produce a fresh binary and updates the cache.
+   */
+  private async ensureDevBinary(repoRoot: string): Promise<string | null> {
+    if (!this.which("bun")) return null
+
+    const cacheDir = join(repoRoot, "desktop", ".server-cache")
+    const binName = process.platform === "win32" ? "mimo.exe" : "mimo"
+    const cachedBin = join(cacheDir, binName)
+    const hashFile = join(cacheDir, "hash.json")
+    const srcDir = join(repoRoot, "packages", "opencode", "src")
+
+    // Files whose changes should trigger a rebuild
+    const trackedConfigs = [
+      join(repoRoot, "packages", "opencode", "package.json"),
+      join(repoRoot, "packages", "opencode", "tsconfig.json"),
+      join(repoRoot, "packages", "opencode", "script", "build.ts"),
+    ]
+
+    // Compute hash of all source files (mtime + size proxy)
+    const entries: string[] = []
+    const walk = (dir: string) => {
+      let items: import("node:fs").Dirent[]
+      try {
+        items = readdirSync(dir, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const item of items) {
+        const full = join(dir, item.name)
+        if (item.isDirectory()) {
+          if (item.name === "node_modules" || item.name === "dist" || item.name === ".artifacts") continue
+          walk(full)
+        } else if (item.isFile() && (item.name.endsWith(".ts") || item.name.endsWith(".tsx"))) {
+          try {
+            const stat = statSync(full)
+            entries.push(`${relative(repoRoot, full).replace(/\\/g, "/")}|${stat.mtimeMs}|${stat.size}`)
+          } catch {
+            /* skip unreadable */
+          }
+        }
+      }
+    }
+    walk(srcDir)
+    for (const cfg of trackedConfigs) {
+      if (!existsSync(cfg)) continue
+      try {
+        const stat = statSync(cfg)
+        entries.push(`${relative(repoRoot, cfg).replace(/\\/g, "/")}|${stat.mtimeMs}|${stat.size}`)
+      } catch {
+        /* skip */
+      }
+    }
+    entries.sort()
+    const hash = entries.join("\n")
+
+    // Check cache
+    try {
+      const cached = JSON.parse(readFileSync(hashFile, "utf-8"))
+      if (cached.hash === hash && existsSync(cachedBin)) {
+        return cachedBin
+      }
+    } catch {
+      /* no cache or corrupt — rebuild */
+    }
+
+    // Rebuild
+    this.setStatus({ state: "starting", message: "Rebuilding server binary (sources changed)..." })
+    console.log("[mimo-server] server sources changed, rebuilding binary...")
+    const buildCwd = join(repoRoot, "packages", "opencode")
+    try {
+      const result = spawnSync("bun", ["run", "build:dev"], {
+        cwd: buildCwd,
+        stdio: "pipe",
+        encoding: "utf-8",
+        timeout: 120_000,
+      })
+      if (result.status !== 0) {
+        console.error("[mimo-server] build failed:", result.stderr || result.stdout)
+        return null
+      }
+    } catch (err) {
+      console.error("[mimo-server] build error:", err)
+      return null
+    }
+
+    // Find the built binary — output dir is dist/mimocode-<os>-<arch>/bin/mimo[.exe]
+    const distDir = join(buildCwd, "dist")
+    const osName = process.platform === "win32" ? "windows" : process.platform
+    const expectedDir = `mimocode-${osName}-${process.arch}`
+    const builtBin = join(distDir, expectedDir, "bin", binName)
+
+    if (!existsSync(builtBin)) {
+      // Search dist/ for any matching binary
+      try {
+        for (const sub of readdirSync(distDir, { withFileTypes: true })) {
+          if (!sub.isDirectory()) continue
+          const candidate = join(distDir, sub.name, "bin", binName)
+          if (existsSync(candidate)) {
+            mkdirSync(cacheDir, { recursive: true })
+            copyFileSync(candidate, cachedBin)
+            writeFileSync(hashFile, JSON.stringify({ hash, built: Date.now() }))
+            console.log("[mimo-server] binary rebuilt + cached")
+            return cachedBin
+          }
+        }
+      } catch {
+        /* fall through */
+      }
+      console.error("[mimo-server] could not find built binary in dist/")
+      return null
+    }
+
+    mkdirSync(cacheDir, { recursive: true })
+    copyFileSync(builtBin, cachedBin)
+    writeFileSync(hashFile, JSON.stringify({ hash, built: Date.now() }))
+    console.log("[mimo-server] binary rebuilt + cached")
+    return cachedBin
+  }
+
   private spawn(port: number): Promise<string> {
     const repoRoot = this.findRepoRoot()
     // In a portable distribution there is no repo root — prefer the bundled
@@ -178,43 +300,46 @@ export class ServerManager extends EventEmitter {
       return Promise.reject(new Error(message))
     }
 
-    // Prefer bun (the repo's runtime). Fall back to an installed `opencode`/
-    // `mimocode` binary if bun is unavailable.
-    let command: string
-    let args: string[]
-    // Default cwd is the repo root, but Bun must run with cwd =
-    // packages/opencode so it picks up that package's tsconfig
-    // (jsxImportSource: solid-js) and node_modules. Running from the repo root
-    // makes Bun compile the TUI's .tsx with React's jsx-dev-runtime, which is
-    // not installed -> "Cannot find module 'react/jsx-dev-runtime'".
-    let cwd = repoRoot
-    if (this.which("bun")) {
-      command = "bun"
-      cwd = join(repoRoot, "packages", "opencode")
-      args = [
-        "run",
-        "--conditions=browser",
-        join("src", "index.ts"),
-        "serve",
-        "--hostname",
-        "127.0.0.1",
-        "--port",
-        String(port),
-      ]
-      return this.spawnBinary(command, args, cwd)
-    } else if (this.which("opencode")) {
-      command = "opencode"
-      args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)]
-      return this.spawnBinary(command, args, cwd)
-    } else if (this.which("mimocode")) {
-      command = "mimocode"
-      args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)]
-      return this.spawnBinary(command, args, cwd)
-    } else {
-      const message = "Neither `bun` nor an `opencode`/`mimocode` binary was found on PATH."
-      this.setStatus({ state: "error", message })
-      return Promise.reject(new Error(message))
-    }
+    // Dev mode: try to use a cached/rebuilt native binary before falling
+    // back to JIT-compiling with `bun run src/index.ts`. The native binary
+    // starts in ~1s vs 5-15s for a cold JIT compile.
+    return this.ensureDevBinary(repoRoot).then((devBin) => {
+      if (devBin) {
+        return this.spawnBinary(devBin, ["serve", "--hostname", "127.0.0.1", "--port", String(port)], repoRoot)
+      }
+
+      // Fall back to JIT-compile path if bun is available
+      let command: string
+      let args: string[]
+      let cwd = repoRoot
+      if (this.which("bun")) {
+        command = "bun"
+        cwd = join(repoRoot, "packages", "opencode")
+        args = [
+          "run",
+          "--conditions=browser",
+          join("src", "index.ts"),
+          "serve",
+          "--hostname",
+          "127.0.0.1",
+          "--port",
+          String(port),
+        ]
+        return this.spawnBinary(command, args, cwd)
+      } else if (this.which("opencode")) {
+        command = "opencode"
+        args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)]
+        return this.spawnBinary(command, args, cwd)
+      } else if (this.which("mimocode")) {
+        command = "mimocode"
+        args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)]
+        return this.spawnBinary(command, args, cwd)
+      } else {
+        const message = "Neither `bun` nor an `opencode`/`mimocode` binary was found on PATH."
+        this.setStatus({ state: "error", message })
+        return Promise.reject(new Error(message))
+      }
+    })
   }
 
   /** Spawn the actual child process and wire up stdout/stderr promise. */

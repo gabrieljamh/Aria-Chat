@@ -438,7 +438,7 @@ export interface PromptInput {
 }
 
 export type ServerStatus =
-  | { state: "starting" }
+  | { state: "starting"; message?: string }
   | { state: "ready"; url: string }
   | { state: "error"; message: string }
   | { state: "stopped" }
