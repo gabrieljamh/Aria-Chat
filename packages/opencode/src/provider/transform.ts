@@ -38,11 +38,13 @@ const TEXT_MIME_TYPES = new Set<string>([
   "text/tab-separated-values",
 ])
 
-// Inline decoded text up to this size (matches tool/truncate MAX_BYTES).
-// Larger text attachments spill to <data>/tool-output/ and the model is told
-// to retrieve the rest with the read tool, so a multi-MB JSON/CSV/YAML
-// attachment can't overflow a request.
-const MAX_INLINE_TEXT_BYTES = 50 * 1024
+// Inline decoded text up to this size. Larger text attachments spill to
+// <data>/tool-output/ and the model is told to retrieve the rest with the
+// read tool, so a truly huge JSON/CSV/YAML attachment can't overflow a
+// request. Raised from 50KB to 10MB so typical RPG/worldbuilding JSONs
+// reach the model inline without a read-tool roundtrip; the model context
+// window is the practical ceiling anyway.
+const MAX_INLINE_TEXT_BYTES = 10 * 1024 * 1024
 
 const MIME_EXTENSIONS: Record<string, string> = {
   "application/json": ".json",
