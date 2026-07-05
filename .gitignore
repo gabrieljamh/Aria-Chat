@@ -30,6 +30,7 @@ UPCOMING_CHANGELOG.md
 logs/
 *.bun-build
 tsconfig.tsbuildinfo
+*.tsbuildinfo
 .dev-home/
 
 # Local agent harness state
@@ -45,3 +46,13 @@ experiment/last-outcome.json
 
 /mimoapi/
 /packages/opencode/src/ext
+
+# Aditional study files
+.study/
+
+# Local session/planning artifacts
+desktop/src/renderer/system-prompt.txt
+mimocode.json
+packages/opencode/mimocode.json
+scheduled-prompts-plan.md
+tasker-rework-plan.md

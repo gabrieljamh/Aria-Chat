@@ -131,7 +131,9 @@ export function App() {
   const activeDir = activeRef?.directory ?? null
   const taskerProjectDir = activeRef?.directory ?? coworkDir
 
-  const { state, setBusy, setError, setCurrentSession } = useConversation(activeSession, activeDir, activeRef?.createdAt)
+  const { state, setBusy, setError, setCurrentSession } = useConversation(activeSession, activeDir, activeRef?.createdAt, (agent) => {
+    if (agent && agent !== agentName) setAgentName(agent)
+  })
 
   // Desktop notifications for: approval needed, question asked, idle after busy
   const prevPermCount = useRef(0)
