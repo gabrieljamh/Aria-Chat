@@ -130,6 +130,16 @@ const api: MimoApi = {
   getRunningProcesses: () => ipcRenderer.invoke("get-running-processes") as Promise<import("@shared/types").RunningProcess[]>,
   killProcess: (pid: number) => ipcRenderer.invoke("kill-process", pid) as Promise<boolean>,
   schedulerRunNow: (ruleId: string) => ipcRenderer.invoke("scheduler-run-now", ruleId) as Promise<boolean>,
+
+  // PTY + interactive bash
+  ptyCreateAndConnect: (req) => ipcRenderer.invoke("pty-create-and-connect", req) as Promise<import("@shared/types").PtyInfo>,
+  ptyInput: (ptyId, data) => ipcRenderer.invoke("pty-input", ptyId, data) as Promise<boolean>,
+  ptyResize: (ptyId, cols, rows) => ipcRenderer.invoke("pty-resize", ptyId, cols, rows) as Promise<boolean>,
+  ptyAbort: (ptyId) => ipcRenderer.invoke("pty-abort", ptyId) as Promise<boolean>,
+  ptyForceReply: (ptyId, exitCode) => ipcRenderer.invoke("pty-force-reply", ptyId, exitCode) as Promise<boolean>,
+  bashInteractiveList: () => ipcRenderer.invoke("bash-interactive-list") as Promise<import("@shared/types").BashInteractiveRequest[]>,
+  onPtyOutput: (cb) => sub<{ id: string; data: string }>("pty-output", cb),
+  onPtyExit: (cb) => sub<{ id: string; exitCode: number }>("pty-exit", cb),
 }
 
 contextBridge.exposeInMainWorld("mimo", api)

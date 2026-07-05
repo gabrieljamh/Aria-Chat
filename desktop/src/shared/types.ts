@@ -159,12 +159,43 @@ export type ServerEvent =
   | { type: "actor.registered"; properties: { sessionID: string; actorID: string; mode: string; parentActorID?: string; description: string; agent: string; background: boolean } }
   | { type: "actor.status"; properties: { sessionID: string; actorID: string; status: string; lastOutcome?: string; turnCount: number; lastTurnTime: number; error?: string } }
   | { type: "actor.stuck"; properties: { sessionID: string; actorID: string; description: string; lastTurnTime: number; stuckDuration: number } }
+  | { type: "bash.interactive.asked"; properties: { id: string; command: string; cwd: string; env?: Record<string, string>; description: string } }
+  | { type: "bash.interactive.replied"; properties: { id: string; output: string; exitCode: number } }
+  | { type: "pty.exited"; properties: { id: string; exitCode: number } }
 
 // Transport-level event: any of the known events above, or some other event
 // type the server emits that this UI does not specifically handle. The known
 // union (ServerEvent) preserves discriminated-union narrowing in reducers;
 // unknown types fall through to a runtime default case.
 export type AnyServerEvent = ServerEvent | { type: string; properties: Record<string, unknown> }
+
+export interface PtyInfo {
+  id: string
+  title: string
+  command: string
+  args: string[]
+  cwd: string
+  status: "running" | "exited"
+  pid: number
+}
+
+export interface PtyConnectToken {
+  ticket: string
+  expires_in: number
+}
+
+export interface BashInteractiveRequest {
+  id: string
+  command: string
+  cwd: string
+  env?: Record<string, string>
+  description: string
+}
+
+export interface BashInteractiveReply {
+  output: string
+  exitCode: number
+}
 
 /* --------------------------- REST resource types ------------------------- */
 
@@ -579,6 +610,16 @@ export interface MimoApi {
   getRunningProcesses(): Promise<RunningProcess[]>
   killProcess(pid: number): Promise<boolean>
   schedulerRunNow(ruleId: string): Promise<boolean>
+
+  // PTY + interactive bash
+  ptyCreateAndConnect(req: BashInteractiveRequest): Promise<PtyInfo>
+  ptyInput(ptyId: string, data: string): Promise<boolean>
+  ptyResize(ptyId: string, cols: number, rows: number): Promise<boolean>
+  ptyAbort(ptyId: string): Promise<boolean>
+  ptyForceReply(ptyId: string, exitCode: number): Promise<boolean>
+  bashInteractiveList(): Promise<BashInteractiveRequest[]>
+  onPtyOutput(cb: (payload: { id: string; data: string }) => void): () => void
+  onPtyExit(cb: (payload: { id: string; exitCode: number }) => void): () => void
 }
 
 declare global {

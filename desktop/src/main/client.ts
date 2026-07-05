@@ -4,6 +4,8 @@ import { join } from "node:path"
 import type {
   AgentInfo,
   AuthInfo,
+  BashInteractiveReply,
+  BashInteractiveRequest,
   CommandInput,
   ConfigPatch,
   McpConfig,
@@ -16,6 +18,8 @@ import type {
   ProjectInfo,
   PromptInput,
   ProvidersResponse,
+  PtyConnectToken,
+  PtyInfo,
   ServerEvent,
   SessionInfo,
   SessionInfoFull,
@@ -52,9 +56,18 @@ export class MimoClient extends EventEmitter {
     if (query) {
       for (const [k, v] of Object.entries(query)) {
         if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, v)
-      }
+        }
     }
     return u.toString()
+  }
+
+  buildWsUrl(path: string, query?: Record<string, string | undefined>): string {
+    const http = this.url(path, query)
+    return http.replace(/^http/, "ws")
+  }
+
+  getAuthHeader(): string | null {
+    return this.authHeader
   }
 
   private async json<T>(path: string, init?: RequestInit, query?: Record<string, string | undefined>): Promise<T> {
@@ -344,6 +357,40 @@ export class MimoClient extends EventEmitter {
       `question/${encodeURIComponent(requestID)}/reject`,
       { method: "POST", body: "{}" },
       { directory },
+    )
+  }
+
+  /* --------------------------------- PTY -------------------------------- */
+
+  ptyCreate(input: { command?: string; args?: string[]; cwd?: string; title?: string; env?: Record<string, string> }): Promise<PtyInfo> {
+    return this.json<PtyInfo>("pty", { method: "POST", body: JSON.stringify(input) })
+  }
+
+  ptyDelete(id: string): Promise<boolean> {
+    return this.json<boolean>(`pty/${encodeURIComponent(id)}`, { method: "DELETE" })
+  }
+
+  async ptyConnectToken(id: string): Promise<PtyConnectToken> {
+    return this.json<PtyConnectToken>(
+      `pty/${encodeURIComponent(id)}/connect-token`,
+      { method: "POST", headers: { "x-mimocode-ticket": "1" } },
+    )
+  }
+
+  ptyResize(id: string, cols: number, rows: number): Promise<PtyInfo> {
+    return this.json<PtyInfo>(`pty/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ size: { cols, rows } }) })
+  }
+
+  /* --------------------------- bash interactive --------------------------- */
+
+  bashInteractiveList(): Promise<BashInteractiveRequest[]> {
+    return this.json<BashInteractiveRequest[]>("bash-interactive")
+  }
+
+  bashInteractiveReply(id: string, reply: BashInteractiveReply): Promise<boolean> {
+    return this.json<boolean>(
+      `bash-interactive/${encodeURIComponent(id)}/reply`,
+      { method: "POST", body: JSON.stringify(reply) },
     )
   }
 

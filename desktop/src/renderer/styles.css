@@ -4699,3 +4699,90 @@ button {
 }
 .editor-delete:hover { color: var(--danger); background: rgba(255,59,48,0.08); }
 .editor-delete.confirm { color: var(--danger); background: rgba(255,59,48,0.12); font-weight: 600; }
+
+/* --------------------------- Terminal Modal --------------------------- */
+.terminal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 200;
+}
+.terminal-modal {
+  display: flex;
+  flex-direction: column;
+  width: 820px;
+  max-width: calc(100vw - 40px);
+  height: 540px;
+  max-height: 86vh;
+  background: #0e1013;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: #15181d;
+  border-bottom: 1px solid #252a32;
+  flex-shrink: 0;
+}
+.terminal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.terminal-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.terminal-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #353a44;
+  border-radius: 6px;
+  background: #1a1d23;
+  color: #d4d4d4;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.terminal-btn:hover { background: #252a34; }
+.terminal-btn.abort { color: #ff6b6b; border-color: #5a2d2d; }
+.terminal-btn.abort:hover { background: rgba(255,107,107,0.08); }
+.terminal-btn.send { color: #51cf66; border-color: #2d5a3a; }
+.terminal-btn.send:hover { background: rgba(81,207,102,0.08); }
+.terminal-btn.close { padding: 4px 8px; }
+.terminal-command {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  padding: 6px 14px;
+  background: #111418;
+  color: #888;
+  border-bottom: 1px solid #1e2228;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+.terminal-body {
+  flex: 1;
+  min-height: 0;
+  background: #0e1013;
+  padding: 4px 8px;
+  overflow: hidden;
+}
+.terminal-body .xterm {
+  height: 100%;
+}
+.terminal-body .xterm-viewport {
+  background-color: #0e1013 !important;
+}

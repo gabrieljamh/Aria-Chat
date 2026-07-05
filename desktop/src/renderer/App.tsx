@@ -7,6 +7,7 @@ import type {
   ModelRef,
   PermissionReply,
   ProjectInfo,
+  PtyInfo,
   ProvidersResponse,
   RegistryKind,
   ServerStatus,
@@ -19,6 +20,7 @@ import { TaskerTab } from "./TaskerTab"
 import { SchedulerMode } from "./SchedulerMode"
 import { SettingsModal } from "./SettingsModal"
 import { FileViewer } from "./FileViewer"
+import { TerminalModal } from "./TerminalModal"
 import { Splash } from "./Splash"
 import { CustomServerModal } from "./CustomServerModal"
 import { generateGreeting, generateSuggestions, type Suggestion } from "./generate"
@@ -100,6 +102,9 @@ export function App() {
   const [brandMenuOpen, setBrandMenuOpen] = useState(false)
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
 
+  // Interactive bash terminal
+  const [ptyInfo, setPtyInfo] = useState<PtyInfo | null>(null)
+
   // registries
   const [chats, setChats] = useState<ChatRef[]>([])
   const [cowork, setCowork] = useState<ChatRef[]>([])
@@ -134,6 +139,39 @@ export function App() {
   const { state, setBusy, setError, setCurrentSession } = useConversation(activeSession, activeDir, activeRef?.createdAt, (agent) => {
     if (agent && agent !== agentName) setAgentName(agent)
   })
+
+  // Interactive bash: spawn PTY when a bash.interactive.asked event arrives
+  useEffect(() => {
+    if (!state.bashInteractiveRequest) return
+    const req = state.bashInteractiveRequest
+    // Abort any existing PTY first
+    if (ptyInfo) {
+      window.mimo.ptyAbort(ptyInfo.id)
+      setPtyInfo(null)
+    }
+    window.mimo
+      .ptyCreateAndConnect(req)
+      .then((info) => setPtyInfo(info))
+      .catch((err) => console.error("[App] Failed to spawn interactive PTY:", err))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.bashInteractiveRequest])
+
+  // Auto-close terminal when PTY exits (for cases where pty.exit IPC fires)
+  // The TerminalModal's own onPtyExit handler calls onClose, so we just
+  // need to clear state when it closes.
+  const closeTerminal = useCallback(() => {
+    setPtyInfo(null)
+  }, [])
+
+  const abortTerminal = useCallback((ptyId: string) => {
+    window.mimo.ptyAbort(ptyId)
+    setPtyInfo(null)
+  }, [])
+
+  const sendCloseTerminal = useCallback((ptyId: string) => {
+    window.mimo.ptyForceReply(ptyId, 0)
+    setPtyInfo(null)
+  }, [])
 
   // Desktop notifications for: approval needed, question asked, idle after busy
   const prevPermCount = useRef(0)
@@ -1088,6 +1126,16 @@ export function App() {
       )}
 
       {viewerPath && <FileViewer path={viewerPath} onClose={() => setViewerPath(null)} />}
+
+      {state.bashInteractiveRequest && ptyInfo && (
+        <TerminalModal
+          request={state.bashInteractiveRequest}
+          ptyInfo={ptyInfo}
+          onAbort={abortTerminal}
+          onSendClose={sendCloseTerminal}
+          onClose={closeTerminal}
+        />
+      )}
     </div>
   )
 }

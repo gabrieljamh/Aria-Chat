@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from "react"
-import type { MessageInfo, Part, Permission, QuestionInfo, ServerEvent, SessionStatusInfo, TaskInfo, Todo } from "@shared/types"
+import type { BashInteractiveRequest, MessageInfo, Part, Permission, QuestionInfo, ServerEvent, SessionStatusInfo, TaskInfo, Todo } from "@shared/types"
 
 export interface ConvMessage {
   info: MessageInfo
@@ -39,6 +39,7 @@ export interface State {
   busy: boolean
   loading: boolean
   error: string | null
+  bashInteractiveRequest: BashInteractiveRequest | null
   _subagentMsgIds: Set<string>
 }
 
@@ -55,6 +56,7 @@ const empty: State = {
   busy: false,
   loading: false,
   error: null,
+  bashInteractiveRequest: null,
   _subagentMsgIds: new Set(),
 }
 
@@ -296,6 +298,20 @@ function reducer(state: State, action: Action): State {
             actors: { ...state.actors, [p.actorID]: actor },
             actorVersion: state.actorVersion + 1,
           }
+        }
+        case "bash.interactive.asked": {
+          const p = e.properties as any
+          const req: BashInteractiveRequest = {
+            id: p.id,
+            command: p.command,
+            cwd: p.cwd,
+            env: p.env,
+            description: p.description,
+          }
+          return { ...state, bashInteractiveRequest: req }
+        }
+        case "bash.interactive.replied": {
+          return { ...state, bashInteractiveRequest: null }
         }
         default:
           return state

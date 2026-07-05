@@ -3,6 +3,7 @@ import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import { MimoClient } from "./client"
+import { PtyManager } from "./pty-manager"
 import {
   createChatSandbox,
   deleteSandbox,
@@ -20,7 +21,7 @@ import { ServerManager } from "./server"
 import { getStore } from "./store"
 import { Scheduler, loadRules, saveRules } from "./scheduler"
 import { allowPreviewRoot } from "./preview"
-import type { AuthInfo, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo, SessionInfoFull, ProjectInfo, SchedulerRule } from "@shared/types"
+import type { AuthInfo, BashInteractiveReply, BashInteractiveRequest, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo, SessionInfoFull, ProjectInfo, SchedulerRule } from "@shared/types"
 
 // Sanitize config: remove undefined values from cost/limit objects that cause validation errors
 function sanitizeConfig(obj: any): any {
@@ -118,6 +119,8 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
     await client?.disposeInstance().catch(() => {})
   }
 
+  let ptyManager: PtyManager | null = null
+
   // (Re)build the SSE/REST client against whatever URL the server is now on.
   // Used on first boot, after an automatic restart, and after a manual reconnect.
   const wireClient = () => {
@@ -125,7 +128,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
     const url = server.getUrl()
     if (!url) return
     client = new MimoClient(url, server.getCredentials())
-    client.on("event", (event) => broadcast("server-event", event))
+    ptyManager = new PtyManager(client, broadcast)
+    client.on("event", (event) => {
+      // Route pty.exited to the PtyManager for auto-reply
+      if (event.type === "pty.exited" && ptyManager?.hasPty(event.properties.id)) {
+        ptyManager.handlePtyExited(event.properties.id, event.properties.exitCode)
+      }
+      broadcast("server-event", event)
+    })
     client.on("sse-state", (state) => broadcast("sse-state", state))
     client.startEventStream()
   }
@@ -699,6 +709,33 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
   ipcMain.handle("get-running-processes", () => scheduler?.getRunningProcesses() ?? [])
   ipcMain.handle("kill-process", (_e, pid: number) => scheduler?.killProcess(pid) ?? false)
   ipcMain.handle("scheduler-run-now", (_e, ruleId: string) => scheduler?.runNow(ruleId) ?? false)
+
+  /* ------------------------- PTY + interactive bash ------------------------ */
+  ipcMain.handle("pty-create-and-connect", async (_e, req: BashInteractiveRequest) => {
+    await bootPromise
+    if (!ptyManager) throw new Error("PTY manager not ready")
+    return ptyManager.spawnForBashRequest(req)
+  })
+  ipcMain.handle("pty-input", (_e, ptyId: string, data: string) => {
+    ptyManager?.sendInput(ptyId, data)
+    return true
+  })
+  ipcMain.handle("pty-resize", async (_e, ptyId: string, cols: number, rows: number) => {
+    await ptyManager?.resize(ptyId, cols, rows)
+    return true
+  })
+  ipcMain.handle("pty-abort", async (_e, ptyId: string) => {
+    await ptyManager?.abort(ptyId)
+    return true
+  })
+  ipcMain.handle("pty-force-reply", async (_e, ptyId: string, exitCode: number) => {
+    await ptyManager?.forceReply(ptyId, exitCode)
+    return true
+  })
+  ipcMain.handle("bash-interactive-list", async () => {
+    await bootPromise
+    return ensureClient().bashInteractiveList()
+  })
 
   return {
     dispose() {
