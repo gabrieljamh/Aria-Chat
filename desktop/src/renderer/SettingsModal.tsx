@@ -224,6 +224,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [videoModel, setVideoModel] = useState("")
   const [homeRedirect, setHomeRedirect] = useState(false)
   const [homeModel, setHomeModel] = useState("")
+  const [webAgentMode, setWebAgentMode] = useState(false)
   const customModels = useCustomModels()
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [editModelKey, setEditModelKey] = useState<string | null>(null) // "providerID/modelID"
@@ -310,6 +311,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       const m = v as { providerID?: string; modelID?: string } | null
       if (m?.providerID && m?.modelID) setVisionModel(`${m.providerID}/${m.modelID}`)
     })
+    window.mimo.getSetting("webAgentMode").then((v) => setWebAgentMode(v === true))
   }, [])
 
   const toggleVisionRedirect = () => {
@@ -386,6 +388,14 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     setHomeModel(value)
     const [providerID, ...rest] = value.split("/")
     window.mimo.setSetting("homeModel", { providerID, modelID: rest.join("/") }).catch(() => {})
+  }
+
+  const toggleWebAgentMode = () => {
+    setWebAgentMode((v) => {
+      const next = !v
+      window.mimo.setSetting("webAgentMode", next).catch(() => {})
+      return next
+    })
   }
 
   // ---- compact redirect ----
@@ -1396,6 +1406,20 @@ const saveEditModel = async () => {
                 </div>
               )}
 
+              <div className="settings-row" onClick={toggleWebAgentMode} role="button">
+                <div className="settings-row-info">
+                  <div className="settings-row-title">Web Agent Mode <span className="badge-exp">experimental</span></div>
+                  <div className="settings-row-desc">Enable the Web Agent tab for autonomous browser-based AI tasks.</div>
+                </div>
+                <button
+                  type="button"
+                  className={"toggle" + (webAgentMode ? " on" : "")}
+                  aria-pressed={webAgentMode}
+                  onClick={(e) => { e.stopPropagation(); toggleWebAgentMode() }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
 
             </>
           )}

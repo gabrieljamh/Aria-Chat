@@ -94,6 +94,7 @@ export function App() {
   const [coworkRightCollapsed, setCoworkRightCollapsed] = useState(false)
   const [schedulerRightCollapsed, setSchedulerRightCollapsed] = useState(false)
   const [webAgentRightCollapsed, setWebAgentRightCollapsed] = useState(false)
+  const [webAgentMode, setWebAgentMode] = useState(false)
   // AI-generated home-screen content (per tab, cached for the app session).
   const [aiGreetings, setAiGreetings] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState(false)
@@ -235,6 +236,7 @@ export function App() {
   useEffect(() => {
     window.mimo.getSetting("aiGreetings").then((v) => setAiGreetings(v === true))
     window.mimo.getSetting("aiSuggestions").then((v) => setAiSuggestions(v === true))
+    window.mimo.getSetting("webAgentMode").then((v) => setWebAgentMode(v === true))
     window.mimo.getSetting("userName").then((v) => setUserName(typeof v === "string" ? v : ""))
     window.mimo.getSetting("accentHue").then((hv) => {
       const n = typeof hv === "number" ? hv : 0
@@ -984,7 +986,7 @@ export function App() {
           )}
           <span className="brand-logo brand-logo-aria-text" dangerouslySetInnerHTML={{ __html: ariaTextRaw }} />
           <div className="tabs-pill">
-            {(["chat", "cowork", "scheduler", "webagent"] as Tab[]).map((t) => (
+            {(["chat", "cowork", "scheduler", "webagent"] as Tab[]).filter((t) => t !== "webagent" || webAgentMode).map((t) => (
               <button
                 key={t}
                 className={tab === t ? "active" : ""}
