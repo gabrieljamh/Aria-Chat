@@ -7,10 +7,13 @@ const shared = { "@shared": resolve(__dirname, "src/shared") }
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: ["ws", "strip-ansi"] })],
-    resolve: { alias: shared },
+    resolve: {
+      alias: shared,
+    },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, "src/main/index.ts") },
+        external: ["bufferutil", "utf-8-validate"],
       },
     },
   },
