@@ -6,7 +6,7 @@ const shared = { "@shared": resolve(__dirname, "src/shared") }
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: ["ws", "strip-ansi"] })],
     resolve: { alias: shared },
     build: {
       rollupOptions: {
