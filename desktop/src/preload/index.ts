@@ -27,6 +27,9 @@ import type {
   TaskInfo,
   FileDiff,
   Todo,
+  WebAgentBounds,
+  WebAgentEvent,
+  WebAgentState,
 } from "@shared/types"
 
 const sub = <T>(channel: string, cb: (payload: T) => void): (() => void) => {
@@ -140,6 +143,16 @@ const api: MimoApi = {
   bashInteractiveList: () => ipcRenderer.invoke("bash-interactive-list") as Promise<import("@shared/types").BashInteractiveRequest[]>,
   onPtyOutput: (cb) => sub<{ id: string; data: string }>("pty-output", cb),
   onPtyExit: (cb) => sub<{ id: string; exitCode: number }>("pty-exit", cb),
+
+  // Web Agent
+  webagentCreateView: (sessionId, url) => ipcRenderer.invoke("webagent:create-view", sessionId, url) as Promise<void>,
+  webagentAttachView: (sessionId) => ipcRenderer.invoke("webagent:attach-view", sessionId) as Promise<void>,
+  webagentDetachView: (sessionId) => ipcRenderer.invoke("webagent:detach-view", sessionId) as Promise<void>,
+  webagentDestroyView: (sessionId) => ipcRenderer.invoke("webagent:destroy-view", sessionId) as Promise<void>,
+  webagentSetBounds: (bounds: WebAgentBounds) => ipcRenderer.invoke("webagent:set-bounds", bounds) as Promise<void>,
+  webagentNavigate: (sessionId, url) => ipcRenderer.invoke("webagent:navigate", sessionId, url) as Promise<void>,
+  webagentGetState: (sessionId) => ipcRenderer.invoke("webagent:get-state", sessionId) as Promise<WebAgentState>,
+  onWebagentEvent: (cb) => sub<WebAgentEvent>("webagent:event", cb),
 }
 
 contextBridge.exposeInMainWorld("mimo", api)

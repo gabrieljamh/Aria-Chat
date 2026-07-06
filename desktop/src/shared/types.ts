@@ -398,11 +398,8 @@ export interface CustomModel {
 
 /* ------------------------- Chat / Tasker registry ------------------------ */
 // The internal key "cowork" is used for the Tasker mode (formerly Cowork).
-export type RegistryKind = "chats" | "cowork"
+export type RegistryKind = "chats" | "cowork" | "webagent"
 
-// A persisted chat (Chat mode) or task (Tasker mode, internal key "cowork").
-// Chat-mode chats run in an isolated sandbox under AppData;
-// Tasker tasks run in a user-picked project.
 export interface ChatRef {
   id: string
   sessionID: string
@@ -411,6 +408,31 @@ export interface ChatRef {
   mode: RegistryKind
   createdAt: number
   updatedAt: number
+}
+
+export interface WebAgentRef extends ChatRef {
+  url?: string
+}
+
+export interface WebAgentState {
+  url: string | null
+  title: string
+  loading: boolean
+}
+
+export interface WebAgentEvent {
+  sessionId: string
+  type: "title" | "navigate" | "loading"
+  url?: string
+  title?: string
+  loading?: boolean
+}
+
+export interface WebAgentBounds {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface FileText {
@@ -620,6 +642,16 @@ export interface MimoApi {
   bashInteractiveList(): Promise<BashInteractiveRequest[]>
   onPtyOutput(cb: (payload: { id: string; data: string }) => void): () => void
   onPtyExit(cb: (payload: { id: string; exitCode: number }) => void): () => void
+
+  // Web Agent
+  webagentCreateView(sessionId: string, url?: string): Promise<void>
+  webagentAttachView(sessionId: string): Promise<void>
+  webagentDetachView(sessionId: string): Promise<void>
+  webagentDestroyView(sessionId: string): Promise<void>
+  webagentSetBounds(bounds: WebAgentBounds): Promise<void>
+  webagentNavigate(sessionId: string, url: string): Promise<void>
+  webagentGetState(sessionId: string): Promise<WebAgentState>
+  onWebagentEvent(cb: (event: WebAgentEvent) => void): () => void
 }
 
 declare global {
