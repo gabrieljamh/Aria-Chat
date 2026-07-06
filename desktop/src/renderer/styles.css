@@ -4786,3 +4786,293 @@ button {
 .terminal-body .xterm-viewport {
   background-color: #0e1013 !important;
 }
+
+/* ── Web Agent Mode ── */
+.webagent-layout {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  overflow: hidden;
+}
+.webagent-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.webagent-sidebar-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.webagent-new-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+.webagent-new-btn:hover {
+  opacity: 0.9;
+}
+.webagent-session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+.webagent-session-card {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+.webagent-session-card:hover {
+  background: var(--hover);
+}
+.webagent-session-card.active {
+  background: var(--accent-dim, rgba(79, 158, 255, 0.15));
+}
+.webagent-session-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.webagent-session-url {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.webagent-session-time {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.webagent-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.webagent-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  height: 40px;
+  flex-shrink: 0;
+}
+.webagent-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.webagent-nav-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+.webagent-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.webagent-url-input {
+  flex: 1;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 8px;
+  background: var(--input-bg, #0e1013);
+  color: var(--text);
+  font-size: 13px;
+}
+.webagent-url-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.webagent-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.webagent-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.webagent-status-dot.idle {
+  background: #4ade80;
+}
+.webagent-status-dot.working {
+  background: #fb923c;
+  animation: webagent-pulse 1.2s ease-in-out infinite;
+}
+@keyframes webagent-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.webagent-viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+.webagent-control-lock {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  pointer-events: auto;
+  z-index: 10;
+  cursor: not-allowed;
+}
+.webagent-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  text-align: center;
+  gap: 4px;
+}
+
+.webagent-chat {
+  width: 360px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.webagent-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  height: 40px;
+  flex-shrink: 0;
+}
+.webagent-autonomous {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.webagent-autonomous input {
+  cursor: pointer;
+}
+.webagent-chat-header button {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+}
+.webagent-message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.webagent-message {
+  margin-bottom: 12px;
+}
+.webagent-message-role {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  text-transform: capitalize;
+}
+.webagent-message-text {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.webagent-message-tool {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin: 4px 0;
+  font-size: 12px;
+}
+.webagent-tool-name {
+  font-family: monospace;
+  color: var(--accent);
+}
+.webagent-tool-output {
+  margin-top: 4px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.webagent-chat-empty {
+  color: var(--text-dim);
+  text-align: center;
+  padding: 40px 20px;
+  font-size: 13px;
+}
+.webagent-composer {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.webagent-composer textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--input-bg, #0e1013);
+  color: var(--text);
+  font-size: 13px;
+  resize: none;
+  font-family: inherit;
+}
+.webagent-composer textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.webagent-composer textarea:disabled {
+  opacity: 0.5;
+}
+.webagent-composer button {
+  margin-top: 6px;
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+.webagent-composer button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.webagent-composer button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

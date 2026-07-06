@@ -18,6 +18,7 @@ import { ChatTab } from "./ChatTab"
 // TaskerTab is the renamed CoworkTab (old internal name: "cowork")
 import { TaskerTab } from "./TaskerTab"
 import { SchedulerMode } from "./SchedulerMode"
+import { WebAgentMode } from "./WebAgentMode"
 import { SettingsModal } from "./SettingsModal"
 import { FileViewer } from "./FileViewer"
 import { TerminalModal } from "./TerminalModal"
@@ -29,7 +30,7 @@ import type { FileAttachment } from "@shared/types"
 import ariaLogoRaw from "@shared/img/aria-logo.svg?raw"
 import ariaTextRaw from "@shared/img/aria-text.svg?raw"
 
-type Tab = "chat" | "cowork" | "scheduler" // "cowork" = Tasker mode internal key
+type Tab = "chat" | "cowork" | "scheduler" | "webagent" // "cowork" = Tasker mode internal key
 
 async function resolveHomeModel(): Promise<ModelRef | null | undefined> {
   const on = await window.mimo.getSetting("homeRedirect").catch(() => null)
@@ -92,6 +93,7 @@ export function App() {
   const [chatRightCollapsed, setChatRightCollapsed] = useState(true)
   const [coworkRightCollapsed, setCoworkRightCollapsed] = useState(false)
   const [schedulerRightCollapsed, setSchedulerRightCollapsed] = useState(false)
+  const [webAgentRightCollapsed, setWebAgentRightCollapsed] = useState(false)
   // AI-generated home-screen content (per tab, cached for the app session).
   const [aiGreetings, setAiGreetings] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState(false)
@@ -982,13 +984,13 @@ export function App() {
           )}
           <span className="brand-logo brand-logo-aria-text" dangerouslySetInnerHTML={{ __html: ariaTextRaw }} />
           <div className="tabs-pill">
-            {(["chat", "cowork", "scheduler"] as Tab[]).map((t) => (
+            {(["chat", "cowork", "scheduler", "webagent"] as Tab[]).map((t) => (
               <button
                 key={t}
                 className={tab === t ? "active" : ""}
                 onClick={() => setTab(t)}
               >
-                {t === "chat" ? "Chat" : t === "cowork" ? "Tasker" : "Scheduler"}
+                {t === "chat" ? "Chat" : t === "cowork" ? "Tasker" : t === "scheduler" ? "Scheduler" : "Web Agent"}
               </button>
             ))}
           </div>
@@ -1109,6 +1111,14 @@ export function App() {
             suggestions={genSuggest.scheduler ?? null}
             aiHome={aiGreetings || aiSuggestions}
             onRegenerate={regenerateHome}
+          />
+        )}
+        {tab === "webagent" && (
+          <WebAgentMode
+            collapsed={collapsed}
+            rightCollapsed={webAgentRightCollapsed}
+            onToggleCollapse={() => setCollapsed((c) => !c)}
+            onToggleRight={() => setWebAgentRightCollapsed((c) => !c)}
           />
         )}
       </div>
