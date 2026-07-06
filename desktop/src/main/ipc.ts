@@ -6,6 +6,7 @@ import { MimoClient } from "./client"
 import { PtyManager } from "./pty-manager"
 import {
   createChatSandbox,
+  createWebAgentSandbox,
   deleteSandbox,
   ensureProjectMarker,
   getRegistry,
@@ -593,6 +594,8 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
 
   /* ----- workspaces / registries ----------------------- */
   ipcMain.handle("chat-create-sandbox", () => createChatSandbox())
+
+  ipcMain.handle("webagent-create-sandbox", () => createWebAgentSandbox())
   ipcMain.handle("ensure-project-marker", (_e, directory: string) => ensureProjectMarker(directory))
   ipcMain.handle("registry-get", (_e, kind: RegistryKind) => getRegistry(kind))
   ipcMain.handle("registry-save", (_e, kind: RegistryKind, items: ChatRef[]) => saveRegistry(kind, items))

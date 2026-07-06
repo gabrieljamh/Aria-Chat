@@ -20,7 +20,7 @@ import { join } from "node:path"
 
 // Tasker mode uses the internal key "cowork" (legacy name). This is NOT renamed
 // because it's the registry kind used in JSON storage and IPC; the UI label is "Tasker".
-export type RegistryKind = "chats" | "cowork"
+export type RegistryKind = "chats" | "cowork" | "webagent"
 
 export interface ChatRef {
   id: string
@@ -38,9 +38,14 @@ function chatsRoot(): string {
 function projectsRoot(): string {
   return join(app.getPath("userData"), "projects")
 }
+function webagentRoot(): string {
+  return join(app.getPath("userData"), "webagent")
+}
 
 function registryFile(kind: RegistryKind): string {
-  return kind === "chats" ? join(chatsRoot(), "ChatsList.json") : join(projectsRoot(), "ProjectsList.json")
+  if (kind === "chats") return join(chatsRoot(), "ChatsList.json")
+  if (kind === "webagent") return join(webagentRoot(), "WebAgentList.json")
+  return join(projectsRoot(), "ProjectsList.json")
 }
 
 function ensureDir(dir: string) {
@@ -66,6 +71,16 @@ export function createChatSandbox(): { id: string; directory: string } {
   return { id, directory }
 }
 
+/** Create a fresh isolated sandbox for a new Web Agent session. */
+export function createWebAgentSandbox(): { id: string; directory: string } {
+  ensureDir(webagentRoot())
+  const id = randomUUID()
+  const directory = join(webagentRoot(), id)
+  ensureDir(directory)
+  ensureProjectMarker(directory)
+  return { id, directory }
+}
+
 export function getRegistry(kind: RegistryKind): ChatRef[] {
   const file = registryFile(kind)
   const bak = file + ".bak"
@@ -84,7 +99,7 @@ export function getRegistry(kind: RegistryKind): ChatRef[] {
 
 export function saveRegistry(kind: RegistryKind, items: ChatRef[]) {
   const file = registryFile(kind)
-  const root = kind === "chats" ? chatsRoot() : projectsRoot()
+  const root = kind === "chats" ? chatsRoot() : kind === "webagent" ? webagentRoot() : projectsRoot()
   ensureDir(root)
   try {
     // Back up previous file before writing the new one.

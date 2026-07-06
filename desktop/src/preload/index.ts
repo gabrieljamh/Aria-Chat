@@ -145,6 +145,7 @@ const api: MimoApi = {
   onPtyExit: (cb) => sub<{ id: string; exitCode: number }>("pty-exit", cb),
 
   // Web Agent
+  webagentCreateSandbox: () => ipcRenderer.invoke("webagent-create-sandbox") as Promise<{ id: string; directory: string }>,
   webagentCreateView: (sessionId, url) => ipcRenderer.invoke("webagent:create-view", sessionId, url) as Promise<void>,
   webagentAttachView: (sessionId) => ipcRenderer.invoke("webagent:attach-view", sessionId) as Promise<void>,
   webagentDetachView: (sessionId) => ipcRenderer.invoke("webagent:detach-view", sessionId) as Promise<void>,

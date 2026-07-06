@@ -644,6 +644,7 @@ export interface MimoApi {
   onPtyExit(cb: (payload: { id: string; exitCode: number }) => void): () => void
 
   // Web Agent
+  webagentCreateSandbox(): Promise<{ id: string; directory: string }>
   webagentCreateView(sessionId: string, url?: string): Promise<void>
   webagentAttachView(sessionId: string): Promise<void>
   webagentDetachView(sessionId: string): Promise<void>
