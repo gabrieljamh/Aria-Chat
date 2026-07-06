@@ -407,6 +407,9 @@ const InfoSchema = Schema.Struct({
         description:
           "Max mode (experimental): the 'max' agent runs N parallel reasoning candidates each step, picks the best via a judge call, and executes only the winner.",
       }),
+      webAgent: Schema.optional(Schema.Boolean).annotate({
+        description: "Enable the Web Agent mode — an embedded browser where an AI agent can see and interact with web pages autonomously.",
+      }),
     }),
   ),
   workflow: Schema.optional(
