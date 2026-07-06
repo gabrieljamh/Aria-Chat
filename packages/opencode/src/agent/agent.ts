@@ -15,6 +15,7 @@ import PROMPT_DISTILL from "./prompt/distill.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_WEBAGENT from "./prompt/webagent.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -155,6 +156,53 @@ export const layer = Layer.effect(
                   ),
                   mode: "primary" as const,
                   native: true,
+                },
+              }
+            : {}),
+          ...(cfg.experimental?.webAgent
+            ? {
+                webagent: {
+                  name: "webagent",
+                  color: "#4a9eff",
+                  description:
+                    "Web Agent mode. Autonomous web browsing agent that can see and interact with web pages through an embedded browser.",
+                  prompt: PROMPT_WEBAGENT,
+                  options: {},
+                  permission: Permission.merge(
+                    defaults,
+                    Permission.fromConfig({
+                      question: "allow",
+                      "browser.navigate": "allow",
+                      "browser.screenshot": "allow",
+                      "browser.getdom": "allow",
+                      "browser.scroll": "allow",
+                      "browser.copy": "allow",
+                      "browser.click": "ask",
+                      "browser.type": "ask",
+                      "browser.keystrokes": "ask",
+                      "browser.drag": "ask",
+                      "browser.paste": "ask",
+                    }),
+                    user,
+                  ),
+                  mode: "primary" as const,
+                  native: true,
+                  steps: 50,
+                  toolAllowlist: [
+                    "browser.navigate",
+                    "browser.screenshot",
+                    "browser.getdom",
+                    "browser.click",
+                    "browser.type",
+                    "browser.keystrokes",
+                    "browser.scroll",
+                    "browser.drag",
+                    "browser.copy",
+                    "browser.paste",
+                    "read",
+                    "write",
+                    "memory",
+                  ],
                 },
               }
             : {}),
