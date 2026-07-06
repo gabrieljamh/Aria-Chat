@@ -31,6 +31,17 @@ import { LspTool } from "./lsp"
 import * as Truncate from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
 import { ChangeDirectoryTool } from "./change-directory"
+import { BrowserNavigate } from "./browser/navigate"
+import { BrowserScreenshot } from "./browser/screenshot"
+import { BrowserGetDom } from "./browser/getdom"
+import { BrowserClick } from "./browser/click"
+import { BrowserType } from "./browser/type"
+import { BrowserKeystrokes } from "./browser/keystrokes"
+import { BrowserScroll } from "./browser/scroll"
+import { BrowserDrag } from "./browser/drag"
+import { BrowserCopy } from "./browser/copy"
+import { BrowserPaste } from "./browser/paste"
+import { BrowserBridge, BrowserBridgeLive } from "./browser-bridge"
 import { Glob } from "@mimo-ai/shared/util/glob"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -143,6 +154,17 @@ export const layer = Layer.effect(
     const memorytool = yield* MemoryTool
     const tasktool = yield* TaskTool
     const workflowtool = yield* WorkflowTool
+
+    const browserNavigate = yield* BrowserNavigate
+    const browserScreenshot = yield* BrowserScreenshot
+    const browserGetdom = yield* BrowserGetDom
+    const browserClick = yield* BrowserClick
+    const browserType = yield* BrowserType
+    const browserKeystrokes = yield* BrowserKeystrokes
+    const browserScroll = yield* BrowserScroll
+    const browserDrag = yield* BrowserDrag
+    const browserCopy = yield* BrowserCopy
+    const browserPaste = yield* BrowserPaste
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -230,6 +252,16 @@ export const layer = Layer.effect(
           history: Tool.init(historytool),
           task: Tool.init(tasktool),
           workflow: Tool.init(workflowtool),
+          browserNavigate: Tool.init(browserNavigate),
+          browserScreenshot: Tool.init(browserScreenshot),
+          browserGetdom: Tool.init(browserGetdom),
+          browserClick: Tool.init(browserClick),
+          browserType: Tool.init(browserType),
+          browserKeystrokes: Tool.init(browserKeystrokes),
+          browserScroll: Tool.init(browserScroll),
+          browserDrag: Tool.init(browserDrag),
+          browserCopy: Tool.init(browserCopy),
+          browserPaste: Tool.init(browserPaste),
         })
 
         return {
@@ -258,6 +290,20 @@ export const layer = Layer.effect(
             tool.history,
             tool.task,
             ...(Flag.MIMOCODE_EXPERIMENTAL_WORKFLOW_TOOL ? [tool.workflow] : []),
+            ...(Flag.MIMOCODE_EXPERIMENTAL_WEB_AGENT
+              ? [
+                  tool.browserNavigate,
+                  tool.browserScreenshot,
+                  tool.browserGetdom,
+                  tool.browserClick,
+                  tool.browserType,
+                  tool.browserKeystrokes,
+                  tool.browserScroll,
+                  tool.browserDrag,
+                  tool.browserCopy,
+                  tool.browserPaste,
+                ]
+              : []),
           ],
           actor: tool.actor,
           read: tool.read,
@@ -393,7 +439,7 @@ export const layer = Layer.effect(
 
     return Service.of({ ids, all, named, tools, reload })
   }),
-)
+).pipe(Layer.provide(BrowserBridgeLive))
 
 export const defaultLayer = Layer.suspend(() =>
   layer.pipe(
