@@ -3,12 +3,15 @@ import { join } from "node:path"
 import { registerIpc } from "./ipc"
 import { registerPreviewScheme, registerPreviewProtocol } from "./preview"
 import { migrateProjectsList } from "./workspaces"
+import { browserManager } from "./browser-manager"
+import { startBrowserServer } from "./browser-server"
 
 // Must be registered before the app is ready.
 registerPreviewScheme()
 
 let mainWindow: BrowserWindow | null = null
 let ipc: { dispose(): void } | null = null
+let browserServer: { url: string; port: number; secret: string } | null = null
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
@@ -55,6 +58,11 @@ function createWindow() {
 
   win.on("ready-to-show", () => win.show())
 
+  win.on("resize", () => {
+    const [w, h] = win.getContentSize()
+    browserManager.setBounds({ x: 0, y: 40, width: w, height: Math.max(0, h - 40 - 200) })
+  })
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: "deny" }
@@ -84,8 +92,10 @@ app.whenReady().then(() => {
   })
   registerPreviewProtocol()
   migrateProjectsList()
+  browserServer = startBrowserServer()
   ipc = registerIpc(() => mainWindow)
   createWindow()
+  browserManager.setWindow(mainWindow!)
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -98,4 +108,9 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   ipc?.dispose()
+  browserManager.destroyAll()
 })
+
+export function getBrowserServerUrl(): string | null {
+  return browserServer?.url ?? null
+}

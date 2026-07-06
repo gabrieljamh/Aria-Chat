@@ -6,6 +6,7 @@ import { EventEmitter } from "node:events"
 import type { ServerStatus } from "@shared/types"
 import { sanitizeGlobalConfig } from "./ipc"
 import { getStore } from "./store"
+import { getBrowserServerUrl } from "./index"
 
 /**
  * Manages the MiMo Code local server: either attaches to an already-running
@@ -368,6 +369,8 @@ export class ServerManager extends EventEmitter {
         MIMOCODE_SERVER_USERNAME: "mimocode",
         MIMOCODE_SERVER_PASSWORD: password,
         MIMOCODE_DISABLE_GIT: "1",
+        MIMOCODE_EXPERIMENTAL_WEB_AGENT: "1",
+        MIMOCODE_WEB_AGENT_BRIDGE: getBrowserServerUrl() ?? "",
         GIT_USERNAME: githubUsername,
         GIT_PASSWORD: githubToken,
       },

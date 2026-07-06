@@ -21,6 +21,7 @@ import { ServerManager } from "./server"
 import { getStore } from "./store"
 import { Scheduler, loadRules, saveRules } from "./scheduler"
 import { allowPreviewRoot } from "./preview"
+import { browserManager } from "./browser-manager"
 import type { AuthInfo, BashInteractiveReply, BashInteractiveRequest, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo, SessionInfoFull, ProjectInfo, SchedulerRule } from "@shared/types"
 
 // Sanitize config: remove undefined values from cost/limit objects that cause validation errors
@@ -735,6 +736,41 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
   ipcMain.handle("bash-interactive-list", async () => {
     await bootPromise
     return ensureClient().bashInteractiveList()
+  })
+
+  // ── Web Agent IPC handlers ──
+  ipcMain.handle("webagent:create-view", (_e, sessionId: string, url?: string) => {
+    browserManager.create(sessionId, url)
+  })
+
+  ipcMain.handle("webagent:attach-view", (_e, sessionId: string) => {
+    browserManager.attach(sessionId)
+  })
+
+  ipcMain.handle("webagent:detach-view", (_e, sessionId: string) => {
+    browserManager.detach(sessionId)
+  })
+
+  ipcMain.handle("webagent:destroy-view", (_e, sessionId: string) => {
+    browserManager.destroy(sessionId)
+  })
+
+  ipcMain.handle("webagent:set-bounds", (_e, bounds: { x: number; y: number; width: number; height: number }) => {
+    browserManager.setBounds(bounds)
+  })
+
+  ipcMain.handle("webagent:navigate", (_e, sessionId: string, url: string) => {
+    browserManager.navigate(sessionId, url)
+  })
+
+  ipcMain.handle("webagent:get-state", (_e, sessionId: string) => {
+    const view = browserManager.getTarget(sessionId)
+    if (!view) return { url: null, title: "", loading: false }
+    return {
+      url: browserManager.getUrl(sessionId),
+      title: browserManager.getTitle(sessionId),
+      loading: browserManager.isLoading(sessionId),
+    }
   })
 
   return {
