@@ -22,6 +22,7 @@ import { Global } from "@/global"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
+import { Flag } from "@/flag/flag"
 import { Effect, Context, Layer } from "effect"
 import { InstanceState } from "@/effect"
 import * as Option from "effect/Option"
@@ -159,7 +160,7 @@ export const layer = Layer.effect(
                 },
               }
             : {}),
-          ...(cfg.experimental?.webAgent
+          ...((cfg.experimental?.webAgent || Flag.MIMOCODE_EXPERIMENTAL_WEB_AGENT)
             ? {
                 webagent: {
                   name: "webagent",

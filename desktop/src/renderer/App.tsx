@@ -12,6 +12,7 @@ import type {
   RegistryKind,
   ServerStatus,
   SessionInfoFull,
+  WebAgentRef,
 } from "@shared/types"
 import { useConversation } from "./useConversation"
 import { ChatTab } from "./ChatTab"
@@ -111,8 +112,10 @@ export function App() {
   // registries
   const [chats, setChats] = useState<ChatRef[]>([])
   const [cowork, setCowork] = useState<ChatRef[]>([])
+  const [webAgentSessions, setWebAgentSessions] = useState<WebAgentRef[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [activeCoworkId, setActiveCoworkId] = useState<string | null>(null)
+  const [activeWebAgentId, setActiveWebAgentId] = useState<string | null>(null)
   const [coworkDir, setCoworkDir] = useState<string | null>(null)
 
   // Tasker mode: project + session tree state (Phase 1 rework)
@@ -128,12 +131,14 @@ export function App() {
   // updated synchronously by `persist`, so every step sees the latest list.
   const chatsRef = useRef<ChatRef[]>([])
   const coworkRef = useRef<ChatRef[]>([])
+  const webAgentRef = useRef<WebAgentRef[]>([])
 
   const activeRef: ChatRef | null = useMemo(() => {
     if (tab === "chat") return chats.find((c) => c.id === activeChatId) ?? null
     if (tab === "cowork") return cowork.find((c) => c.id === activeCoworkId) ?? null
+    if (tab === "webagent") return webAgentSessions.find((s) => s.id === activeWebAgentId) ?? null
     return null
-  }, [tab, chats, cowork, activeChatId, activeCoworkId])
+  }, [tab, chats, cowork, webAgentSessions, activeChatId, activeCoworkId, activeWebAgentId])
 
   const activeSession = activeRef?.sessionID ?? null
   const activeDir = activeRef?.directory ?? null
@@ -328,19 +333,23 @@ export function App() {
     }
     let cancelled = false
     ;(async () => {
-      const [chatList, coworkList, provs, ags] = await Promise.all([
+      const [chatList, coworkList, webAgentList, provs, ags] = await Promise.all([
         window.mimo.getRegistry("chats").catch(() => []),
         window.mimo.getRegistry("cowork").catch(() => []),
+        webAgentMode ? window.mimo.getRegistry("webagent").catch(() => []) : Promise.resolve([]),
         window.mimo.getProviders().catch(() => null),
         window.mimo.getAgents().catch(() => []),
       ])
       if (cancelled) return
       const sortedChats = sortByUpdated(chatList)
       const sortedCowork = sortByUpdated(coworkList)
+      const sortedWebAgents = sortByUpdated(webAgentList)
       chatsRef.current = sortedChats
       coworkRef.current = sortedCowork
+      webAgentRef.current = sortedWebAgents
       setChats(sortedChats)
       setCowork(sortedCowork)
+      setWebAgentSessions(sortedWebAgents)
       setProviders(provs)
       setAgents(ags)
       // Restore the last-used model if we have one; otherwise fall back to the
@@ -640,7 +649,7 @@ export function App() {
           sessionID: finalRef.sessionID,
           text: webSearch ? `${text}\n\n(You may use web search if helpful.)` : text,
           model: turnModel ?? undefined,
-          agent: agentName ?? undefined,
+          agent: tab === "webagent" ? "webagent" : agentName ?? undefined,
           directory: finalRef.directory,
           files,
         })
@@ -1121,6 +1130,39 @@ export function App() {
             rightCollapsed={webAgentRightCollapsed}
             onToggleCollapse={() => setCollapsed((c) => !c)}
             onToggleRight={() => setWebAgentRightCollapsed((c) => !c)}
+            state={state}
+            onSend={sendPrompt}
+            onAbort={abort}
+            sessions={webAgentSessions}
+            activeId={activeWebAgentId}
+            onSelect={(ref) => setActiveWebAgentId(ref.id)}
+            onNew={async () => {
+              const sandbox = await window.mimo.webagentCreateSandbox()
+              const session = await window.mimo.createSession({ directory: sandbox.directory, title: "New Web Agent" })
+              const ref: WebAgentRef = {
+                id: sandbox.id,
+                sessionID: session.id,
+                title: "New Web Agent",
+                directory: sandbox.directory,
+                mode: "webagent",
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              }
+              const updated = [ref, ...webAgentRef.current]
+              webAgentRef.current = updated
+              setWebAgentSessions(updated)
+              await window.mimo.saveRegistry("webagent", updated)
+              setActiveWebAgentId(ref.id)
+            }}
+            onDelete={async (ref) => {
+              await window.mimo.webagentDestroyView(ref.sessionID).catch(() => {})
+              await window.mimo.deleteSession(ref.sessionID, ref.directory).catch(() => {})
+              const updated = webAgentRef.current.filter((s) => s.id !== ref.id)
+              webAgentRef.current = updated
+              setWebAgentSessions(updated)
+              await window.mimo.saveRegistry("webagent", updated)
+              if (activeWebAgentId === ref.id) setActiveWebAgentId(null)
+            }}
           />
         )}
       </div>

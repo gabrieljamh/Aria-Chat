@@ -128,6 +128,7 @@ class BrowserManager {
     if (!sv) return
 
     try {
+      sv.view.setBounds({ x: 0, y: 0, width: 0, height: 0 })
       this.win.removeBrowserView(sv.view)
     } catch {}
 
