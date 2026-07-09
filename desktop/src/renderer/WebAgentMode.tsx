@@ -207,6 +207,12 @@ export function WebAgentMode(props: Props) {
       if (activeSession?.url) {
         window.mimo.webagentNavigate(sid, activeSession.url).catch(() => {})
       }
+    } else {
+      // No active session (New button, or session deleted): clear stale
+      // browser state so showHero can flip back to true instead of being
+      // pinned false by the previously-attached session's URL.
+      setBrowserState({ url: null, title: "", loading: false })
+      setUrlInput("")
     }
     return () => {
       if (attachedRef.current) {
