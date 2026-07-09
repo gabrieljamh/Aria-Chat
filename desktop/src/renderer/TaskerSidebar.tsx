@@ -23,6 +23,8 @@ interface Props {
   onOpenSettings: () => void
   loadingDirs: Set<string>
   registryDirs: string[]
+  // Per-session "still running" busy dot — optional for back-compat.
+  isSessionBusy?: (sid: string | null) => boolean
 }
 
 function basename(p: string): string {
@@ -191,6 +193,7 @@ export function TaskerSidebar(props: Props) {
                   >
                     <IconChat size={12} />
                     <span className="project-session-title">{s.title || "Untitled"}</span>
+                    {props.isSessionBusy?.(s.id) && <span className="session-busy-dot" aria-hidden="true" />}
                   </button>
                   {props.onDeleteSession && (
                     <button

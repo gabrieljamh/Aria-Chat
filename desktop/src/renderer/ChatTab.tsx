@@ -56,6 +56,8 @@ interface Props {
   sessionID?: string | null
   onCompact?: () => void
   onClear?: () => void
+  // Per-session sidebar busy dot — optional, threaded from App.
+  isSessionBusy?: (sid: string | null) => boolean
 }
 
 const STATIC_SUGGESTIONS: Suggestion[] = [
@@ -128,6 +130,7 @@ export function ChatTab(props: Props) {
         onRename={props.onRename}
         onDelete={props.onDelete}
         deleteMessage="This will permanently remove all files in this chat's sandbox."
+        isSessionBusy={props.isSessionBusy}
       />
 
       <main className="main">

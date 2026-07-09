@@ -18,6 +18,11 @@ interface Props {
   onDelete: (ref: ChatRef) => void
   deleteMessage: string
   showPin?: boolean
+  // Per-session "still running" indicator: pass a function returning true for
+  // each sessionID whose agent is currently busy. Lets the sidebar show a
+  // pulsing dot on background sessions that are still mid-turn, even while a
+  // different tab is active. Optional (older callers can omit).
+  isSessionBusy?: (sid: string | null) => boolean
 }
 
 export function Sidebar(props: Props) {
@@ -161,6 +166,7 @@ export function Sidebar(props: Props) {
 
   function renderItem(ref: ChatRef) {
     if (renameId === ref.id) return null
+    const busy = props.isSessionBusy?.(ref.sessionID) ?? false
     return (
       <div
         key={ref.id}
@@ -171,6 +177,7 @@ export function Sidebar(props: Props) {
           onClick={() => props.onSelect(ref)}
           title={ref.directory}
         >
+          {busy && <span className="session-busy-dot" aria-hidden="true" />}
           {ref.title || "Untitled"}
         </button>
         <button

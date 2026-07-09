@@ -124,7 +124,7 @@ export function App() {
   const activeDir = activeRef?.directory ?? null
   const taskerProjectDir = activeRef?.directory ?? coworkDir
 
-  const { state, setBusy, setError, setCurrentSession } = useConversation(activeSession, activeDir, activeRef?.createdAt, (agent) => {
+  const { state, setBusy, setError, setCurrentSession, isSessionBusy, setBusyFor, setErrorFor } = useConversation(activeSession, activeDir, activeRef?.createdAt, (agent) => {
     if (agent && agent !== agentName) setAgentName(agent)
   })
 
@@ -679,7 +679,9 @@ export function App() {
 
   const sendPrompt = useCallback(
     async (text: string, files?: FileAttachment[]) => {
-      setError(null)
+      // Capture the sid up front so busy/error land on the right session even
+      // if the user switches tabs mid-send (see multitask plan — sendPrompt
+      // must use the explicit-sid setters, never the bare active-session ones).
       let ref = activeRef
       if (!ref) {
         try {
@@ -688,12 +690,14 @@ export function App() {
             : await createChat()
         } catch (e: any) {
           console.error("[sendPrompt] create failed:", e)
-          setError(String(e?.message ?? e))
+          setErrorFor(activeRef?.sessionID ?? null, String(e?.message ?? e))
           return
         }
         if (!ref) return
       }
       const finalRef = ref
+      const sendSid = finalRef.sessionID
+      setErrorFor(sendSid, null)
       let turnModel = model
       let turnVisionModel: ModelRef | undefined
       const atts = files ?? []
@@ -731,7 +735,7 @@ export function App() {
         const cmdArgs = slashMatch[2] ?? ""
         const cmds = await window.mimo.getCommands(finalRef.directory).catch(() => [] as CommandInfo[])
         if (cmds.some((c) => c.name === cmdName)) {
-          setBusy(true)
+          setBusyFor(sendSid, true)
           try {
             await window.mimo.sendCommand({
               sessionID: finalRef.sessionID,
@@ -744,14 +748,14 @@ export function App() {
             })
           } catch (e: any) {
             console.error("[sendPrompt] sendCommand failed:", e)
-            setError(String(e?.message ?? e))
-            setBusy(false)
+            setErrorFor(sendSid, String(e?.message ?? e))
+            setBusyFor(sendSid, false)
           }
           refreshTitle(finalRef)
           return
         }
       }
-      setBusy(true)
+      setBusyFor(sendSid, true)
       try {
         await window.mimo.prompt({
           sessionID: finalRef.sessionID,
@@ -764,12 +768,12 @@ export function App() {
         })
       } catch (e: any) {
         console.error("[sendPrompt] prompt failed:", e)
-        setError(String(e?.message ?? e))
-        setBusy(false)
+        setErrorFor(sendSid, String(e?.message ?? e))
+        setBusyFor(sendSid, false)
       }
       refreshTitle(finalRef)
     },
-    [activeRef, tab, createChat, createCowork, createWebAgentSession, webSearch, model, agentName, setBusy, setError, refreshTitle],
+    [activeRef, tab, createChat, createCowork, createWebAgentSession, webSearch, model, agentName, setBusyFor, setErrorFor, refreshTitle],
   )
 
   const abort = useCallback(() => {
@@ -1171,6 +1175,7 @@ export function App() {
             suggestions={genSuggest.chat ?? null}
             aiHome={aiGreetings || aiSuggestions}
             onRegenerate={regenerateHome}
+            isSessionBusy={isSessionBusy}
           />
         )}
         {tab === "cowork" && (
@@ -1222,6 +1227,7 @@ export function App() {
             registryDirs={coworkRef.current.map((c) => c.directory)}
             loadingDirs={loadingDirs}
             onRenameProject={renameProject}
+            isSessionBusy={isSessionBusy}
           />
         )}
         {tab === "scheduler" && (
@@ -1281,6 +1287,7 @@ export function App() {
             providers={providers}
             model={model}
             onModelChange={selectModel}
+            isSessionBusy={isSessionBusy}
           />
         )}
       </div>

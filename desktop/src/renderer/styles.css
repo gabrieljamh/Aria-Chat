@@ -369,6 +369,25 @@ button {
   background: var(--accent-soft);
   color: var(--accent);
 }
+/* Per-session "still running" busy dot — shown on sidebar rows whose agent is
+   mid-turn, so backgrounded sessions continue to be safe even when off-tab. */
+.session-busy-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  margin-left: 1px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: session-busy-pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 0 1.5px var(--accent-soft);
+}
+@keyframes session-busy-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
 
 /* Context menu (3-dot) */
 .ctx-overlay {

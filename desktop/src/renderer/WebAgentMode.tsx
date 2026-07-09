@@ -39,6 +39,8 @@ interface Props {
   providers: ProvidersResponse | null
   model: ModelRef | null
   onModelChange: (m: ModelRef) => void
+  // Per-session sidebar busy dot — threaded from App.
+  isSessionBusy?: (sid: string | null) => boolean
 }
 
 /**
@@ -317,6 +319,7 @@ export function WebAgentMode(props: Props) {
         onRename={props.onRename}
         onDelete={(ref) => props.onDelete(ref as WebAgentRef)}
         deleteMessage="This will permanently remove this Web Agent session and its sandbox."
+        isSessionBusy={props.isSessionBusy}
       />
 
       <main className="main">

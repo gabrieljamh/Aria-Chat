@@ -78,6 +78,8 @@ interface Props {
   suggestions?: Suggestion[] | null
   aiHome?: boolean
   onRegenerate?: () => void
+  // Per-session sidebar busy dot — threaded from App.
+  isSessionBusy?: (sid: string | null) => boolean
 }
 
 const STATIC_TASKS: Suggestion[] = [
@@ -160,6 +162,7 @@ export function TaskerTab(props: Props) {
         onOpenSettings={props.onOpenSettings}
         loadingDirs={props.loadingDirs}
         registryDirs={props.registryDirs}
+        isSessionBusy={props.isSessionBusy}
       />
 
       <div className="cowork">
