@@ -26,6 +26,11 @@ export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
 export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
+// Give up after this many attempts (~5 minutes with the 30s cap). Retrying
+// 429/5xx forever meant a turn against a persistently-overloaded provider
+// hammered it indefinitely in the background — invisible unless the user
+// noticed the requests and aborted by hand.
+export const RETRY_MAX_ATTEMPTS = 10
 
 const NETWORK_ERROR_CODES = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT"])
 const SSE_TIMEOUT_MESSAGE = "SSE read timed out"
@@ -166,7 +171,8 @@ export function policy(opts: {
     Effect.succeed((meta: Schedule.InputMetadata<unknown>) => {
       const error = opts.parse(meta.input)
       const message = retryable(error)
-      if (!message) return Cause.done(meta.attempt)
+      // Non-retryable OR retry budget exhausted → let the error surface.
+      if (!message || meta.attempt >= RETRY_MAX_ATTEMPTS) return Cause.done(meta.attempt)
       return Effect.gen(function* () {
         const wait = delay(meta.attempt, MessageV2.APIError.isInstance(error) ? error : undefined)
         const now = yield* Clock.currentTimeMillis

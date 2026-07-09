@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { applyAccentHue } from "./accent"
+import { applyAccentHue, startRgbCycle, stopRgbCycle } from "./accent"
 import type {
   AgentInfo,
   ChatRef,
   CommandInfo,
   ModelRef,
+  Part,
   PermissionReply,
   ProjectInfo,
   PtyInfo,
@@ -45,30 +46,8 @@ function uuid(): string {
   return (crypto as any).randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-let rgbRaf = 0
-let rgbLast = 0
-let rgbHue = 0
-let rgbDark: boolean | undefined
-let rgbText = ""
-function startRgbCycle(initialHue: number, dark?: boolean) {
-  rgbHue = initialHue
-  rgbDark = dark
-  if (rgbRaf) cancelAnimationFrame(rgbRaf)
-  rgbLast = performance.now()
-  let lastUi = 0
-  const tick = (now: number) => {
-    const dt = now - rgbLast
-    rgbLast = now
-    rgbHue = (rgbHue + dt * 0.03) % 360
-    applyAccentHue(rgbHue, rgbDark)
-    if (now - lastUi > 100) {
-      lastUi = now
-      window.mimo.setSetting("accentHue", rgbHue).catch(() => {})
-    }
-    rgbRaf = requestAnimationFrame(tick)
-  }
-  rgbRaf = requestAnimationFrame(tick)
-}
+// RGB accent cycle lives in accent.ts (startRgbCycle/stopRgbCycle) so the
+// settings modal can stop/start it instantly instead of waiting for close.
 
 export function App() {
   const [tab, setTab] = useState<Tab>("chat")
@@ -132,6 +111,7 @@ export function App() {
   const chatsRef = useRef<ChatRef[]>([])
   const coworkRef = useRef<ChatRef[]>([])
   const webAgentRef = useRef<WebAgentRef[]>([])
+  const hasHistoryImagesRef = useRef(false)
 
   const activeRef: ChatRef | null = useMemo(() => {
     if (tab === "chat") return chats.find((c) => c.id === activeChatId) ?? null
@@ -147,6 +127,35 @@ export function App() {
   const { state, setBusy, setError, setCurrentSession } = useConversation(activeSession, activeDir, activeRef?.createdAt, (agent) => {
     if (agent && agent !== agentName) setAgentName(agent)
   })
+
+  // Track whether the conversation history contains images (from tool results
+  // like browser.screenshot) so sendPrompt can apply the vision redirect.
+  useEffect(() => {
+    for (const msg of Object.values(state.messages)) {
+      for (const part of msg.parts) {
+        if (part.type === "file" && typeof part.mime === "string" && part.mime.startsWith("image/")) {
+          hasHistoryImagesRef.current = true
+          return
+        }
+        // Tool results (e.g. browser.screenshot) carry their attachments under
+        // part.state.attachments, not as a top-level "file" part, so scan there
+        // too. Part's "tool" branch isn't discriminated cleanly because
+        // GenericPart has `type: string`, so cast like extractFiles does.
+        if (part.type === "tool") {
+          const tp = part as Extract<Part, { type: "tool" }>
+          if (tp.state?.status === "completed" && Array.isArray(tp.state.attachments)) {
+            for (const att of tp.state.attachments) {
+              if (typeof att?.mime === "string" && att.mime.startsWith("image/")) {
+                hasHistoryImagesRef.current = true
+                return
+              }
+            }
+          }
+        }
+      }
+    }
+    hasHistoryImagesRef.current = false
+  }, [state.messages])
 
   // Interactive bash: spawn PTY when a bash.interactive.asked event arrives
   useEffect(() => {
@@ -258,7 +267,9 @@ export function App() {
     })
   }, [])
 
-  // Re-check RGB mode when settings modal closes — user may have toggled it.
+  // Reconcile RGB mode when the settings modal closes. The modal starts/stops
+  // the shared cycle directly for instant feedback; this is just a safety net
+  // (e.g. settings changed by other means).
   useEffect(() => {
     if (settingsOpen) return
     window.mimo.getSetting("accentRgb").then((rgb) => {
@@ -270,7 +281,7 @@ export function App() {
           })
         })
       } else {
-        if (rgbRaf) { cancelAnimationFrame(rgbRaf); rgbRaf = 0 }
+        stopRgbCycle()
         window.mimo.getSetting("accentHue").then((hv) => {
           const n = typeof hv === "number" ? hv : 0
           window.mimo.getSetting("accentDarkText").then((dv) => {
@@ -336,7 +347,12 @@ export function App() {
       const [chatList, coworkList, webAgentList, provs, ags] = await Promise.all([
         window.mimo.getRegistry("chats").catch(() => []),
         window.mimo.getRegistry("cowork").catch(() => []),
-        webAgentMode ? window.mimo.getRegistry("webagent").catch(() => []) : Promise.resolve([]),
+        // ALWAYS load the webagent registry — never gate it on the webAgentMode
+        // setting. That setting loads async and was still false when this
+        // effect ran, so the list came up empty on every startup; creating a
+        // new session then saved [newRef] over the file, silently destroying
+        // all previous sessions. The toggle only controls tab visibility.
+        window.mimo.getRegistry("webagent").catch(() => []),
         window.mimo.getProviders().catch(() => null),
         window.mimo.getAgents().catch(() => []),
       ])
@@ -481,6 +497,13 @@ export function App() {
     if (kind === "chats") {
       chatsRef.current = sorted
       setChats(sorted)
+    } else if (kind === "webagent") {
+      // Was a chats/cowork two-way branch: persist("webagent", …) fell into
+      // the cowork arm, and the title-sync path fed it the Tasker list — the
+      // whole Tasker registry got written into WebAgentList.json, which the
+      // loader's directory filter then (rightly) rejected wholesale.
+      webAgentRef.current = sorted as WebAgentRef[]
+      setWebAgentSessions(sorted as WebAgentRef[])
     } else {
       coworkRef.current = sorted
       setCowork(sorted)
@@ -572,7 +595,8 @@ export function App() {
       const s = sessions.find((x) => x.id === ref.sessionID)
       const serverTitle = s?.title?.trim()
       if (!serverTitle) return
-      const list = ref.mode === "chats" ? chatsRef.current : coworkRef.current
+      const list =
+        ref.mode === "chats" ? chatsRef.current : ref.mode === "webagent" ? webAgentRef.current : coworkRef.current
       const local = list.find((c) => c.id === ref.id)
       // Skip if the user has already set a custom title (non-default, non-empty).
       if (local?.title && local.title !== "New chat" && local.title !== "New task") return
@@ -583,6 +607,45 @@ export function App() {
     },
     [persist],
   )
+
+  /* --------------------- complementary working dirs ----------------------- */
+  // Per-session extra work dirs (Tasker): pre-approved by merging an
+  // external_directory allow rule into the session's persisted permission
+  // ruleset (evaluation is findLast, so a later "ask" rule reverts an allow).
+  // The dir list itself lives on the ChatRef for display.
+  const addExtraDir = useCallback(async () => {
+    const ref = activeRef
+    if (!ref || ref.mode !== "cowork") return
+    const dir = await window.mimo.pickDirectory()
+    if (!dir) return
+    const norm = dir.replace(/[\\/]+$/, "")
+    if (norm === ref.directory || (ref.extraDirs ?? []).includes(norm)) return
+    try {
+      await window.mimo.updateSessionPermission(
+        ref.sessionID,
+        [{ permission: "external_directory", pattern: norm + "/*", action: "allow" }],
+        ref.directory,
+      )
+    } catch (e) {
+      console.error("extra dir permission seed failed", e)
+      return
+    }
+    persist("cowork", coworkRef.current.map((c) => (c.id === ref.id ? { ...c, extraDirs: [...(c.extraDirs ?? []), norm] } : c)))
+  }, [activeRef, persist])
+
+  const removeExtraDir = useCallback(async (dir: string) => {
+    const ref = activeRef
+    if (!ref || ref.mode !== "cowork") return
+    // Appended "ask" rule wins over the earlier allow — prompts resume.
+    await window.mimo
+      .updateSessionPermission(
+        ref.sessionID,
+        [{ permission: "external_directory", pattern: dir + "/*", action: "ask" }],
+        ref.directory,
+      )
+      .catch((e) => console.error("extra dir permission revert failed", e))
+    persist("cowork", coworkRef.current.map((c) => (c.id === ref.id ? { ...c, extraDirs: (c.extraDirs ?? []).filter((d) => d !== dir) } : c)))
+  }, [activeRef, persist])
 
   /* -------------------------------- actions ------------------------------- */
   const newChat = useCallback(() => setActiveChatId(null), [])
@@ -604,8 +667,10 @@ export function App() {
       }
       const finalRef = ref
       let turnModel = model
+      let turnVisionModel: ModelRef | undefined
       const atts = files ?? []
-      if (atts.some((f) => f.mime?.startsWith("image/"))) {
+      const hasImageAtts = atts.some((f) => f.mime?.startsWith("image/"))
+      if (hasImageAtts || hasHistoryImagesRef.current) {
         const on = await window.mimo.getSetting("visionRedirect").catch(() => null)
         const vm = (await window.mimo.getSetting("visionModel").catch(() => null)) as ModelRef | null
         if (on === true && vm?.providerID && vm?.modelID) turnModel = vm
@@ -617,6 +682,20 @@ export function App() {
         const on = await window.mimo.getSetting("videoRedirect").catch(() => null)
         const vm2 = (await window.mimo.getSetting("videoModel").catch(() => null)) as ModelRef | null
         if (on === true && vm2?.providerID && vm2?.modelID) turnModel = vm2
+      }
+      // Vision redirect override: even when the active model wasn't swapped
+      // above (e.g. because the user attached no image and no prior screenshot
+      // exists in history yet), advertise the configured vision model to the
+      // server. The server-side loop swaps to it mid-turn whenever an
+      // image-bearing tool result (browser.screenshot) appears and the active
+      // model can't read images — covering the in-flight screenshot turn that
+      // the client-side hasHistoryImagesRef check can never catch in time.
+      if (!turnModel || turnModel === model) {
+        const on = await window.mimo.getSetting("visionRedirect").catch(() => null)
+        if (on === true) {
+          const vm = (await window.mimo.getSetting("visionModel").catch(() => null)) as ModelRef | null
+          if (vm?.providerID && vm?.modelID) turnVisionModel = vm
+        }
       }
       const slashMatch = text.match(/^\/(\S+)(?:\s+(.*))?$/s)
       if (slashMatch && !files?.length) {
@@ -631,6 +710,7 @@ export function App() {
               command: cmdName,
               arguments: cmdArgs,
               model: turnModel ?? undefined,
+              visionModel: turnVisionModel,
               agent: agentName ?? undefined,
               directory: finalRef.directory,
             })
@@ -649,6 +729,7 @@ export function App() {
           sessionID: finalRef.sessionID,
           text: webSearch ? `${text}\n\n(You may use web search if helpful.)` : text,
           model: turnModel ?? undefined,
+          visionModel: turnVisionModel,
           agent: tab === "webagent" ? "webagent" : agentName ?? undefined,
           directory: finalRef.directory,
           files,
@@ -1014,7 +1095,7 @@ export function App() {
           <button className="window-btn maximize" onClick={() => window.mimo.maximizeWindow()} title="Maximize">
             <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1"/></svg>
           </button>
-          <button className="window-btn close" onClick={() => window.mimo.closeWindow()} title="Close">
+          <button className="window-btn close" onClick={() => window.mimo.closeWindow()} title="Close to tray — Aria keeps running in the background">
             <svg width="12" height="12" viewBox="0 0 12 12"><line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" strokeWidth="1.2"/><line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" strokeWidth="1.2"/></svg>
           </button>
         </div>
@@ -1070,6 +1151,10 @@ export function App() {
             state={state}
             onSend={sendPrompt}
             onAbort={abort}
+            workdirMain={activeRef?.mode === "cowork" ? activeRef.directory : null}
+            workdirExtras={activeRef?.mode === "cowork" ? activeRef.extraDirs ?? [] : []}
+            onAddWorkdir={addExtraDir}
+            onRemoveWorkdir={removeExtraDir}
             onReply={replyPermission}
             onOpenFile={(p) => setViewerPath(p)}
             onOpenSettings={() => openSettings()}
@@ -1163,6 +1248,13 @@ export function App() {
               await window.mimo.saveRegistry("webagent", updated)
               if (activeWebAgentId === ref.id) setActiveWebAgentId(null)
             }}
+            onRename={async (id, title) => {
+              const updated = webAgentRef.current.map((s) => (s.id === id ? { ...s, title, updatedAt: Date.now() } : s))
+              webAgentRef.current = updated
+              setWebAgentSessions(updated)
+              await window.mimo.saveRegistry("webagent", updated)
+            }}
+            onOpenSettings={() => openSettings()}
           />
         )}
       </div>

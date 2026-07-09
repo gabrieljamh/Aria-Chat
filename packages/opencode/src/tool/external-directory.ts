@@ -36,6 +36,12 @@ export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirec
   // tasks/<taskId>/*.md and rejects cross-task / wrong-agent writes.
   if (AppFileSystem.contains(path.join(Global.Path.data, "memory"), full)) return
 
+  // tool-output holds server-generated spill files (truncated tool outputs,
+  // oversized text attachments) the model is explicitly instructed to read
+  // back with the read tool. Prompting external_directory for our own
+  // artifacts is pure friction — and deadlocks headless subagents.
+  if (AppFileSystem.contains(path.join(Global.Path.data, "tool-output"), full)) return
+
   const kind = options?.kind ?? "file"
   const dir = kind === "directory" ? full : path.dirname(full)
   const glob =

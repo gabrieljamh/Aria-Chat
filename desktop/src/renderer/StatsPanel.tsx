@@ -43,6 +43,7 @@ export function StatsPanel({ state, providers, model, compactThreshold }: Props)
   // Context size = the last assistant message that reported output tokens.
   let tokens = 0
   let percent: number | null = null
+  let estimated = false
   for (let i = assistant.length - 1; i >= 0; i--) {
     const info = assistant[i].info as {
       tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } }
@@ -59,6 +60,34 @@ export function StatsPanel({ state, providers, model, compactThreshold }: Props)
       const ctx = providers?.all.find((p) => p.id === pid)?.models?.[mid ?? ""]?.limit?.context
       percent = ctx ? (tokens / ctx) * 100 : null
       break
+    }
+  }
+
+  // Fallback: some OpenAI-compatible providers (e.g. local bridges) never
+  // report usage — every turn completes with tokens all 0. Rather than showing
+  // a misleading hard "0 tokens", estimate the context from the visible
+  // conversation text (~4 chars/token) and mark it as approximate.
+  if (tokens === 0 && state.order.length > 0) {
+    let chars = 0
+    for (const id of state.order) {
+      const m = state.messages[id]
+      if (!m) continue
+      for (const p of m.parts) {
+        const text = (p as { text?: unknown }).text
+        if (typeof text === "string") chars += text.length
+        // Tool results are often the bulk of the context.
+        const out = (p as { state?: { output?: unknown } }).state?.output
+        if (typeof out === "string") chars += out.length
+      }
+    }
+    const est = Math.round(chars / CHARS_PER_TOKEN)
+    if (est > 0) {
+      tokens = est
+      estimated = true
+      const pid = model?.providerID
+      const mid = model?.modelID
+      const ctx = providers?.all.find((p) => p.id === pid)?.models?.[mid ?? ""]?.limit?.context
+      percent = ctx ? (tokens / ctx) * 100 : null
     }
   }
 
@@ -91,7 +120,9 @@ export function StatsPanel({ state, providers, model, compactThreshold }: Props)
 
       <div className="stat-row">
         <span className="stat-label">Context</span>
-        <span className="stat-val">{fmt.format(tokens)} tokens</span>
+        <span className="stat-val" title={estimated ? "Estimated — the model's provider does not report token usage" : undefined}>
+          {estimated ? "~" : ""}{fmt.format(tokens)} tokens
+        </span>
       </div>
       {percent != null && (
         <div className="stat-bar-wrap">

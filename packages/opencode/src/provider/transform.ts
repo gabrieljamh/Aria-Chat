@@ -41,10 +41,12 @@ const TEXT_MIME_TYPES = new Set<string>([
 // Inline decoded text up to this size. Larger text attachments spill to
 // <data>/tool-output/ and the model is told to retrieve the rest with the
 // read tool, so a truly huge JSON/CSV/YAML attachment can't overflow a
-// request. Raised from 50KB to 10MB so typical RPG/worldbuilding JSONs
-// reach the model inline without a read-tool roundtrip; the model context
-// window is the practical ceiling anyway.
-const MAX_INLINE_TEXT_BYTES = 10 * 1024 * 1024
+// request. 128KB ≈ 32K tokens: big enough that typical RPG/worldbuilding
+// JSONs still reach the model inline, small enough to leave headroom under a
+// ~170K-token context/compaction budget. (The previous 10MB ceiling meant the
+// spill effectively never fired — a large attachment inlined whole, blew the
+// upstream context and surfaced as a provider "Internal Server Error".)
+const MAX_INLINE_TEXT_BYTES = 128 * 1024
 
 const MIME_EXTENSIONS: Record<string, string> = {
   "application/json": ".json",
@@ -87,7 +89,7 @@ function mimeToModality(mime: string): Modality | undefined {
 // MiMo vision support isn't reflected in models.dev modality data, so the
 // generic capability check would strip images before they reach the model.
 // mimo-auto and mimo-v2.5 accept images; mimo-v2.5-pro is text-only.
-function supportsImageInput(model: Provider.Model): boolean {
+export function supportsImageInput(model: Provider.Model): boolean {
   if (model.providerID === "mimo" || model.providerID === "xiaomi") {
     const id = model.id.toLowerCase()
     if (id.includes("v2.5-pro")) return false
@@ -99,6 +101,22 @@ function supportsImageInput(model: Provider.Model): boolean {
   if (id.includes("claude") || apiID.includes("claude") || model.providerID === "anthropic") return true
   if (id.includes("gpt") || apiID.includes("gpt")) return true
   return model.capabilities.input.image
+}
+
+// Whether the provider accepts media (images, PDFs) nested inside tool-result
+// content. OpenAI-compatible APIs only support string content in tool results,
+// so media must instead be delivered as a separate user message (see
+// message-v2.ts toModelMessage). Anthropic/Bedrock keep media in tool results;
+// Gemini 3 supports it, earlier Gemini models don't.
+export function supportsMediaInToolResults(model: Provider.Model): boolean {
+  if (model.api.npm === "@ai-sdk/anthropic") return true
+  if (model.api.npm === "@ai-sdk/amazon-bedrock") return true
+  if (model.api.npm === "@ai-sdk/google-vertex/anthropic") return true
+  if (model.api.npm === "@ai-sdk/google") {
+    const id = model.api.id.toLowerCase()
+    return id.includes("gemini-3") && !id.includes("gemini-2")
+  }
+  return false
 }
 
 export const OUTPUT_TOKEN_MAX = Flag.MIMOCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000

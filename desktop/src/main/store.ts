@@ -9,6 +9,7 @@ import { join } from "node:path"
 class Store {
   private file: string
   private data: Record<string, unknown> = {}
+  private timer: NodeJS.Timeout | null = null
 
   constructor() {
     const dir = app.getPath("userData")
@@ -21,6 +22,8 @@ class Store {
         this.data = {}
       }
     }
+    // Debounced writes can still be pending when the app exits.
+    app.on("will-quit", () => this.flush())
   }
 
   get(key: string): unknown {
@@ -29,6 +32,22 @@ class Store {
 
   set(key: string, value: unknown) {
     this.data[key] = value
+    // Debounce: a synchronous write per set() blocked the main process (and
+    // therefore every queued IPC call) — with high-frequency writers like the
+    // RGB accent cycle this stalled the whole app. Reads stay consistent
+    // because they come from `this.data`.
+    if (this.timer) return
+    this.timer = setTimeout(() => {
+      this.timer = null
+      this.persist()
+    }, 250)
+  }
+
+  flush() {
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = null
+    }
     this.persist()
   }
 

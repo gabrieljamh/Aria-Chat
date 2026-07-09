@@ -18,10 +18,11 @@ import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider"
+import { ProviderTransform } from "@/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { isRecoverableError } from "@/tool/recoverable"
-import { Log } from "@/util"
+import { Log, Token } from "@/util"
 import { isRecord } from "@/util/record"
 import { createTextNgramMonitor, type TextNgramMonitor } from "./prompt/text-ngram-detection"
 
@@ -122,6 +123,11 @@ type Input = {
   sessionID: SessionID
   model: Provider.Model
   agentMetrics?: AgentMetrics
+  // True when a vision-model override is configured AND differs from the
+  // active model. Lets the processor break the stream when a tool produces an
+  // image the active model can't see, so the runLoop's vision auto-swap can
+  // take over in the same logical turn instead of the next user prompt.
+  visionSwapAvailable?: boolean
 }
 
 export interface Interface {
@@ -141,6 +147,9 @@ interface ProcessorContext extends Input {
   snapshot: string | undefined
   blocked: boolean
   needsOverflowHandling: boolean
+  // A tool produced an image the active model can't read, and a vision swap is
+  // available: break the stream so the next runLoop iteration swaps models.
+  needsVisionSwap: boolean
   currentText: MessageV2.TextPart | undefined
   reasoningMap: Record<string, MessageV2.ReasoningPart>
   stepStartedAt: number | undefined
@@ -148,6 +157,9 @@ interface ProcessorContext extends Input {
   stepPartIds: PartID[]
   textNgramMonitor: TextNgramMonitor | undefined
   textNgramRepeat: boolean
+  // The request currently being streamed. Kept so finish-step can estimate
+  // token usage when the provider reports none (see finish-step handler).
+  lastStreamInput: LLM.StreamInput | undefined
 }
 
 type StreamEvent = Event
@@ -192,11 +204,13 @@ export const layer: Layer.Layer<
         sessionID: input.sessionID,
         model: input.model,
         agentMetrics: input.agentMetrics,
+        visionSwapAvailable: input.visionSwapAvailable,
         toolcalls: {},
         shouldBreak: false,
         snapshot: initialSnapshot,
         blocked: false,
         needsOverflowHandling: false,
+        needsVisionSwap: false,
         currentText: undefined,
         reasoningMap: {},
         stepStartedAt: undefined,
@@ -204,6 +218,7 @@ export const layer: Layer.Layer<
         stepPartIds: [],
         textNgramMonitor: undefined,
         textNgramRepeat: false,
+        lastStreamInput: undefined,
       }
       let aborted = false
       // Only the main agent owns session-level status. Subagents (explore,
@@ -280,6 +295,26 @@ export const layer: Layer.Layer<
             attachments: output.attachments,
           },
         })
+        // Image-bearing tool result (e.g. browser.screenshot) the model can't
+        // see on this stream: stop after this step so the next runLoop
+        // iteration re-delivers it from history. Two cases:
+        //  - model can read images but the provider can't carry media inside
+        //    tool results (OpenAI-compatible): history conversion injects the
+        //    image as a separate user message (message-v2.ts), same model.
+        //  - model can't read images and a vision override is configured:
+        //    the runLoop vision auto-swap hands the turn to the vision model.
+        // The tool result is already persisted, so nothing is lost.
+        const hasImage = output.attachments?.some(
+          (a) => typeof a.mime === "string" && a.mime.startsWith("image/"),
+        )
+        if (hasImage) {
+          const canSee = ProviderTransform.supportsImageInput(ctx.model)
+          if (canSee && !ProviderTransform.supportsMediaInToolResults(ctx.model)) {
+            ctx.needsVisionSwap = true
+          } else if (!canSee && ctx.visionSwapAvailable) {
+            ctx.needsVisionSwap = true
+          }
+        }
         yield* settleToolCall(toolCallID)
       })
 
@@ -485,6 +520,30 @@ export const layer: Layer.Layer<
             ctx.assistantMessage.finish = value.finishReason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
+            // Some OpenAI-compatible providers (local bridges/proxies) never
+            // report usage: every chunk carries `usage: null`, so tokens land
+            // as all-zero. That freezes context stats at 0 AND silently
+            // disables auto-compaction (isOverflow/pressureLevel read these
+            // tokens), letting sessions run into hard context overflow.
+            // Fall back to a rough estimate (~4 chars/token) from the request
+            // we just sent + the text produced this turn.
+            {
+              const t = usage.tokens
+              const reported = t.input + t.output + t.reasoning + t.cache.read + t.cache.write
+              if (reported === 0 && ctx.lastStreamInput) {
+                const si = ctx.lastStreamInput
+                const inputEstimate =
+                  Token.estimate(si.system.join("\n")) + Token.estimate(JSON.stringify(si.messages))
+                let outChars = ctx.currentText?.text?.length ?? 0
+                for (const r of Object.values(ctx.reasoningMap)) outChars += r.text?.length ?? 0
+                const outputEstimate = Math.max(1, Math.round(outChars / 4))
+                ctx.assistantMessage.tokens = {
+                  ...t,
+                  input: inputEstimate,
+                  output: outputEstimate,
+                }
+              }
+            }
             yield* session.updatePart({
               id: PartID.ascending(),
               reason: value.finishReason,
@@ -492,7 +551,8 @@ export const layer: Layer.Layer<
               messageID: ctx.assistantMessage.id,
               sessionID: ctx.assistantMessage.sessionID,
               type: "step-finish",
-              tokens: usage.tokens,
+              // Estimated when the provider reported no usage (see above).
+              tokens: ctx.assistantMessage.tokens,
               cost: usage.cost,
             })
             yield* session.updateMessage(ctx.assistantMessage)
@@ -541,7 +601,10 @@ export const layer: Layer.Layer<
               .pipe(Effect.ignore, Effect.forkIn(scope))
             if (
               !ctx.assistantMessage.summary &&
-              isOverflow({ cfg: yield* config.get(), tokens: usage.tokens, model: ctx.model })
+              // ctx.assistantMessage.tokens, not usage.tokens: for usage-less
+              // providers the former carries the estimate — otherwise
+              // auto-compaction can never fire for them.
+              isOverflow({ cfg: yield* config.get(), tokens: ctx.assistantMessage.tokens, model: ctx.model })
             ) {
               ctx.needsOverflowHandling = true
             }
@@ -686,7 +749,9 @@ export const layer: Layer.Layer<
 
       const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {
         slog.info("process")
+        ctx.lastStreamInput = streamInput
         ctx.needsOverflowHandling = false
+        ctx.needsVisionSwap = false
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
 
         return yield* Effect.gen(function* () {
@@ -701,7 +766,7 @@ export const layer: Layer.Layer<
 
             yield* stream.pipe(
               Stream.tap((event) => handleEvent(event)),
-              Stream.takeUntil(() => ctx.needsOverflowHandling || ctx.textNgramRepeat),
+              Stream.takeUntil(() => ctx.needsOverflowHandling || ctx.textNgramRepeat || ctx.needsVisionSwap),
               Stream.runDrain,
             )
           }).pipe(
@@ -749,6 +814,9 @@ export const layer: Layer.Layer<
 
           if (ctx.needsOverflowHandling) return "overflow"
           if (ctx.textNgramRepeat) return "text-repeat"
+          // Vision swap: the turn is incomplete (stream was cut after an
+          // image-bearing tool result) — "continue" loops so the swap fires.
+          if (ctx.needsVisionSwap) return "continue"
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"
           return "continue"
         })
@@ -757,6 +825,7 @@ export const layer: Layer.Layer<
       const replay = Effect.fn("SessionProcessor.replay")(function* (input: ReplayInput) {
         slog.info("replay", { toolCalls: input.toolCalls.length, finish: input.finishReason })
         ctx.needsOverflowHandling = false
+        ctx.needsVisionSwap = false
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
 
         const ctrl = new AbortController()

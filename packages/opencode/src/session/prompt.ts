@@ -722,9 +722,56 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         agent: input.agent,
       })) {
         const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
-        tools[item.id] = tool({
+        const modelSupportsImages = ProviderTransform.supportsImageInput(input.model)
+        // OpenAI-compatible APIs reject non-string tool-result content, so
+        // media can only be inlined for providers that support it; everyone
+        // else gets it re-delivered as a user message on the next iteration
+        // (processor breaks the stream — see completeToolCall).
+        const inlineMediaOk = modelSupportsImages && ProviderTransform.supportsMediaInToolResults(input.model)
+        const toolDef = tool({
           description: item.description,
           inputSchema: jsonSchema(schema),
+          // Controls what the model sees as the tool result on the NEXT step of
+          // the SAME turn. Without this the AI SDK serializes the whole result
+          // object as JSON — image attachments (browser.screenshot) reached the
+          // model as a giant base64 string instead of an image, so even
+          // vision-capable models reported they "can't see" screenshots.
+          toModelOutput({ output }) {
+            if (typeof output === "string") return { type: "text", value: output }
+            const o = output as {
+              output?: string
+              attachments?: Array<{ mime?: string; url?: string }>
+            }
+            const text = o?.output ?? ""
+            const media = (o?.attachments ?? []).filter(
+              (a) => typeof a.url === "string" && a.url.startsWith("data:") && a.url.includes(","),
+            )
+            if (media.length === 0 || !inlineMediaOk) {
+              // Either the model can't read images, or the provider can't carry
+              // media inside tool results (OpenAI-compatible). The processor
+              // breaks the stream after this tool call so the image is
+              // re-delivered on the next iteration — as a separate user message
+              // (vision-capable model) or via the vision auto-swap (text-only).
+              return {
+                type: "text",
+                value:
+                  media.length > 0
+                    ? `${text}\n[${media.length} media attachment(s) captured — delivered in the next message.]`
+                    : text,
+              }
+            }
+            return {
+              type: "content",
+              value: [
+                { type: "text", text },
+                ...media.map((a) => ({
+                  type: "media" as const,
+                  mediaType: a.mime ?? "image/png",
+                  data: a.url!.slice(a.url!.indexOf(",") + 1),
+                })),
+              ],
+            }
+          },
           execute(args, options) {
             return run.promise(
               Effect.gen(function* () {
@@ -817,6 +864,17 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             )
           },
         })
+        // Register under an API-safe key: strict providers (GLM, others) only
+        // allow [a-zA-Z0-9_-] in function names and reject "browser.navigate".
+        // Everything internal (permissions, registry gating, part.tool ids in
+        // old history) keeps the canonical dotted id — ToolCompat.resolveName
+        // canonical-matches "browser_navigate" back to it when needed.
+        const apiName = item.id.replace(/[^a-zA-Z0-9_-]/g, "_")
+        tools[apiName] = toolDef
+        if (item.id.startsWith("browser.")) {
+          const shortName = item.id.slice("browser.".length)
+          if (!tools[shortName]) tools[shortName] = toolDef
+        }
       }
 
       for (const [key, item] of Object.entries(yield* mcp.tools())) {
@@ -951,7 +1009,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               return output
             }),
           )
-        tools[key] = item
+        // Same API-safe key rule as built-in tools (strict providers reject
+        // anything outside [a-zA-Z0-9_-] in function names).
+        tools[key.replace(/[^a-zA-Z0-9_-]/g, "_")] = item
       }
 
       return tools
@@ -1950,7 +2010,12 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         }
 
         if (input.noReply === true) return message
-        return yield* loop({ sessionID: input.sessionID, agentID: input.agentID ?? "main", task_id: input.task_id })
+        return yield* loop({
+          sessionID: input.sessionID,
+          agentID: input.agentID ?? "main",
+          task_id: input.task_id,
+          visionModel: input.visionModel,
+        })
       },
     )
 
@@ -1974,10 +2039,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       throw new Error("Impossible")
     })
 
-    const runLoop: (sessionID: SessionID, agentID?: string, task_id?: string) => Effect.Effect<MessageV2.WithParts> = Effect.fn(
+    const runLoop: (
+      sessionID: SessionID,
+      agentID?: string,
+      task_id?: string,
+      visionModel?: { providerID: ProviderID; modelID: ModelID },
+    ) => Effect.Effect<MessageV2.WithParts> = Effect.fn(
       "SessionPrompt.run",
     )(
-      function* (sessionID: SessionID, agentID?: string, task_id?: string) {
+      function* (sessionID: SessionID, agentID?: string, task_id?: string, visionModel?: { providerID: ProviderID; modelID: ModelID }) {
         const ctx = yield* InstanceState.context
         const slog = elog.with({ sessionID })
         let structured: unknown | undefined
@@ -2759,7 +2829,38 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
           }
 
-          const model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          let model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          // Vision auto-swap: if the user configured a vision model override and
+          // the active model can't read images, swap to the vision model for this
+          // iteration whenever the conversation history contains an image-bearing
+          // tool result (e.g. browser.screenshot just taken this turn). Without
+          // this, transform.ts:supportsImageInput would silently replace those
+          // images with "ERROR: Cannot read image..." — the model would report
+          // it can't see the screenshot. The swap is per-iteration; the next
+          // iteration re-resolves from lastUser.model unless another image is
+          // present, so a non-vision model still drives non-visual turns.
+          if (visionModel && !ProviderTransform.supportsImageInput(model)) {
+            const lastAssistantWithImgs = msgs.findLast(
+              (m) =>
+                m.info.role === "assistant" &&
+                m.parts.some(
+                  (p) =>
+                    p.type === "tool" &&
+                    p.state?.status === "completed" &&
+                    Array.isArray(p.state.attachments) &&
+                    p.state.attachments.some((a) => typeof a.mime === "string" && a.mime.startsWith("image/")),
+                ),
+            )
+            if (lastAssistantWithImgs) {
+              const vision = yield* getModel(visionModel.providerID, visionModel.modelID, sessionID)
+              yield* slog.info("vision auto-swap", {
+                from: `${model.providerID}/${model.id}`,
+                to: `${vision.providerID}/${vision.id}`,
+                trigger: `${lastAssistantWithImgs.info.id}`,
+              })
+              model = vision
+            }
+          }
           lastModelForPrune = model
           lastFinishedForPrune = lastFinished
           const task = tasks.pop()
@@ -3008,6 +3109,12 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             sessionID,
             model,
             agentMetrics,
+            // Enables the mid-turn stream break when a tool returns an image
+            // the active model can't read (processor.completeToolCall). Only
+            // useful when the override differs from the active model.
+            visionSwapAvailable:
+              visionModel !== undefined &&
+              !(visionModel.providerID === model.providerID && visionModel.modelID === model.id),
           })
 
           const outcome: "break" | "continue" = yield* Effect.gen(function* () {
@@ -3644,7 +3751,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         input.sessionID,
         agentID,
         lastAssistant(input.sessionID, agentID),
-        runLoop(input.sessionID, agentID, input.task_id),
+        runLoop(input.sessionID, agentID, input.task_id, input.visionModel),
       )
     })
 
@@ -3799,6 +3906,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         sessionID: input.sessionID,
         messageID: input.messageID,
         model: userModel,
+        visionModel: input.visionModel,
         agent: userAgent,
         parts,
         variant: input.variant,
@@ -3880,6 +3988,19 @@ export const PromptInput = z.object({
       modelID: ModelID.zod,
     })
     .optional(),
+  // Optional vision-capable model override. When set and the active model
+  // doesn't support image input, the loop transparently swaps to this model
+  // for any iteration whose history contains image attachments (e.g. from
+  // browser.screenshot tool results). Lets non-vision primary models (e.g.
+  // mimo-v2.5-pro) drive a browsing session while still letting the model
+  // actually see screenshots mid-turn. Desktop enables this via the
+  // "visionRedirect" + "visionModel" settings.
+  visionModel: z
+    .object({
+      providerID: ProviderID.zod,
+      modelID: ModelID.zod,
+    })
+    .optional(),
   modelRef: z
     .string()
     .optional()
@@ -3951,6 +4072,14 @@ export const LoopInput = z.object({
   sessionID: SessionID.zod,
   agentID: z.string().optional(),
   task_id: z.string().optional(),
+  // Vision-capable model to swap to when the active model lacks image input
+  // but the conversation history contains image attachments. See PromptInput.
+  visionModel: z
+    .object({
+      providerID: ProviderID.zod,
+      modelID: ModelID.zod,
+    })
+    .optional(),
 })
 
 export const ShellInput = z.object({
@@ -3978,6 +4107,14 @@ export const CommandInput = z.object({
   sessionID: SessionID.zod,
   agent: z.string().optional(),
   model: z.string().optional(),
+  // Optional vision model override, plumbed through to the prompt that the
+  // command expands into. See PromptInput.visionModel for semantics.
+  visionModel: z
+    .object({
+      providerID: ProviderID.zod,
+      modelID: ModelID.zod,
+    })
+    .optional(),
   arguments: z.string(),
   command: z.string(),
   variant: z.string().optional(),

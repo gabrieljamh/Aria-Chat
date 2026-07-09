@@ -568,6 +568,38 @@ button {
   padding: 0 28px;
 }
 
+/* Auto-scroll toggle: floats at the bottom-right of the visible chat area
+   (sticky inside the scroll container). "On" = pinned-to-bottom behavior;
+   pauses automatically while the user reads history either way. */
+.autoscroll-toggle {
+  position: sticky;
+  bottom: 12px;
+  margin: -34px 18px 4px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  cursor: pointer;
+  z-index: 5;
+  opacity: 0.75;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+.autoscroll-toggle:hover {
+  opacity: 1;
+  background: var(--bg-hover);
+  color: var(--text-dim);
+}
+.autoscroll-toggle.on {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-soft-bg);
+}
+
 /* Empty-state greeting */
 .greeting {
   flex: 1;
@@ -649,6 +681,13 @@ button {
 /* ------------------------------ Messages ------------------------------ */
 .msg {
   margin-bottom: 22px;
+  /* Skip style/layout/paint for off-screen messages. This is what keeps huge
+     conversations usable: streaming re-renders and :root CSS-variable changes
+     (accent hue / RGB mode) only cost as much as the visible messages instead
+     of the entire history. contain-intrinsic-size keeps the scrollbar stable
+     for unrendered rows. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 140px;
 }
 .msg .role {
   font-size: 11px;
@@ -1866,6 +1905,73 @@ button {
   width: 1.5px;
   background: var(--border-soft);
 }
+/* Working directories (Tasker right panel) */
+.workdir-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.workdir-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-soft);
+  font-size: 12.5px;
+  min-width: 0;
+}
+.workdir-item.main {
+  border-color: var(--accent-border);
+  background: var(--accent-soft-bg);
+}
+.workdir-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.workdir-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.workdir-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.workdir-remove:hover {
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+.workdir-add {
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.workdir-add:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .todo-item {
   position: relative;
   z-index: 0;
@@ -1874,6 +1980,10 @@ button {
   gap: 10px;
   padding: 5px 0;
   font-size: 13px;
+  /* Same off-screen skip as .msg: long task lists shouldn't pay style-recalc
+     for rows outside the panel's viewport (accent cycling, live updates). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 28px;
   color: var(--text-dim);
 }
 .todo-marker {
@@ -2344,6 +2454,13 @@ button {
 .status-banner.starting {
   background: var(--accent-soft);
   color: var(--accent);
+}
+.status-banner.retry {
+  background: rgba(230, 180, 80, 0.1);
+  color: #d9b45a;
+  border-radius: 10px;
+  border: 1px solid rgba(230, 180, 80, 0.25);
+  margin: 8px 0;
 }
 .status-dot {
   width: 8px;
@@ -2841,6 +2958,9 @@ button {
   text-align: left;
   background: var(--bg-raised);
   border: 1px solid var(--border-soft);
+  /* Off-screen skip — sessions can accumulate a lot of file cards. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
   border-radius: 9px;
   padding: 8px 10px;
   width: 100%;
@@ -4787,153 +4907,34 @@ button {
   background-color: #0e1013 !important;
 }
 
-/* ── Web Agent Mode ── */
-.webagent-layout {
-  display: flex;
-  flex-direction: row;
-  height: 100%;
-  overflow: hidden;
-}
-.webagent-sidebar {
-  width: 240px;
-  flex-shrink: 0;
-  background: var(--bg-inset);
-  border-right: 1px solid var(--border-soft);
-  display: flex;
-  flex-direction: column;
-  padding: 12px 10px;
-  gap: 4px;
-  overflow: hidden;
-}
-.webagent-sidebar-header {
-  padding: 0 2px 8px;
-}
-.webagent-new-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  background: var(--accent-soft);
-  color: var(--accent);
-  border: 1px solid transparent;
-  border-radius: 10px;
-  padding: 9px 12px;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-}
-.webagent-new-btn:hover {
-  background: var(--accent-soft-hover);
-}
-.webagent-session-list {
-  flex: 1;
-  overflow-y: auto;
-}
-.webagent-session-card {
-  display: flex;
-  flex-direction: column;
-  padding: 7px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 2px;
-  position: relative;
-}
-.webagent-session-card:hover {
-  background: var(--bg-hover);
-}
-.webagent-session-card.active {
-  background: var(--bg-hover);
-}
-.webagent-session-title {
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding-right: 20px;
-}
-.webagent-session-url {
-  font-size: 11px;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 2px;
-}
-.webagent-session-time {
-  font-size: 10px;
-  color: var(--text-faint);
-  margin-top: 2px;
-}
-.webagent-session-delete {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-faint);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.webagent-session-card:hover .webagent-session-delete {
-  opacity: 1;
-}
-.webagent-session-delete:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-.webagent-collapse-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px;
-  border: none;
-  background: transparent;
-  color: var(--text-faint);
-  cursor: pointer;
-  font-size: 16px;
-}
-.webagent-collapse-btn:hover {
-  color: var(--text);
-}
-
-.webagent-center {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
+/* ── Web Agent Mode ──
+   Layout mirrors the other tabs: shared .sidebar | .main | right column.
+   The browser renders in a centered 4:3 frame; the native BrowserView is
+   positioned over .webagent-frame via webagentSetBounds. */
 .webagent-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
+  gap: 10px;
+  padding: 10px 18px;
   border-bottom: 1px solid var(--border-soft);
-  height: 40px;
   flex-shrink: 0;
-  background: var(--bg-inset);
 }
 .webagent-nav-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
-  color: var(--text);
+  color: var(--text-dim);
   cursor: pointer;
+  flex-shrink: 0;
 }
 .webagent-nav-btn:hover:not(:disabled) {
   background: var(--bg-hover);
+  color: var(--text);
 }
 .webagent-nav-btn:disabled {
   opacity: 0.4;
@@ -4941,24 +4942,27 @@ button {
 }
 .webagent-url-input {
   flex: 1;
-  height: 28px;
+  height: 30px;
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
-  padding: 0 8px;
+  border-radius: 8px;
+  padding: 0 11px;
   background: var(--bg-inset);
   color: var(--text);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 .webagent-url-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--accent-border);
+}
+.webagent-url-input::placeholder {
+  color: var(--text-faint);
 }
 .webagent-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-faint);
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-dim);
   white-space: nowrap;
 }
 .webagent-status-dot {
@@ -4967,10 +4971,10 @@ button {
   border-radius: 50%;
 }
 .webagent-status-dot.idle {
-  background: #4ade80;
+  background: var(--good);
 }
 .webagent-status-dot.working {
-  background: #fb923c;
+  background: var(--accent);
   animation: webagent-pulse 1.2s ease-in-out infinite;
 }
 @keyframes webagent-pulse {
@@ -4978,11 +4982,25 @@ button {
   50% { opacity: 0.4; }
 }
 
-.webagent-viewport {
+.webagent-stage {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 24px 24px;
+  overflow: hidden;
+}
+.webagent-frame {
+  /* Largest 4:3 rectangle that fits: width follows the stage height (via the
+     viewport-based calc) and is capped by the stage width; height derives
+     from the aspect ratio either way. */
+  aspect-ratio: 4 / 3;
+  width: min(100%, calc((100vh - 160px) * 4 / 3));
   position: relative;
   overflow: hidden;
   background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 .webagent-control-lock {
   position: absolute;
@@ -5013,42 +5031,41 @@ button {
   overflow: hidden;
   background: var(--bg-inset);
 }
-.webagent-chat-header {
+.webagent-chat-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
+  gap: 10px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-soft);
-  height: 40px;
   flex-shrink: 0;
+}
+.webagent-chat-title {
+  flex: 1;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
 }
 .webagent-autonomous {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 12.5px;
   cursor: pointer;
-  color: var(--text-faint);
+  color: var(--text-dim);
+  user-select: none;
 }
 .webagent-autonomous input {
   cursor: pointer;
+  accent-color: var(--accent);
 }
-.webagent-chat-header button {
-  padding: 4px 8px;
-  border: 1px solid var(--border-soft);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font-size: 13px;
+.webagent-conversation {
+  padding: 14px 0 8px;
 }
-.webagent-chat-header button:hover {
-  background: var(--bg-hover);
-}
-.webagent-message-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
+.webagent-chat .conversation-inner {
+  max-width: none;
+  padding: 0 14px;
 }
 .webagent-chat-empty {
   color: var(--text-faint);
@@ -5056,44 +5073,9 @@ button {
   padding: 40px 20px;
   font-size: 13px;
 }
-.webagent-composer {
-  padding: 8px;
-  border-top: 1px solid var(--border-soft);
-  flex-shrink: 0;
+.webagent-composer-wrap {
+  padding: 10px 12px 14px;
 }
-.webagent-composer textarea {
-  width: 100%;
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  padding: 8px;
-  background: var(--bg-inset);
-  color: var(--text);
-  font-size: 13px;
-  resize: none;
-  font-family: inherit;
-}
-.webagent-composer textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-.webagent-composer textarea:disabled {
+.webagent-composer-wrap .composer textarea:disabled {
   opacity: 0.5;
-}
-.webagent-composer button {
-  margin-top: 6px;
-  padding: 6px 16px;
-  border: none;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-}
-.webagent-composer button:hover:not(:disabled) {
-  opacity: 0.9;
-}
-.webagent-composer button:disabled {
-  opacity: 0.4;
-  cursor: default;
 }

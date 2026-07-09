@@ -142,21 +142,51 @@ function ActorToolView({ part, actorVersion, actors }: { part: Extract<Part, { t
     const isRunning = status === "running" || status === "pending" || liveStatus === "running" || liveStatus === "pending"
     const typeLabel = (subagentType ?? "general").charAt(0).toUpperCase() + (subagentType ?? "general").slice(1)
 
-    const loadLog = useCallback(async () => {
+    const loadLog = useCallback(async (silent = false) => {
       if (!actorId || !sessionId) return
-      setLoading(true)
+      if (!silent) setLoading(true)
       try {
         const msgs = await window.mimo.getSubagentMessages(sessionId, actorId)
         setMessages(msgs)
       } catch {
-        setMessages([])
+        if (!silent) setMessages([])
       }
-      setLoading(false)
+      if (!silent) setLoading(false)
     }, [actorId, sessionId])
 
     useEffect(() => {
       if (open && actorId && sessionId) loadLog()
     }, [open, actorId, sessionId, loadLog, actorVersion])
+
+    // Real-time refresh while the log is open: subagent message/part events
+    // reach the renderer over SSE but the conversation reducer deliberately
+    // ignores them (they're not main-slice messages), so without this the log
+    // only refetched on actorVersion bumps — i.e. turn boundaries — and new
+    // subagent messages appeared only after closing and reopening the view.
+    useEffect(() => {
+      if (!open || !actorId || !sessionId) return
+      let timer: ReturnType<typeof setTimeout> | null = null
+      const unsub = window.mimo.onServerEvent((e) => {
+        const t = e.type
+        if (t !== "message.updated" && t !== "message.part.updated" && t !== "message.part.delta") return
+        const p = (e as { properties?: Record<string, any> }).properties ?? {}
+        const evSession = p.sessionID ?? p.info?.sessionID ?? p.part?.sessionID
+        if (evSession !== sessionId) return
+        // message.updated carries agentID — filter precisely. Part events
+        // don't, so accept them and rely on the debounce to keep it cheap.
+        if (t === "message.updated" && p.info?.agentID && p.info.agentID !== actorId) return
+        if (!timer) {
+          timer = setTimeout(() => {
+            timer = null
+            loadLog(true) // silent — no "Loading…" flash on live refreshes
+          }, 600)
+        }
+      })
+      return () => {
+        unsub()
+        if (timer) clearTimeout(timer)
+      }
+    }, [open, actorId, sessionId, loadLog])
 
     if (action !== "run" && action !== "spawn") {
       const controlLabel = action === "status" ? "Checking status"
@@ -426,7 +456,13 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
   )
 }
 
-export function MessageView({ message, showDots, busy, actorVersion, actors, ...actions }: MsgActions & { message: ConvMessage; showDots?: boolean; busy?: boolean; actorVersion?: number; actors?: Record<string, ActorState> }) {
+// React.memo: with hundreds of messages, ANY App-level state change used to
+// re-render (and re-run markdown + syntax highlighting for) the whole history,
+// producing multi-second input latency in large chats. The conversation
+// reducer keeps untouched message objects referentially stable, so a shallow
+// prop check skips everything except the message(s) that actually changed.
+// (`busy`/`showDots` flips still re-render all — twice per turn, acceptable.)
+export const MessageView = React.memo(function MessageView({ message, showDots, busy, actorVersion, actors, ...actions }: MsgActions & { message: ConvMessage; showDots?: boolean; busy?: boolean; actorVersion?: number; actors?: Record<string, ActorState> }) {
   const role = message.info.role
   const isUser = role === "user"
   const textParts = message.parts.filter((p) => p.type === "text" && (p as any).text && !(p as any).synthetic)
@@ -495,7 +531,16 @@ export function MessageView({ message, showDots, busy, actorVersion, actors, ...
               })}
             </div>
           )}
-          {body && <div className="bubble"><Markdown>{body}</Markdown></div>}
+          {body &&
+            // Unbalanced ``` fences (truncated JSON dumps, nested codeblocks)
+            // derail markdown: the stray fence closes early and the rest of the
+            // message renders as mangled plaintext/markdown soup. Render such
+            // bodies as plain preformatted text instead.
+            ((body.match(/```/g)?.length ?? 0) % 2 === 1 ? (
+              <div className="bubble" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{body}</div>
+            ) : (
+              <div className="bubble"><Markdown>{body}</Markdown></div>
+            ))}
         </div>
 <MsgFooter msg={message} actions={actions} editMode={editMode} busy={busy} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
         {ctxMenu && <MsgContextMenu state={ctxMenu} onClose={() => setCtxMenu(null)} />}
@@ -552,7 +597,7 @@ export function MessageView({ message, showDots, busy, actorVersion, actors, ...
       )}
     </>
   )
-}
+})
 
 export function CompletedBadge() {
   return (

@@ -3,15 +3,17 @@ import { randomBytes } from "node:crypto"
 import { browserManager } from "./browser-manager"
 import { DOM_EXTRACTION_SCRIPT } from "./browser-inject"
 
-export function startBrowserServer(): { url: string; port: number; secret: string } {
-  const secret = randomBytes(24).toString("hex")
-  const server = createServer((req, res) => handleRequest(req, res, secret))
-  server.listen(0, "127.0.0.1")
-
-  const addr = server.address()
-  const port = typeof addr === "object" && addr ? addr.port : 0
-
-  return { url: `http://127.0.0.1:${port}/${secret}/`, port, secret }
+export function startBrowserServer(): Promise<{ url: string; port: number; secret: string }> {
+  return new Promise((resolve, reject) => {
+    const secret = randomBytes(24).toString("hex")
+    const server = createServer((req, res) => handleRequest(req, res, secret))
+    server.on("error", reject)
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address()
+      const port = typeof addr === "object" && addr ? addr.port : 0
+      resolve({ url: `http://127.0.0.1:${port}/${secret}/`, port, secret })
+    })
+  })
 }
 
 function parseBody(req: IncomingMessage): Promise<any> {
@@ -122,10 +124,10 @@ async function handleGetDom(res: ServerResponse, sessionId: string, maxElements:
   }
   try {
     const script = maxElements
-      ? `(() => { ${DOM_EXTRACTION_SCRIPT.replace("MAX_ELEMENTS = 500", `MAX_ELEMENTS = ${maxElements}`)} })()`
+      ? DOM_EXTRACTION_SCRIPT.replace("MAX_ELEMENTS = 500", `MAX_ELEMENTS = ${maxElements}`)
       : DOM_EXTRACTION_SCRIPT
     const result = await view.webContents.executeJavaScript(script)
-    sendJson(res, 200, result)
+    sendJson(res, 200, result ?? { url: "", title: "", elementCount: 0, elements: [] })
   } catch (e) {
     sendJson(res, 500, { error: e instanceof Error ? e.message : String(e) })
   }
@@ -200,11 +202,12 @@ async function handleType(res: ServerResponse, sessionId: string, body: any) {
       )
       if (coords) {
         browserManager.sendClick(view, coords.x, coords.y)
+        await new Promise((r) => setTimeout(r, 80))
       }
     } catch {}
   }
 
-  browserManager.sendType(view, body.text ?? "", body.clear ?? true)
+  await browserManager.sendType(view, body.text ?? "", body.clear ?? true)
   sendJson(res, 200, { ok: true })
 }
 
@@ -295,11 +298,12 @@ async function handlePaste(res: ServerResponse, sessionId: string, body: any) {
       )
       if (coords) {
         browserManager.sendClick(view, coords.x, coords.y)
+        await new Promise((r) => setTimeout(r, 80))
       }
     } catch {}
   }
 
-  browserManager.sendType(view, body.text ?? "", body.clear ?? false)
+  await browserManager.sendType(view, body.text ?? "", body.clear ?? false)
   sendJson(res, 200, { ok: true })
 }
 

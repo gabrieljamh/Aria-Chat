@@ -6,14 +6,13 @@
 - To regenerate the JavaScript SDK, run `./packages/sdk/js/script/build.ts`.
 - ALWAYS USE PARALLEL TOOLS WHEN APPLICABLE.
 - The default branch in this repo is `main`.
-- CI triggers on both `main` and `dev` branches.
 - Prefer automation: execute requested actions without confirmation unless blocked by missing info or safety/irreversibility.
 
 ## Monorepo Layout
 
-- **`packages/opencode/`** — the core server + TUI (`@org/cli`). Bun workspace package. Effect framework, SolidJS TUI.
-- **`desktop/`** — **Desktop App** (standalone Electron app). NOT in the Bun workspace — uses `npm`, not `bun`. See `desktop/ARCHITECTURE.md`.
-- **`packages/desktop/`** — upstream `@org/desktop`. Different Electron app, in the Bun workspace. Do not confuse with `desktop/`.
+- **`packages/opencode/`** — the core server + TUI (`@mimo-ai/cli`, binary `mimo`). Bun workspace package. Effect framework, SolidJS TUI.
+- **`desktop/`** — **Desktop App** (`mimocode-desktop`, an Electron app named "Aria Chat"). NOT in the Bun workspace — uses `npm`, not `bun`. See `desktop/ARCHITECTURE.md`.
+- **`packages/desktop/`** — upstream `@mimo-ai/desktop`. Different app (Tauri-based, wraps `packages/app`), in the Bun workspace. Do not confuse with `desktop/`.
 - **`packages/sdk/`** — JS SDK. Regenerated via `./packages/sdk/js/script/build.ts`.
 - **`packages/shared/`** — shared types/utilities.
 - Other packages: `app`, `console`, `enterprise`, `extensions`, `identity`, `plugin`, `script`, `slack`, `ui`, `web`.
@@ -29,17 +28,24 @@
 | Lint (oxlint) | `bun run lint` | repo root |
 | Test opencode | `bun test --timeout 30000` | `packages/opencode/` |
 | Test single file | `bun test test/<path>.test.ts` | `packages/opencode/` |
-| Run TUI dev | `bun run dev` | repo root |
+| Run TUI dev (default cwd = `packages/opencode`) | `bun run dev` | repo root |
+| Run TUI dev against another dir | `bun dev <directory>` | repo root |
 | Run Desktop App dev | `npm run dev` | `desktop/` |
+| Build Desktop App (electron-vite) | `npm run build` | `desktop/` |
 | Build Desktop App portable | `npm run pack` | `desktop/` |
+| Build opencode standalone exe | `bun run script/build.ts --single` | `packages/opencode/` |
 
-**Never run `tsc` directly** — always use the package's typecheck script. The opencode package uses `tsgo`.
+**Never run `tsc` directly** — always use the package's typecheck script. The opencode package uses `tsgo` (`@typescript/native-preview`), not `tsc`.
 
-**Tests cannot run from repo root** (guard exits with error). Always `cd` into a package dir first.
+**Tests cannot run from repo root** — `bunfig.toml` sets `[test] root = "./do-not-run-tests-from-root"`, so `bun test` at root fails by design. Always `cd` into a package dir first.
 
-## Pre-push Hook
+## Pre-push Hook (`.husky/pre-push`)
 
-Runs `bun typecheck` — your push will be rejected on type errors. Also validates the Bun version matches `packageManager` in root `package.json`.
+Runs `bun typecheck` **filtered to five packages**: `opencode`, `shared`, `sdk`, `plugin`, `script`. Also enforces that the active Bun version matches `packageManager` in root `package.json` (currently `bun@1.3.14`); mismatch rejects the push. Desktop (`desktop/`) and `packages/desktop/` are NOT typechecked by the hook.
+
+## CI
+
+Only a **release** workflow exists (`.github/workflows/release.yml`) — triggered by `v*` tags or manual dispatch. It builds the Electron portable app per OS/arch and creates a GitHub release. There are no lint/test/typecheck CI workflows despite the pre-push hook.
 
 ## TUI (`packages/opencode/src/cli/cmd/tui/`)
 
@@ -53,23 +59,22 @@ The core development focus. SolidJS + OpentUI framework. Key paths:
 
 Uses `@opentui/solid` with `customConditions: ["browser"]` and path alias `@tui/*`.
 
-## Desktop (`desktop/`) — Desktop App
+## Desktop (`desktop/`) — Desktop App ("Aria Chat")
 
-- Standalone npm package. Use `npm install` / `npm run dev`, not `bun`.
-- Three-layer Electron: Main (`src/main/`) → Preload (contextBridge) → Renderer (React).
-- Renderer never talks to the server directly — all server comms go through IPC.
+- Standalone npm package (`npm install` / `npm run dev`, not `bun`). Uses `electron-vite` (3 build targets: main, preload as CJS, renderer as React).
+- Three-layer Electron: Main (`src/main/`) → Preload (contextBridge exposes `window.mimo`) → Renderer (React). The renderer never talks to the server directly — all comms go through IPC, and the HTTP/SSE client lives in the main process so browser CORS never applies.
 - **Adding a server feature**: touch all three in lockstep — `shared/types.ts` (`Api`) → `preload/index.ts` → `main/ipc.ts`.
 - Single CSS file: `src/renderer/styles.css`. CSS variables for theming. No CSS-in-JS or Tailwind.
 - Typecheck: `npm run typecheck` (runs `typecheck:node` then `typecheck:web`).
-- `package.json` `name` field (`desktop-app`) determines the `%APPDATA%` folder — **do not rename it** or user data will be orphaned.
-- See `desktop/ARCHITECTURE.md` for full architecture docs.
+- `package.json` `name` field is `mimocode-desktop` and determines the `%APPDATA%/mimocode-desktop/` folder holding settings, projects, chats, and scheduler data — **do not rename it** or user data will be orphaned.
+- See `desktop/ARCHITECTURE.md` for full architecture docs and `desktop/API_NOTES.md` for the server contract.
 
 ## opencode (`packages/opencode/`)
 
 - Effect framework (`effect`, `@effect/*`). Uses `Effect.gen` (`function*`) extensively.
-- Condition imports: `#db`, `#pty`, `#hono`, `#read-sqlite` — Bun vs Node entry points.
+- Condition imports: `#db`, `#pty`, `#hono`, `#read-sqlite` — Bun vs Node entry points (see `package.json` `imports`).
 - Custom TS path aliases: `@/*` → `./src/*`, `@tui/*`, `@test/*`.
-- `@effect/language-service` plugin enabled in tsconfig.
+- `@effect/language-service` plugin enabled in tsconfig (`prepare` script patches it).
 - DB: Drizzle ORM with SQLite. Use snake_case for schema fields (no string redefinition needed).
 
 ## Style Guide
@@ -84,6 +89,13 @@ Uses `@opentui/solid` with `customConditions: ["browser"]` and path alias `@tui/
 - Avoid unnecessary destructuring; use dot notation to preserve context
 - Prefer `const` over `let`; ternaries / early returns over reassignment
 - Avoid `else` — prefer early returns
+
+## Lint (oxlint)
+
+`oxlint` runs type-aware (`.oxlintrc.json` sets `typeAware: true`). Notable disabled rules you might otherwise assume are on:
+- `require-yield` (Effect `function*` closures), `no-unassigned-vars` and `no-unused-expressions` (SolidJS reactivity), `no-control-regex` (ANSI/null-byte handling), `triple-slash-reference` (SST/plugin tools).
+- `no-shadow`, `unicorn/consistent-function-scoping`, and several `unicorn/*` rules are off for being too noisy in this codebase.
+- `typescript/no-floating-promises` is **warn** — unhandled promises will surface in lint output.
 
 ## Drizzle Schemas
 
@@ -101,18 +113,15 @@ const table = sqliteTable("session", {
 
 - Avoid mocks; test actual implementation
 - Do not duplicate logic into tests
-- Run from package dirs, never repo root (opencode has a guard)
-
-## CI
-
-Three workflows on `main` and `dev`: lint (oxlint), typecheck (turbo), test (bun test).
+- Run from package dirs, never repo root (see the test guard above)
 
 ## Key Gotchas
 
-- Two different desktop apps: `desktop/` (Desktop App, npm) vs `packages/desktop/` (upstream, bun workspace). They are not the same.
+- Two different desktop apps: `desktop/` (Aria Chat, Electron, npm) vs `packages/desktop/` (Tauri, wraps `packages/app`, bun workspace). They are not the same.
 - The opencode package uses `tsgo` for typechecking, not `tsc`.
-- `packages/opencode/src/cli/cmd/tui/` TUI renders via SolidJS, not React.
-- `desktop/` package name field must stay `desktop-app` — changing it moves the user data directory.
+- `packages/opencode/src/cli/cmd/tui/` TUI renders via SolidJS, not React. The Desktop App renderer (`desktop/src/renderer/`) IS React.
+- `desktop/` package name must stay `mimocode-desktop` — changing it moves the user data directory.
+- The visible CLI binary is `mimo` (defined by `packages/opencode/bin/mimo`), though the package is `@mimo-ai/cli`.
 
 ## Agent Behavior
 

@@ -84,12 +84,19 @@ export function createWebAgentSandbox(): { id: string; directory: string } {
 export function getRegistry(kind: RegistryKind): ChatRef[] {
   const file = registryFile(kind)
   const bak = file + ".bak"
+  const webRoot = kind === "webagent" ? webagentRoot() : null
   for (const f of [file, bak]) {
     if (!existsSync(f)) continue
     try {
       const data = JSON.parse(readFileSync(f, "utf8"))
-      const items = Array.isArray(data?.items) ? (data.items as ChatRef[]) : []
-      return items.filter((r) => r && typeof r.sessionID === "string" && typeof r.title === "string")
+      let items = Array.isArray(data?.items) ? (data.items as ChatRef[]) : []
+      items = items.filter((r) => r && typeof r.sessionID === "string" && typeof r.title === "string")
+      // Web agent registry must only contain sandboxes inside the webagent folder.
+      // Tasker/cowork sessions that share an id prefix are excluded.
+      if (webRoot) {
+        items = items.filter((r) => typeof r.directory === "string" && (r.directory.startsWith(webRoot + "\\") || r.directory.startsWith(webRoot + "/")))
+      }
+      return items
     } catch {
       // corrupt JSON — try next file (e.g. .bak)
     }

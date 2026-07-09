@@ -66,6 +66,10 @@ const api: MimoApi = {
     ipcRenderer.invoke("question-reply", requestID, answers, directory) as Promise<void>,
   questionReject: (requestID, directory) =>
     ipcRenderer.invoke("question-reject", requestID, directory) as Promise<void>,
+  updateSessionPermission: (sessionID, permission, directory) =>
+    ipcRenderer.invoke("session-permission", sessionID, permission, directory) as Promise<void>,
+  listPermissions: (directory) => ipcRenderer.invoke("list-permissions", directory) as Promise<import("@shared/types").Permission[]>,
+  listQuestions: (directory) => ipcRenderer.invoke("list-questions", directory) as Promise<import("@shared/types").QuestionInfo[]>,
   getProviders: (directory) => ipcRenderer.invoke("get-providers", directory) as Promise<ProvidersResponse>,
   getAgents: (directory) => ipcRenderer.invoke("get-agents", directory) as Promise<AgentInfo[]>,
   getCommands: (directory) => ipcRenderer.invoke("get-commands", directory) as Promise<CommandInfo[]>,
@@ -86,6 +90,8 @@ const api: MimoApi = {
   setGlobalProvider: (providerID, entry) => ipcRenderer.invoke("set-global-provider", providerID, entry) as Promise<boolean>,
   setCompactionThreshold: (tokens, auto) => ipcRenderer.invoke("set-compaction-threshold", tokens, auto) as Promise<boolean>,
   setCompactRedirectModel: (model: { providerID: string; modelID: string } | null) => ipcRenderer.invoke("set-compact-redirect-model", model) as Promise<boolean>,
+  getSubagentModels: () => ipcRenderer.invoke("get-subagent-models") as Promise<Record<string, string | null>>,
+  setSubagentModel: (agentName, model) => ipcRenderer.invoke("set-subagent-model", agentName, model) as Promise<boolean>,
 
   getMcpStatus: (directory) => ipcRenderer.invoke("mcp-status", directory) as Promise<Record<string, McpStatus>>,
   addMcp: (name: string, config: McpConfig, directory) => ipcRenderer.invoke("mcp-add", name, config, directory) as Promise<Record<string, McpStatus>>,
@@ -120,6 +126,9 @@ const api: MimoApi = {
 
   getSetting: (key) => ipcRenderer.invoke("get-setting", key),
   setSetting: (key, value) => ipcRenderer.invoke("set-setting", key, value) as Promise<void>,
+  getStartupSettings: () => ipcRenderer.invoke("get-startup-settings") as Promise<import("@shared/types").StartupSettings>,
+  updateCheckNow: () => ipcRenderer.invoke("update-check-now") as Promise<string>,
+  setStartupSettings: (patch) => ipcRenderer.invoke("set-startup-settings", patch) as Promise<import("@shared/types").StartupSettings>,
   gitPush: (opts: { directory: string; remote?: string; branch?: string; force?: boolean }) =>
     ipcRenderer.invoke("git-push", opts) as Promise<string>,
   getAppInfo: () => ipcRenderer.invoke("get-app-info") as Promise<import("@shared/types").AppInfo>,
@@ -151,8 +160,10 @@ const api: MimoApi = {
   webagentDetachView: (sessionId) => ipcRenderer.invoke("webagent:detach-view", sessionId) as Promise<void>,
   webagentDestroyView: (sessionId) => ipcRenderer.invoke("webagent:destroy-view", sessionId) as Promise<void>,
   webagentSetBounds: (bounds: WebAgentBounds) => ipcRenderer.invoke("webagent:set-bounds", bounds) as Promise<void>,
+  webagentSetHidden: (hidden: boolean) => ipcRenderer.invoke("webagent:set-hidden", hidden) as Promise<void>,
   webagentNavigate: (sessionId, url) => ipcRenderer.invoke("webagent:navigate", sessionId, url) as Promise<void>,
   webagentGetState: (sessionId) => ipcRenderer.invoke("webagent:get-state", sessionId) as Promise<WebAgentState>,
+  webagentSessionSetUrl: (sandboxId, url) => ipcRenderer.invoke("webagent:set-session-url", sandboxId, url) as Promise<void>,
   onWebagentEvent: (cb) => sub<WebAgentEvent>("webagent:event", cb),
 }
 

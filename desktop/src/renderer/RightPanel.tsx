@@ -111,6 +111,12 @@ interface Props {
   showFiles?: boolean
   // Optional Stats section (context/tokens/cost/compaction), rendered on top.
   stats?: React.ReactNode
+  // Working directories (Tasker): the session's main project dir plus
+  // user-added complementary dirs Aria may use without permission prompts.
+  mainDir?: string | null
+  extraDirs?: string[]
+  onAddDir?: () => void
+  onRemoveDir?: (dir: string) => void
 }
 
 /**
@@ -119,7 +125,7 @@ interface Props {
  * file.edited). Clicking a file opens it in the in-app viewer. Collapsible like
  * the left sidebar — defaults differ per tab (collapsed in Chat, open in Tasker).
  */
-export function RightPanel({ collapsed, onToggleCollapse, tasks, files, onOpenFile, showProgress = true, showFiles = true, stats }: Props) {
+export function RightPanel({ collapsed, onToggleCollapse, tasks, files, onOpenFile, showProgress = true, showFiles = true, stats, mainDir, extraDirs, onAddDir, onRemoveDir }: Props) {
   if (collapsed) {
     return (
       <aside className="right-panel collapsed">
@@ -143,6 +149,35 @@ export function RightPanel({ collapsed, onToggleCollapse, tasks, files, onOpenFi
       </div>
 
       {stats}
+
+      {mainDir && (
+        <div className="panel-section">
+          <div className="panel-section-head">
+            <h3>Working directories</h3>
+            {onAddDir && (
+              <button className="workdir-add" onClick={onAddDir} title="Add a complementary working directory — Aria can use it without permission prompts">
+                + Add
+              </button>
+            )}
+          </div>
+          <div className="workdir-list">
+            <div className="workdir-item main" title={mainDir}>
+              <span className="workdir-name">{basename(mainDir)}</span>
+              <span className="workdir-badge">main</span>
+            </div>
+            {(extraDirs ?? []).map((d) => (
+              <div key={d} className="workdir-item" title={d}>
+                <span className="workdir-name">{basename(d)}</span>
+                {onRemoveDir && (
+                  <button className="workdir-remove" onClick={() => onRemoveDir(d)} title="Remove — Aria will ask for permission again for this directory">
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showProgress && tasks.length > 0 && (
         <div className="panel-section">

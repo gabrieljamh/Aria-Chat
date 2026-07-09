@@ -41,6 +41,10 @@ export interface ToolPart {
     error?: string
     metadata?: Record<string, unknown>
     time?: { start: number; end?: number }
+    // Present on completed tool results that returned file attachments
+    // (e.g. browser.screenshot). Mirrors ToolStateCompleted.attachments
+    // in packages/opencode/src/session/message-v2.ts.
+    attachments?: Array<{ id: string; mime: string; url: string; filename?: string }>
   }
 }
 
@@ -323,6 +327,9 @@ export interface CommandInput {
   arguments: string
   agent?: string
   model?: ModelRef
+  // Optional vision model override (see PromptInput.visionModel). Plumbed
+  // through to the command's expanded prompt server-side.
+  visionModel?: ModelRef
   directory?: string
 }
 
@@ -408,6 +415,10 @@ export interface ChatRef {
   mode: RegistryKind
   createdAt: number
   updatedAt: number
+  // Complementary working directories (Tasker): pre-approved via the session's
+  // permission ruleset so Aria works in them without external_directory
+  // prompts. `directory` above remains the main project.
+  extraDirs?: string[]
 }
 
 export interface WebAgentRef extends ChatRef {
@@ -485,9 +496,21 @@ export interface PromptInput {
   sessionID: string
   text: string
   model?: ModelRef
+  // Optional vision model the server swaps to mid-turn when the active model
+  // can't read images but a tool result (e.g. browser.screenshot) produced one.
+  // Paired with the visionRedirect client toggle in App.tsx sendPrompt.
+  visionModel?: ModelRef
   agent?: string
   directory?: string
   files?: FileAttachment[]
+}
+
+// "Start with Windows" / "Start in tray" — only available in packaged builds
+// (a dev instance's execPath is electron.exe, not the app).
+export interface StartupSettings {
+  packaged: boolean
+  openAtLogin: boolean
+  startInTray: boolean
 }
 
 export type ServerStatus =
@@ -568,6 +591,9 @@ export interface MimoApi {
   // Writes or clears the agent.compaction.model in the global server config so
   // auto-compaction on the server uses the dedicated model.
   setCompactRedirectModel(model: { providerID: string; modelID: string } | null): Promise<boolean>
+  /** Per-subagent model overrides (agent.<name>.model in global config). Keys: explore, general. */
+  getSubagentModels(): Promise<Record<string, string | null>>
+  setSubagentModel(agentName: "explore" | "general", model: string | null): Promise<boolean>
 
   // workspaces / registries / files
   createChatSandbox(): Promise<{ id: string; directory: string }>
@@ -605,6 +631,10 @@ export interface MimoApi {
   // settings store
   getSetting(key: string): Promise<unknown>
   setSetting(key: string, value: unknown): Promise<void>
+  getStartupSettings(): Promise<StartupSettings>
+  setStartupSettings(patch: { openAtLogin?: boolean; startInTray?: boolean }): Promise<StartupSettings>
+  /** Run an update check now; resolves to a short status string. */
+  updateCheckNow(): Promise<string>
   gitPush(opts: { directory: string; remote?: string; branch?: string; force?: boolean }): Promise<string>
 
   // MCP connectors
@@ -623,6 +653,15 @@ export interface MimoApi {
   // questions
   questionReply(requestID: string, answers: string[][], directory?: string): Promise<void>
   questionReject(requestID: string, directory?: string): Promise<void>
+  /** Merge rules into a session's persisted permission ruleset (e.g. pre-approving extra work dirs). */
+  updateSessionPermission(
+    sessionID: string,
+    permission: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>,
+    directory?: string,
+  ): Promise<void>
+  // Pending-request lists (all sessions); used to restore cards after a session switch.
+  listPermissions(directory?: string): Promise<Permission[]>
+  listQuestions(directory?: string): Promise<QuestionInfo[]>
 
   // scheduler
   getSchedulerRules(): Promise<SchedulerRule[]>
@@ -650,8 +689,11 @@ export interface MimoApi {
   webagentDetachView(sessionId: string): Promise<void>
   webagentDestroyView(sessionId: string): Promise<void>
   webagentSetBounds(bounds: WebAgentBounds): Promise<void>
+  /** Hide/show the active browser view (native views draw above all DOM, incl. modals). */
+  webagentSetHidden(hidden: boolean): Promise<void>
   webagentNavigate(sessionId: string, url: string): Promise<void>
   webagentGetState(sessionId: string): Promise<WebAgentState>
+  webagentSessionSetUrl(sandboxId: string, url: string): Promise<void>
   onWebagentEvent(cb: (event: WebAgentEvent) => void): () => void
 }
 

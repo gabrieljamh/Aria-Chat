@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useRef, useState } from "react"
 import type { AgentInfo, ChatRef, ModelRef, PermissionReply, ProvidersResponse } from "@shared/types"
 import type { State } from "./types-internal"
 import { Composer } from "./Composer"
@@ -10,7 +10,8 @@ import { RightPanel } from "./RightPanel"
 import { StatsPanel } from "./StatsPanel"
 import type { Suggestion } from "./generate"
 import type { FileAttachment } from "@shared/types"
-import { IconRefresh } from "./Icons"
+import { IconRefresh, IconChevronDown } from "./Icons"
+import { useAutoScroll } from "./useAutoScroll"
 
 interface Props {
   providers: ProvidersResponse | null
@@ -65,17 +66,27 @@ const STATIC_SUGGESTIONS: Suggestion[] = [
 ]
 
 export function ChatTab(props: Props) {
-  const scrollRef = useRef<HTMLDivElement>(null)
   const { state } = props
+  // Stable message-action callbacks: App's handlers get a new identity on
+  // every state change (their useCallback deps include state.messages), which
+  // would defeat MessageView's React.memo. These wrappers keep a constant
+  // identity while always delegating to the latest props — no stale closures.
+  const actionsRef = useRef(props)
+  actionsRef.current = props
+  const msgActions = useState(() => ({
+    onDelete: (id: string) => actionsRef.current.onDeleteMessage(id),
+    onRegen: (id: string) => actionsRef.current.onRegenMessage(id),
+    onContinueFrom: (id: string) => actionsRef.current.onContinueFrom(id),
+    onEdit: (id: string, text: string) => actionsRef.current.onEditMessage(id, text),
+  }))[0]
   const isLoading = state.loading && state.order.length === 0
   const isEmpty = state.order.length === 0 && !state.busy && !state.loading
   const [prefill, setPrefill] = useState({ text: "", n: 0 })
   const suggestions = props.suggestions ?? STATIC_SUGGESTIONS
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [state.order, state.messages, state.permissions])
+  const { scrollRef, enabled: autoScroll, toggle: toggleAutoScroll } = useAutoScroll(
+    [state.order, state.messages, state.permissions],
+    { resetKey: props.sessionID, loading: state.loading },
+  )
 
   const composer = (
     <Composer
@@ -171,10 +182,10 @@ export function ChatTab(props: Props) {
                     busy={state.busy}
                     actorVersion={state.actorVersion}
                     actors={state.actors}
-                    onDelete={props.onDeleteMessage}
-                    onRegen={props.onRegenMessage}
-                    onContinueFrom={props.onContinueFrom}
-                    onEdit={props.onEditMessage}
+                    onDelete={msgActions.onDelete}
+                    onRegen={msgActions.onRegen}
+                    onContinueFrom={msgActions.onContinueFrom}
+                    onEdit={msgActions.onEdit}
                   />
                 ))}
                 {state.permissions.map((p) => (
@@ -188,8 +199,21 @@ export function ChatTab(props: Props) {
                     onReject={props.onQuestionReject}
                   />
                 ))}
+                {state.busy && state.statusInfo?.type === "retry" && (
+                  <div className="status-banner retry">
+                    {state.statusInfo.message ?? "Provider error"} — retrying (attempt {state.statusInfo.attempt ?? "?"}){" "}
+                    of 10…
+                  </div>
+                )}
                 {state.error && <div className="status-banner error">{state.error}</div>}
               </div>
+              <button
+                className={"autoscroll-toggle" + (autoScroll ? " on" : "")}
+                onClick={toggleAutoScroll}
+                title={autoScroll ? "Auto-scroll on — click to disable" : "Auto-scroll off — click to enable and jump to bottom"}
+              >
+                <IconChevronDown size={14} />
+              </button>
             </div>
             <div className="composer-wrap">{composer}</div>
           </>

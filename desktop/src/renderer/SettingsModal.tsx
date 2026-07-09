@@ -3,7 +3,7 @@ import type { AppInfo, CustomModel, McpConfig, McpStatus, ModelRef, ProviderConf
 import { useCustomModels, saveCustomModels, loadCustomModels } from "./customModels"
 import ariaTextRaw from "@shared/img/aria-text.svg?raw"
 import { ModelSearchSelect } from "./ModelSearchSelect"
-import { applyAccentHue, accentHex } from "./accent"
+import { applyAccentHue, accentHex, startRgbCycle, stopRgbCycle } from "./accent"
 
 interface Props {
   initialPage?: string
@@ -305,6 +305,44 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     window.mimo.getSetting("notifIdleDelay").then((v) => setNotifIdleDelay(typeof v === "number" ? v : 3))
   }, [])
 
+  const [startup, setStartup] = useState<{ packaged: boolean; openAtLogin: boolean; startInTray: boolean }>({
+    packaged: false,
+    openAtLogin: false,
+    startInTray: false,
+  })
+  useEffect(() => {
+    window.mimo.getStartupSettings().then(setStartup).catch(() => {})
+  }, [])
+  const toggleOpenAtLogin = () => {
+    if (!startup.packaged) return
+    window.mimo.setStartupSettings({ openAtLogin: !startup.openAtLogin }).then(setStartup).catch(() => {})
+  }
+  const toggleStartInTray = () => {
+    // Tray start only applies to system-boot launches — gated on the toggle above.
+    if (!startup.packaged || !startup.openAtLogin) return
+    window.mimo.setStartupSettings({ startInTray: !startup.startInTray }).then(setStartup).catch(() => {})
+  }
+
+  const [updateCheck, setUpdateCheck] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null)
+  useEffect(() => {
+    window.mimo.getSetting("updateCheck").then((v) => setUpdateCheck(v === true))
+  }, [])
+  const toggleUpdateCheck = () => {
+    setUpdateCheck((v) => {
+      const next = !v
+      window.mimo.setSetting("updateCheck", next).catch(() => {})
+      return next
+    })
+  }
+  const checkUpdatesNow = () => {
+    setUpdateStatus("checking…")
+    window.mimo
+      .updateCheckNow()
+      .then((s) => setUpdateStatus(s))
+      .catch((e) => setUpdateStatus(`error: ${String(e?.message ?? e)}`))
+  }
+
   useEffect(() => {
     window.mimo.getSetting("visionRedirect").then((v) => setVisionRedirect(v === true))
     window.mimo.getSetting("visionModel").then((v) => {
@@ -398,6 +436,16 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     })
   }
 
+  // ---- subagent models (explore / general research agents) ----
+  const [subagentModels, setSubagentModels] = useState<Record<string, string | null>>({ explore: null, general: null })
+  useEffect(() => {
+    window.mimo.getSubagentModels().then(setSubagentModels).catch(() => {})
+  }, [])
+  const changeSubagentModel = (agentName: "explore" | "general", value: string) => {
+    setSubagentModels((m) => ({ ...m, [agentName]: value || null }))
+    window.mimo.setSubagentModel(agentName, value || null).catch(() => {})
+  }
+
   // ---- compact redirect ----
   const [compactRedirect, setCompactRedirect] = useState(false)
   const [compactModel, setCompactModel] = useState("")
@@ -441,26 +489,12 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     window.mimo.setSetting("accentHue", offset).catch(() => {})
   }
 
+  // The RGB cycle itself runs as a singleton in accent.ts — no modal-local
+  // loop (the old duplicate re-rendered this modal 10×/s and couldn't stop
+  // App's loop, so disabling only took effect after the modal closed).
   useEffect(() => {
-    if (!accentRgb) return
-    let raf = 0
-    let last = performance.now()
-    let lastUi = 0
-    let hue = accentHue
-    const tick = (now: number) => {
-      const dt = now - last
-      last = now
-      hue = (hue + dt * 0.03) % 360
-      applyAccentHue(hue, accentDarkText ?? undefined)
-      if (now - lastUi > 100) {
-        lastUi = now
-        setAccentHue(hue)
-        window.mimo.setSetting("accentHue", hue).catch(() => {})
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
+    if (accentRgb) startRgbCycle(accentHue, accentDarkText ?? undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accentRgb, accentDarkText])
 
   const toggleAccentRgb = () => {
@@ -468,7 +502,12 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       const next = !v
       window.mimo.setSetting("accentRgb", next).catch(() => {})
       if (!next) {
-        applyAccentHue(accentHue, accentDarkText ?? undefined)
+        // Stop instantly and keep the color the cycle happened to be on —
+        // snapping back to the pre-cycle hue felt like the toggle "undid" it.
+        const finalHue = stopRgbCycle()
+        setAccentHue(finalHue)
+        window.mimo.setSetting("accentHue", finalHue).catch(() => {})
+        applyAccentHue(finalHue, accentDarkText ?? undefined)
       }
       return next
     })
@@ -1171,6 +1210,83 @@ const saveEditModel = async () => {
 
               <div className="settings-divider" />
 
+              <div
+                className="settings-row"
+                onClick={toggleOpenAtLogin}
+                role="button"
+                style={startup.packaged ? undefined : { opacity: 0.55, cursor: "default" }}
+              >
+                <div className="settings-row-text">
+                  <div className="settings-row-title">Start with system</div>
+                  <div className="settings-row-desc">
+                    {startup.packaged
+                      ? "Launch Aria automatically when you sign in, so Scheduler tasks and background work resume without opening the app."
+                      : "Only available in the installed/portable build — a dev instance (npm run dev) can't register itself as a startup app."}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={"toggle" + (startup.openAtLogin ? " on" : "")}
+                  aria-pressed={startup.openAtLogin}
+                  disabled={!startup.packaged}
+                  onClick={(e) => { e.stopPropagation(); toggleOpenAtLogin() }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+
+              <div
+                className="settings-row"
+                onClick={toggleStartInTray}
+                role="button"
+                style={startup.packaged && startup.openAtLogin ? undefined : { opacity: 0.55, cursor: "default" }}
+              >
+                <div className="settings-row-text">
+                  <div className="settings-row-title">Start in tray</div>
+                  <div className="settings-row-desc">
+                    {!startup.packaged
+                      ? "Only available in the installed/portable build."
+                      : startup.openAtLogin
+                        ? "When started with the system, boot straight to the tray icon without opening the window."
+                        : "Requires “Start with system” — only system-boot launches start hidden."}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={"toggle" + (startup.startInTray ? " on" : "")}
+                  aria-pressed={startup.startInTray}
+                  disabled={!startup.packaged || !startup.openAtLogin}
+                  onClick={(e) => { e.stopPropagation(); toggleStartInTray() }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+
+              <div className="settings-row" onClick={toggleUpdateCheck} role="button">
+                <div className="settings-row-text">
+                  <div className="settings-row-title">Check for updates on startup</div>
+                  <div className="settings-row-desc">
+                    {startup.packaged
+                      ? "Compare against the latest GitHub release and offer the download page when a newer version exists."
+                      : "Dev checkout: launches a small Python updater that offers to git pull and restart npm run dev when the branch is behind."}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={"toggle" + (updateCheck ? " on" : "")}
+                  aria-pressed={updateCheck}
+                  onClick={(e) => { e.stopPropagation(); toggleUpdateCheck() }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+              <div className="settings-inline-actions" style={{ marginTop: 4, alignItems: "center", gap: 10 }}>
+                {updateStatus && <span className="hint" style={{ margin: 0 }}>{updateStatus}</span>}
+                <button onClick={checkUpdatesNow}>Check now</button>
+              </div>
+
+              <div className="settings-divider" />
+
               <div className="settings-row" onClick={toggleAiGreetings} role="button">
                 <div className="settings-row-text">
                   <div className="settings-row-title">AI-generated greetings</div>
@@ -1327,6 +1443,49 @@ const saveEditModel = async () => {
                   placeholder="Select model…"
                 />
                 <div className="hint">Connected: {(providers?.connected ?? []).join(", ") || "none"}.</div>
+              </div>
+
+              <div className="settings-field">
+                <label htmlFor="explore-model">Explore subagent model</label>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <div style={{ flex: 1 }}>
+                    <ModelSearchSelect
+                      id="explore-model"
+                      value={subagentModels.explore ?? ""}
+                      options={modelOptions}
+                      onChange={(v) => changeSubagentModel("explore", v)}
+                      placeholder="Same as active model"
+                    />
+                  </div>
+                  {subagentModels.explore && (
+                    <button className="accent-hue-reset" onClick={() => changeSubagentModel("explore", "")} title="Reset — inherit the active model">↺</button>
+                  )}
+                </div>
+                <div className="hint">
+                  The read-only codebase scout Aria spawns for research (Plan mode runs several in parallel). A fast
+                  model here dramatically speeds up planning.
+                </div>
+              </div>
+
+              <div className="settings-field">
+                <label htmlFor="general-model">General subagent model</label>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <div style={{ flex: 1 }}>
+                    <ModelSearchSelect
+                      id="general-model"
+                      value={subagentModels.general ?? ""}
+                      options={modelOptions}
+                      onChange={(v) => changeSubagentModel("general", v)}
+                      placeholder="Same as active model"
+                    />
+                  </div>
+                  {subagentModels.general && (
+                    <button className="accent-hue-reset" onClick={() => changeSubagentModel("general", "")} title="Reset — inherit the active model">↺</button>
+                  )}
+                </div>
+                <div className="hint">
+                  The multi-step worker used for deeper research and parallel subtasks (Plan mode's design phase).
+                </div>
               </div>
 
               <div className="settings-divider" />

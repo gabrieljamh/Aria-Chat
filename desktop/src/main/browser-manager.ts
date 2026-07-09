@@ -26,8 +26,21 @@ class BrowserManager {
     this.win = win
   }
 
+  // While true the active view collapses to a 0-rect. Native BrowserViews
+  // always draw ABOVE the renderer DOM, so modals/menus would otherwise be
+  // covered by the page. The renderer toggles this when overlays open/close.
+  private hidden = false
+
   setBounds(bounds: { x: number; y: number; width: number; height: number }) {
     this.bounds = bounds
+    if (this.activeSessionId) {
+      this.applyBounds(this.activeSessionId)
+    }
+  }
+
+  setHidden(hidden: boolean) {
+    if (this.hidden === hidden) return
+    this.hidden = hidden
     if (this.activeSessionId) {
       this.applyBounds(this.activeSessionId)
     }
@@ -36,7 +49,7 @@ class BrowserManager {
   private applyBounds(sessionId: string) {
     const sv = this.views.get(sessionId)
     if (!sv || !this.win) return
-    sv.view.setBounds(this.bounds)
+    sv.view.setBounds(this.hidden ? { x: 0, y: 0, width: 0, height: 0 } : this.bounds)
   }
 
   create(sessionId: string, url?: string): void {
@@ -211,16 +224,18 @@ class BrowserManager {
     } as any)
   }
 
-  sendType(view: BrowserView, text: string, clear: boolean = false): void {
+  async sendType(view: BrowserView, text: string, clear: boolean = false): Promise<void> {
     if (clear) {
       view.webContents.sendInputEvent({ type: "keyDown", keyCode: "Home" } as any)
       view.webContents.sendInputEvent({ type: "keyDown", keyCode: "End", modifiers: ["shift"] } as any)
       view.webContents.sendInputEvent({ type: "keyDown", keyCode: "Delete" } as any)
+      await new Promise((r) => setTimeout(r, 60))
     }
     for (const ch of text) {
-      view.webContents.sendInputEvent({ type: "char", keyCode: ch } as any)
       view.webContents.sendInputEvent({ type: "keyDown", keyCode: ch } as any)
+      view.webContents.sendInputEvent({ type: "char", keyCode: ch } as any)
       view.webContents.sendInputEvent({ type: "keyUp", keyCode: ch } as any)
+      await new Promise((r) => setTimeout(r, 40))
     }
   }
 

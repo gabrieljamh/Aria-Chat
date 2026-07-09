@@ -57,6 +57,28 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Snapshot") {}
 
+// Junk directories no snapshot should ever stage, regardless of whether the
+// project has its own .gitignore. Unanchored patterns (match at any depth).
+const DEFAULT_EXCLUDES = [
+  "node_modules/",
+  ".git/",
+  ".svn/",
+  ".hg/",
+  "dist/",
+  "build/",
+  "out/",
+  "target/",
+  ".next/",
+  ".turbo/",
+  ".cache/",
+  ".venv/",
+  "venv/",
+  "__pycache__/",
+  "*.pyc",
+  ".DS_Store",
+  "Thumbs.db",
+].join("\n")
+
 export const layer: Layer.Layer<
   Service,
   never,
@@ -198,6 +220,11 @@ export const layer: Layer.Layer<
           const file = yield* excludes()
           const target = path.join(state.gitdir, "info", "exclude")
           const text = [
+            // Baseline junk excludes. Snapshots can now run for projects with
+            // no git repo (and possibly no .gitignore) — without these, the
+            // first snapshot of such a project would stage node_modules and
+            // build output wholesale. Redundant-but-harmless for git projects.
+            DEFAULT_EXCLUDES,
             file ? (yield* read(file)).trimEnd() : "",
             ...list.map((item) => `/${item.replaceAll("\\", "/")}`),
           ]

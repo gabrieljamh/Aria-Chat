@@ -169,23 +169,19 @@ export class ServerManager extends EventEmitter {
    * hash matches a cached binary, returns it instantly. Otherwise runs
    * `bun build:dev` to produce a fresh binary and updates the cache.
    */
-  private async ensureDevBinary(repoRoot: string): Promise<string | null> {
-    if (!this.which("bun")) return null
-
-    const cacheDir = join(repoRoot, "desktop", ".server-cache")
-    const binName = process.platform === "win32" ? "mimo.exe" : "mimo"
-    const cachedBin = join(cacheDir, binName)
-    const hashFile = join(cacheDir, "hash.json")
+  /**
+   * Mtime+size hash over the server sources that should trigger a rebuild.
+   * Skips build-generated files (models-snapshot.*): `script/generate.ts`
+   * rewrites them on EVERY build, so including them made a pre-build hash
+   * permanently stale — the cache never hit and the app rebuilt every launch.
+   */
+  private computeDevHash(repoRoot: string): string {
     const srcDir = join(repoRoot, "packages", "opencode", "src")
-
-    // Files whose changes should trigger a rebuild
     const trackedConfigs = [
       join(repoRoot, "packages", "opencode", "package.json"),
       join(repoRoot, "packages", "opencode", "tsconfig.json"),
       join(repoRoot, "packages", "opencode", "script", "build.ts"),
     ]
-
-    // Compute hash of all source files (mtime + size proxy)
     const entries: string[] = []
     const walk = (dir: string) => {
       let items: import("node:fs").Dirent[]
@@ -200,6 +196,8 @@ export class ServerManager extends EventEmitter {
           if (item.name === "node_modules" || item.name === "dist" || item.name === ".artifacts") continue
           walk(full)
         } else if (item.isFile() && (item.name.endsWith(".ts") || item.name.endsWith(".tsx"))) {
+          // Generated on every build — never a reason to rebuild.
+          if (item.name.startsWith("models-snapshot.")) continue
           try {
             const stat = statSync(full)
             entries.push(`${relative(repoRoot, full).replace(/\\/g, "/")}|${stat.mtimeMs}|${stat.size}`)
@@ -220,7 +218,18 @@ export class ServerManager extends EventEmitter {
       }
     }
     entries.sort()
-    const hash = entries.join("\n")
+    return entries.join("\n")
+  }
+
+  private async ensureDevBinary(repoRoot: string): Promise<string | null> {
+    if (!this.which("bun")) return null
+
+    const cacheDir = join(repoRoot, "desktop", ".server-cache")
+    const binName = process.platform === "win32" ? "mimo.exe" : "mimo"
+    const cachedBin = join(cacheDir, binName)
+    const hashFile = join(cacheDir, "hash.json")
+
+    const hash = this.computeDevHash(repoRoot)
 
     // Check cache
     try {
@@ -232,25 +241,48 @@ export class ServerManager extends EventEmitter {
       /* no cache or corrupt — rebuild */
     }
 
-    // Rebuild
+    // Rebuild. MUST be async: the old spawnSync blocked the Electron main
+    // process event loop for the whole build, starving Chromium's network
+    // service ("Network service crashed, restarting service.") and leaving
+    // the app stuck before the window ever appeared.
     this.setStatus({ state: "starting", message: "Rebuilding server binary (sources changed)..." })
     console.log("[mimo-server] server sources changed, rebuilding binary...")
     const buildCwd = join(repoRoot, "packages", "opencode")
-    try {
-      const result = spawnSync("bun", ["run", "build:dev"], {
-        cwd: buildCwd,
-        stdio: "pipe",
-        encoding: "utf-8",
-        timeout: 120_000,
-      })
-      if (result.status !== 0) {
-        console.error("[mimo-server] build failed:", result.stderr || result.stdout)
-        return null
+    const built = await new Promise<boolean>((resolve) => {
+      let output = ""
+      let done = false
+      const finish = (ok: boolean) => {
+        if (done) return
+        done = true
+        clearTimeout(timer)
+        if (!ok && output) console.error("[mimo-server] build failed:", output.slice(-4000))
+        resolve(ok)
       }
-    } catch (err) {
-      console.error("[mimo-server] build error:", err)
-      return null
-    }
+      const proc = spawn("bun", ["run", "build:dev"], {
+        cwd: buildCwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: process.env,
+      })
+      // Generous cap: a cold bun compile on a busy machine can exceed the old
+      // 120s limit, which made the build "fail" and fall back to slow JIT.
+      const timer = setTimeout(() => {
+        proc.kill()
+        console.error("[mimo-server] build timed out")
+        finish(false)
+      }, 300_000)
+      proc.stdout?.on("data", (d: Buffer) => (output += d.toString()))
+      proc.stderr?.on("data", (d: Buffer) => (output += d.toString()))
+      proc.on("exit", (code) => finish(code === 0))
+      proc.on("error", (err) => {
+        console.error("[mimo-server] build error:", err)
+        finish(false)
+      })
+    })
+    if (!built) return null
+
+    // Re-hash AFTER the build: codegen inside `build:dev` touches sources, so
+    // a pre-build hash would never match on the next launch.
+    const finalHash = this.computeDevHash(repoRoot)
 
     // Find the built binary — output dir is dist/mimocode-<os>-<arch>/bin/mimo[.exe]
     const distDir = join(buildCwd, "dist")
@@ -267,7 +299,7 @@ export class ServerManager extends EventEmitter {
           if (existsSync(candidate)) {
             mkdirSync(cacheDir, { recursive: true })
             copyFileSync(candidate, cachedBin)
-            writeFileSync(hashFile, JSON.stringify({ hash, built: Date.now() }))
+            writeFileSync(hashFile, JSON.stringify({ hash: finalHash, built: Date.now() }))
             console.log("[mimo-server] binary rebuilt + cached")
             return cachedBin
           }
@@ -281,12 +313,39 @@ export class ServerManager extends EventEmitter {
 
     mkdirSync(cacheDir, { recursive: true })
     copyFileSync(builtBin, cachedBin)
-    writeFileSync(hashFile, JSON.stringify({ hash, built: Date.now() }))
+    writeFileSync(hashFile, JSON.stringify({ hash: finalHash, built: Date.now() }))
     console.log("[mimo-server] binary rebuilt + cached")
     return cachedBin
   }
 
+  /**
+   * Kill stale `mimo serve` processes left behind by a crashed/killed desktop.
+   * The server's retry loop has no owner once the app dies — an orphan keeps
+   * hammering the provider with retries forever, invisibly. Runs only on the
+   * spawn path (attaching to an external server never reaches here).
+   */
+  private killOrphanServers() {
+    try {
+      if (process.platform === "win32") {
+        spawnSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_Process -Filter \"Name='mimo.exe'\" | Where-Object { $_.CommandLine -match ' serve' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+          ],
+          { windowsHide: true, timeout: 10_000 },
+        )
+      } else {
+        spawnSync("pkill", ["-f", "mimo serve"], { timeout: 5_000 })
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
   private spawn(port: number): Promise<string> {
+    this.killOrphanServers()
     const repoRoot = this.findRepoRoot()
     // In a portable distribution there is no repo root — prefer the bundled
     // server binary shipped alongside the Electron app.
@@ -369,8 +428,15 @@ export class ServerManager extends EventEmitter {
         MIMOCODE_SERVER_USERNAME: "mimocode",
         MIMOCODE_SERVER_PASSWORD: password,
         MIMOCODE_DISABLE_GIT: "1",
+        // Enable snapshots (and therefore session diffs / the Tasker DiffGrid)
+        // for EVERY project, git repo or not. Snapshots use their own shadow
+        // git dir under <data>/snapshot with the project as work-tree, so the
+        // project itself never needs git — and with MIMOCODE_DISABLE_GIT the
+        // worktree is already anchored at the project directory. Gated on a
+        // usable git binary: without one, snapshot tracking must stay off.
+        ...(this.which("git") ? { MIMOCODE_FAKE_VCS: "git" } : {}),
         MIMOCODE_EXPERIMENTAL_WEB_AGENT: "1",
-        MIMOCODE_WEB_AGENT_BRIDGE: getBrowserServerUrl() ?? "",
+        MIMOCODE_WEB_AGENT_BRIDGE: (await getBrowserServerUrl()) ?? "",
         GIT_USERNAME: githubUsername,
         GIT_PASSWORD: githubToken,
       },

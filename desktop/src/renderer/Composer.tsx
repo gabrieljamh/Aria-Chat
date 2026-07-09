@@ -224,7 +224,7 @@ export function Composer(props: Props) {
     if (ok.length) {
       setAttachments((a) => [...a, ...ok.map((p) => ({ filename: p.filename, mime: p.mime, url: p.url }))])
     }
-    if (bad.length) setAttachError(bad.map((b) => `${b.filename}: ${b.error}`).join("  ·  "))
+    if (bad.length) setAttachError(bad.map((b) => `${b.filename}: ${b.error}`).join("  Â·  "))
   }
 
   const removeAttachment = (idx: number) => setAttachments((a) => a.filter((_, i) => i !== idx))
@@ -376,10 +376,51 @@ export function Composer(props: Props) {
     }
   }
 
+  // Pastes larger than this become a text attachment instead of inline text.
+  // Big inline pastes (logs, JSON dumps) wreck the composer, break the message
+  // bubble's markdown when they contain ``` fences, and blow up the model
+  // request — as an attachment they flow through the server's inline/spill
+  // logic (small → inlined verbatim, huge → temp file + read-tool hint).
+  const PASTE_ATTACH_THRESHOLD = 6_000
+
+  const textToAttachment = (text: string): FileAttachment => {
+    let isJson = false
+    try {
+      JSON.parse(text)
+      isJson = true
+    } catch {
+      /* plain text */
+    }
+    const bytes = new TextEncoder().encode(text)
+    let bin = ""
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)))
+    }
+    const b64 = window.btoa(bin)
+    const stamp = new Date().toISOString().slice(11, 19).replace(/:/g, "")
+    return {
+      filename: `pasted-${stamp}.${isJson ? "json" : "txt"}`,
+      mime: isJson ? "application/json" : "text/plain",
+      url: `data:${isJson ? "application/json" : "text/plain"};base64,${b64}`,
+    }
+  }
+
   const onPaste = async (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items ?? [])
     const fileItems = items.filter((it) => it.kind === "file" && it.type)
-    if (!fileItems.length) return
+    if (!fileItems.length) {
+      const pasted = e.clipboardData.getData("text/plain")
+      if (pasted && pasted.length > PASTE_ATTACH_THRESHOLD) {
+        e.preventDefault()
+        try {
+          setAttachments((a) => [...a, textToAttachment(pasted)])
+        } catch {
+          // btoa/encoding hiccup — fall back to a plain inline paste.
+          setText((t) => t + pasted)
+        }
+      }
+      return
+    }
     e.preventDefault()
     setAttachError(null)
     const files: File[] = []
@@ -452,7 +493,7 @@ export function Composer(props: Props) {
                 )}
                 <span className="attach-name">{a.filename}</span>
                 <button className="attach-remove" title="Remove" onClick={() => removeAttachment(i)}>
-                  ×
+                  Ã—
                 </button>
               </span>
             )
@@ -464,7 +505,7 @@ export function Composer(props: Props) {
         <div className="attach-preview-overlay" onClick={() => setPreviewUrl(null)}>
           <div className="attach-preview-box">
             <img src={previewUrl} alt="preview" className="attach-preview-img" />
-            <button className="attach-preview-close" onClick={() => setPreviewUrl(null)}>×</button>
+            <button className="attach-preview-close" onClick={() => setPreviewUrl(null)}>Ã—</button>
           </div>
         </div>
       )}
@@ -539,11 +580,11 @@ export function Composer(props: Props) {
                 className="skills-pop-back"
                 onClick={() => { setSkillsOpen(false); setMenuOpen(true) }}
               >
-                <span className="skills-pop-back-arrow">‹</span> Skills
+                <span className="skills-pop-back-arrow">â€¹</span> Skills
               </button>
               <div className="skills-pop-list">
                 {skillsLoading ? (
-                  <div className="menu-sub-empty">Loading…</div>
+                  <div className="menu-sub-empty">Loadingâ€¦</div>
                 ) : skillList.length === 0 ? (
                   <div className="menu-sub-empty">No skills installed.</div>
                 ) : (
@@ -577,14 +618,14 @@ export function Composer(props: Props) {
 
         <div className="spacer" />
 
-        {props.showMode && primaryAgents.length > 0 && (
+        {props.showMode && primaryAgents.filter((a) => a.name !== "webagent").length > 0 && (
           <select
             className="select"
             value={props.agentName ?? ""}
             onChange={(e) => props.onAgentChange?.(e.target.value)}
             title="Autonomy / mode"
           >
-            {primaryAgents.map((a) => (
+            {primaryAgents.filter((a) => a.name !== "webagent").map((a) => (
               <option key={a.name} value={a.name}>
                 {modeLabel(a.name)}
               </option>

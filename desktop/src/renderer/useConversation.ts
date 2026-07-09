@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef } from "react"
 import type { BashInteractiveRequest, MessageInfo, Part, Permission, QuestionInfo, ServerEvent, SessionStatusInfo, TaskInfo, Todo } from "@shared/types"
+// (Permission and QuestionInfo are used both for live events and pending-list re-hydration.)
 
 export interface ConvMessage {
   info: MessageInfo
@@ -37,6 +38,9 @@ export interface State {
   actors: Record<string, ActorState>
   actorVersion: number
   busy: boolean
+  // Non-idle run detail from session.status — lets the UI say WHY it's busy
+  // (e.g. "Provider is overloaded — retry #3") instead of a bare spinner.
+  statusInfo: SessionStatusInfo | null
   loading: boolean
   error: string | null
   bashInteractiveRequest: BashInteractiveRequest | null
@@ -54,6 +58,7 @@ const empty: State = {
   actors: {},
   actorVersion: 0,
   busy: false,
+  statusInfo: null,
   loading: false,
   error: null,
   bashInteractiveRequest: null,
@@ -61,9 +66,12 @@ const empty: State = {
 }
 
 type Action =
-  | { kind: "reset"; messages: ConvMessage[]; todos: Todo[]; tasks: TaskInfo[]; busy?: boolean; files?: string[] }
+  | { kind: "reset"; messages: ConvMessage[]; todos: Todo[]; tasks: TaskInfo[]; busy?: boolean; files?: string[]; permissions?: Permission[]; questions?: QuestionState[] }
   | { kind: "loading"; loading: boolean }
   | { kind: "files"; files: string[] }
+  // Soft re-sync after an SSE reconnect: upsert authoritative message data
+  // (tokens, cost, completion) without clearing live-only state.
+  | { kind: "sync"; messages: ConvMessage[]; busy?: boolean }
   | { kind: "event"; event: ServerEvent }
   | { kind: "busy"; busy: boolean }
   | { kind: "error"; error: string | null }
@@ -103,10 +111,46 @@ function reducer(state: State, action: Action): State {
         messages[m.info.id] = m
         order.push(m.info.id)
       }
-      return { ...empty, messages, order, todos: action.todos, tasks: action.tasks, busy: action.busy ?? false, files: action.files ?? [] }
+      return {
+        ...empty,
+        messages,
+        order,
+        todos: action.todos,
+        tasks: action.tasks,
+        busy: action.busy ?? false,
+        files: action.files ?? [],
+        permissions: action.permissions ?? [],
+        questions: action.questions ?? [],
+      }
     }
     case "files":
       return { ...state, files: action.files }
+    case "sync": {
+      // SSE events lost during a disconnect gap (or dropped server-side under
+      // backpressure) are never replayed; merge the DB-authoritative fetch in
+      // so tokens/cost/busy can't stay stale until a manual session switch.
+      let next = state
+      for (const m of action.messages) {
+        if (next._subagentMsgIds.has(m.info.id)) continue
+        next = upsertMessage(next, m.info)
+        for (const p of m.parts) {
+          // Don't let a lagging DB snapshot clobber longer live-streamed text
+          // (same guard as the message.part.updated case).
+          const existing = next.messages[p.messageID]?.parts.find((x) => x.id === p.id)
+          if (
+            existing &&
+            (existing as any).type === "text" &&
+            (existing as any).text !== undefined &&
+            (p as any).text !== undefined &&
+            (existing as any).text.length >= (p as any).text.length
+          ) {
+            continue
+          }
+          next = upsertPart(next, p)
+        }
+      }
+      return action.busy === undefined ? next : { ...next, busy: action.busy }
+    }
     case "busy":
       return { ...state, busy: action.busy }
     case "error":
@@ -236,18 +280,22 @@ function reducer(state: State, action: Action): State {
           return { ...state, files }
         }
         case "session.idle":
-          return { ...state, busy: false }
+          return { ...state, busy: false, statusInfo: null }
         case "session.status":
           // Authoritative run state from the server: busy/retry => working,
           // idle => done. This is what keeps the abort button in sync.
-          return { ...state, busy: e.properties.status.type !== "idle" }
+          return {
+            ...state,
+            busy: e.properties.status.type !== "idle",
+            statusInfo: e.properties.status.type === "idle" ? null : e.properties.status,
+          }
         case "session.error": {
           const err = e.properties.error
           // AbortedError = user-initiated cancel, not a real error.
           if (err && typeof err === "object" && (err as any).name === "MessageAbortedError") {
-            return { ...state, busy: false }
+            return { ...state, busy: false, statusInfo: null }
           }
-          return { ...state, busy: false, error: stringifyError(err) }
+          return { ...state, busy: false, statusInfo: null, error: stringifyError(err) }
         }
         case "actor.registered": {
           const p = e.properties as any
@@ -392,6 +440,30 @@ export function useConversation(
     sessionRef.current = sid
   }
 
+  // Soft re-sync after an SSE reconnect. The 1s auto-reconnect in the main
+  // process restores the stream, but events published during the gap (or
+  // dropped server-side) are gone — including the final message.updated that
+  // carries tokens/cost and session.idle. Re-pull authoritative state so the
+  // stats panel and busy flag heal without a manual session switch.
+  const lastResyncRef = useRef(0)
+  const resyncRef = useRef<() => void>(() => {})
+  resyncRef.current = () => {
+    const sid = sessionRef.current
+    // Initial load (or a load in flight) already fetches everything.
+    if (!sid || populatedForRef.current !== sid) return
+    const now = Date.now()
+    if (now - lastResyncRef.current < 1_000) return
+    lastResyncRef.current = now
+    void Promise.all([
+      window.mimo.getMessages(sid, directoryRef.current ?? undefined).catch(() => null),
+      window.mimo.getSessionStatus(directoryRef.current ?? undefined).catch(() => null),
+    ]).then(([messages, statuses]) => {
+      if (sessionRef.current !== sid || !messages) return
+      const busy = statuses ? (statuses[sid]?.type ? statuses[sid].type !== "idle" : false) : undefined
+      dispatch({ kind: "sync", messages: messages as ConvMessage[], busy })
+    })
+  }
+
   // Re-derive the workspace file list from disk (files modified since the
   // conversation started, minus noise). Catches bash-made artifacts (zips, …)
   // that never emit a file.edited event, and is naturally persistent.
@@ -422,7 +494,7 @@ export function useConversation(
     let cancelled = false
     const sid = sessionID
     ;(async () => {
-      const [messages, todos, tasks, statuses, diskFiles] = await Promise.all([
+      const [messages, todos, tasks, statuses, diskFiles, pendingPerms, pendingQuestions] = await Promise.all([
         window.mimo.getMessages(sid, directory ?? undefined).catch((err) => {
           return []
         }),
@@ -434,6 +506,12 @@ export function useConversation(
         }),
         window.mimo.getSessionStatus(directory ?? undefined).catch(() => ({}) as Record<string, SessionStatusInfo>),
         directory ? window.mimo.listWorkspaceFiles(directory, since ?? 0).catch(() => [] as string[]) : Promise.resolve([] as string[]),
+        // Pending question/permission requests survive on the server while the
+        // renderer's event-fed state is wiped on session switch — re-fetch them
+        // so the cards (incl. plan-mode entry/exit approvals) come back instead
+        // of forcing an abort + retry.
+        window.mimo.listPermissions(directory ?? undefined).catch(() => [] as Permission[]),
+        window.mimo.listQuestions(directory ?? undefined).catch(() => [] as QuestionInfo[]),
       ])
       // Seed the abort button's busy flag from the session's real run state, so a
       // session that is already mid-turn (or a brand-new chat whose turn just
@@ -443,6 +521,11 @@ export function useConversation(
       // persists across restarts); fall back to the history-based extraction
       // when the directory can't be scanned.
       const seededFiles = diskFiles.length ? diskFiles : extractFiles(messages as ConvMessage[], directory)
+      // Only this session's pending requests belong in this conversation view.
+      const seededPerms = pendingPerms.filter((p) => p.sessionID === sid)
+      const seededQuestions: QuestionState[] = pendingQuestions
+        .filter((q) => q.sessionID === sid)
+        .map((q) => ({ id: q.id, sessionID: q.sessionID, questions: q.questions, tool: q.tool }))
       if (cancelled) return
       if (sessionRef.current !== sid) {
         return
@@ -452,7 +535,7 @@ export function useConversation(
         return
       }
       populatedForRef.current = sid
-      dispatch({ kind: "reset", messages, todos, tasks, busy: seededBusy, files: seededFiles })
+      dispatch({ kind: "reset", messages, todos, tasks, busy: seededBusy, files: seededFiles, permissions: seededPerms, questions: seededQuestions })
       dispatch({ kind: "loading", loading: false })
     })()
     return () => {
@@ -467,6 +550,12 @@ export function useConversation(
       const evtSession = eventSessionId(event)
       if (evtSession && evtSession !== sid) return
       const t = event.type
+      // The server sends server.connected as the first SSE frame of every
+      // (re)connection — use it to heal any state lost during the gap.
+      if (t === "server.connected") {
+        resyncRef.current()
+        return
+      }
       // Sync agent mode dropdown when server changes agent (slash command / tool)
       if (t === "message.updated") {
         const info = (event as any).properties?.info

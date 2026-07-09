@@ -1,9 +1,9 @@
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { isRecord } from "./record"
 
-/** Collapse PascalCase, camelCase, snake_case, and kebab-case to one comparable token. */
+/** Collapse PascalCase, camelCase, snake_case, kebab-case, and dotted names to one comparable token. */
 export function canonical(name: string): string {
-  return name.replace(/[-_\s]+/g, "").toLowerCase()
+  return name.replace(/[-_.\s]+/g, "").toLowerCase()
 }
 
 /** Resolve a model-provided identifier to a registered name when casing or separators differ. */
@@ -15,7 +15,12 @@ export function resolveName(name: string, candidates: readonly string[]): string
   if (caseMatch) return caseMatch
 
   const key = canonical(name)
-  return candidates.find((candidate) => canonical(candidate) === key)
+  const canonicalMatch = candidates.find((candidate) => canonical(candidate) === key)
+  if (canonicalMatch) return canonicalMatch
+
+  // Models sometimes strip namespace prefixes (e.g. "navigate" instead of
+  // "browser.navigate"). Try matching by suffix after the last dot.
+  return candidates.find((candidate) => candidate.endsWith(`.${name}`))
 }
 
 export function schemaPropertyKeys(schema: JSONSchema7): string[] {

@@ -77,6 +77,47 @@ export type InferDef<T> =
       ? Def<P, M>
       : never
 
+/**
+ * Models frequently paste raw JSON where a string parameter is expected —
+ * e.g. `write({ content: { "key": … } })` instead of a JSON *string* — because
+ * the payload they're working with is itself JSON. Instead of bouncing the
+ * call with "expected string, received object" (which they tend to repeat),
+ * use zod's own issue report to find exactly which paths got the wrong type
+ * and coerce: objects/arrays are stringified (pretty-printed, matching what
+ * the model meant to write), numbers/booleans become their string form.
+ * Returns the coerced args, or undefined when nothing applied.
+ */
+export function coerceStringArgs(parameters: z.ZodType, args: unknown): unknown | undefined {
+  const res = parameters.safeParse(args)
+  if (res.success || !(res.error instanceof z.ZodError)) return undefined
+  let changed = false
+  let next: unknown
+  try {
+    next = structuredClone(args)
+  } catch {
+    return undefined
+  }
+  for (const issue of res.error.issues) {
+    if (issue.code !== "invalid_type" || (issue as { expected?: string }).expected !== "string") continue
+    if (!issue.path.length) continue
+    let parent: any = next
+    for (let i = 0; i < issue.path.length - 1 && parent != null; i++) parent = parent[issue.path[i] as any]
+    if (parent == null) continue
+    const key = issue.path[issue.path.length - 1] as any
+    const val = parent[key]
+    if (val !== null && (typeof val === "object" || Array.isArray(val))) {
+      parent[key] = JSON.stringify(val, null, 2)
+      changed = true
+    } else if (typeof val === "number" || typeof val === "boolean") {
+      parent[key] = String(val)
+      changed = true
+    }
+  }
+  if (!changed) return undefined
+  // Only accept the coercion when it actually makes the args valid.
+  return parameters.safeParse(next).success ? next : undefined
+}
+
 // Builds the agent-facing message for an argument-validation failure. zod v4's
 // prettifyError gives a precise, path-annotated breakdown (which field, what was
 // expected vs received) — far more actionable than dumping the raw issue JSON —
@@ -107,6 +148,10 @@ function wrap<Parameters extends z.ZodType, Result extends Metadata>(
           ...(ctx.callID ? { "tool.call_id": ctx.callID } : {}),
         }
         return Effect.gen(function* () {
+          // Salvage "expected string, received object" calls (raw JSON pasted
+          // into string params) before validation instead of bouncing them.
+          const coerced = coerceStringArgs(toolInfo.parameters, args)
+          if (coerced !== undefined) args = coerced as typeof args
           yield* Effect.try({
             try: () => toolInfo.parameters.parse(args),
             catch: (error) => {
