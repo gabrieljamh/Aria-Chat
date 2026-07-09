@@ -44,6 +44,9 @@ import { BrowserPaste } from "./browser/paste"
 import { BrowserZoom } from "./browser/zoom"
 import { BrowserDraw } from "./browser/draw"
 import { BrowserHoldKey } from "./browser/hold-key"
+import { DesktopBridgeLive } from "./desktop-bridge"
+import { ListApps } from "./app/list-apps"
+import { RunApp } from "./app/run-app"
 import { BrowserBridge, BrowserBridgeLive } from "./browser-bridge"
 import { Glob } from "@mimo-ai/shared/util/glob"
 import path from "path"
@@ -171,6 +174,8 @@ export const layer = Layer.effect(
     const browserZoom = yield* BrowserZoom
     const browserDraw = yield* BrowserDraw
     const browserHoldKey = yield* BrowserHoldKey
+    const listApps = yield* ListApps
+    const runApp = yield* RunApp
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -271,6 +276,8 @@ export const layer = Layer.effect(
           browserZoom: Tool.init(browserZoom),
           browserDraw: Tool.init(browserDraw),
           browserHoldKey: Tool.init(browserHoldKey),
+          listApps: Tool.init(listApps),
+          runApp: Tool.init(runApp),
         })
 
         return {
@@ -298,6 +305,8 @@ export const layer = Layer.effect(
             tool.memory,
             tool.history,
             tool.task,
+            tool.listApps,
+            tool.runApp,
             ...(Flag.MIMOCODE_EXPERIMENTAL_WORKFLOW_TOOL ? [tool.workflow] : []),
             ...(Flag.MIMOCODE_EXPERIMENTAL_WEB_AGENT
               ? [
@@ -453,7 +462,7 @@ export const layer = Layer.effect(
 
     return Service.of({ ids, all, named, tools, reload })
   }),
-).pipe(Layer.provide(BrowserBridgeLive))
+).pipe(Layer.provide(BrowserBridgeLive), Layer.provide(DesktopBridgeLive))
 
 export const defaultLayer = Layer.suspend(() =>
   layer.pipe(

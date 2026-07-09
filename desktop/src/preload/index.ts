@@ -78,6 +78,9 @@ const api: MimoApi = {
   installSkillFile: (filePath: string) => ipcRenderer.invoke("install-skill-file", filePath) as Promise<SkillInfo>,
   uninstallSkill: (name: string) => ipcRenderer.invoke("uninstall-skill", name) as Promise<void>,
   getPath: () => ipcRenderer.invoke("get-path") as Promise<PathInfo | null>,
+  pickExecutable: () => ipcRenderer.invoke("pick-executable") as Promise<string | null>,
+  launchApp: (appId: string, extraArgs?: string) =>
+    ipcRenderer.invoke("launch-app", appId, extraArgs) as Promise<{ ok: boolean; pid?: number; error?: string }>,
   getTodos: (sessionID, directory) => ipcRenderer.invoke("get-todos", sessionID, directory) as Promise<Todo[]>,
   getTasks: (sessionID, directory) => ipcRenderer.invoke("get-tasks", sessionID, directory) as Promise<TaskInfo[]>,
   getSessionStatus: (directory) => ipcRenderer.invoke("get-session-status", directory) as Promise<Record<string, import("@shared/types").SessionStatusInfo>>,

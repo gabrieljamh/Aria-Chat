@@ -437,6 +437,9 @@ export class ServerManager extends EventEmitter {
         ...(this.which("git") ? { MIMOCODE_FAKE_VCS: "git" } : {}),
         MIMOCODE_EXPERIMENTAL_WEB_AGENT: "1",
         MIMOCODE_WEB_AGENT_BRIDGE: (await getBrowserServerUrl()) ?? "",
+        // Same local bridge server also hosts /list-apps and /run-app for the
+        // run_app / list_apps tools (launching user-registered applications).
+        MIMOCODE_DESKTOP_BRIDGE: (await getBrowserServerUrl()) ?? "",
         GIT_USERNAME: githubUsername,
         GIT_PASSWORD: githubToken,
       },

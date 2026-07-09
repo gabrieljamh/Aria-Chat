@@ -1,8 +1,10 @@
-import type { BrowserView } from "electron"
+import { dialog, BrowserWindow, type BrowserView } from "electron"
 import { createServer, IncomingMessage, ServerResponse } from "node:http"
 import { randomBytes } from "node:crypto"
 import { browserManager } from "./browser-manager"
 import { DOM_EXTRACTION_SCRIPT } from "./browser-inject"
+import { basename } from "node:path"
+import { getRegisteredApps, resolveApp, launchApp } from "./app-launcher"
 
 // Resolve a DOM element (tagged by browser_getdom as data-webagent-id) to the
 // CSS-pixel center of its bounding box — the same coordinate space clicks and
@@ -73,6 +75,10 @@ function handleRequest(req: IncomingMessage, res: ServerResponse, secret: string
 
   parseBody(req)
     .then(async (body) => {
+      // Desktop-level routes (registered applications) — no browser session.
+      if (route === "list-apps") return handleListApps(res)
+      if (route === "run-app") return handleRunApp(res, body)
+
       const sessionId = body.sessionId as string
       if (!sessionId) {
         sendJson(res, 400, { error: "sessionId required" })
@@ -115,6 +121,49 @@ function handleRequest(req: IncomingMessage, res: ServerResponse, secret: string
     .catch((e) => {
       sendJson(res, 500, { error: e instanceof Error ? e.message : String(e) })
     })
+}
+
+function handleListApps(res: ServerResponse) {
+  const apps = getRegisteredApps().map((a) => ({
+    id: a.id,
+    name: a.name,
+    binary: basename(a.path),
+    autoAllow: Boolean(a.autoAllow),
+  }))
+  sendJson(res, 200, { apps })
+}
+
+async function handleRunApp(res: ServerResponse, body: any) {
+  const query = (body.id as string) || (body.query as string) || ""
+  const app = resolveApp(query)
+  if (!app) {
+    sendJson(res, 200, {
+      ok: false,
+      notFound: true,
+      available: getRegisteredApps().map((a) => a.name),
+    })
+    return
+  }
+  // Per-app gate: apps the user marked auto-allow launch immediately; the rest
+  // require an explicit confirmation before Aria may launch them.
+  if (!app.autoAllow) {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const { response } = await dialog.showMessageBox(win ?? undefined!, {
+      type: "question",
+      buttons: ["Cancel", "Launch"],
+      defaultId: 1,
+      cancelId: 0,
+      title: "Launch application",
+      message: `Allow Aria to launch “${app.name}”?`,
+      detail: app.path + (body.extraArgs ? `\nArgs: ${body.extraArgs}` : ""),
+    })
+    if (response !== 1) {
+      sendJson(res, 200, { ok: false, declined: true, app: { id: app.id, name: app.name } })
+      return
+    }
+  }
+  const r = launchApp(app, body.extraArgs)
+  sendJson(res, 200, { ...r, app: { id: app.id, name: app.name } })
 }
 
 async function handleNavigate(res: ServerResponse, sessionId: string, url: string) {

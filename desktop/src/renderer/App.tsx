@@ -134,8 +134,20 @@ export function App() {
   const activeDir = activeRef?.directory ?? null
   const taskerProjectDir = activeRef?.directory ?? coworkDir
 
+  // The mode selector only ever represents a PRIMARY (user-selectable) agent.
+  // A turn routinely spawns subagents (explore/general/title/summary/…) whose
+  // own user messages stream through the agent-sync path; following one would
+  // flip the session to a restricted subagent (e.g. explore, which denies
+  // write/edit) and that wrong agent would then be sent on the next prompt.
+  // Gate every sync on this so transient subagents can never become the mode.
+  const isPrimaryAgent = useCallback(
+    (name: string | null | undefined): boolean =>
+      !!name && agents.some((a) => a.name === name && (a.mode === "primary" || a.mode === "all")),
+    [agents],
+  )
+
   const { state, setBusy, setError, setCurrentSession, isSessionBusy, setBusyFor, setErrorFor } = useConversation(activeSession, activeDir, activeRef?.createdAt, (agent) => {
-    if (!agent) return
+    if (!agent || !isPrimaryAgent(agent)) return
     // Server-driven mode change (plan_enter/plan_exit, slash command) — record
     // it against the active session so it survives a switch, and mirror it into
     // the shared selector.
@@ -149,7 +161,8 @@ export function App() {
   useEffect(() => {
     if (!activeSession) return
     const mapped = agentBySessionRef.current.get(activeSession)
-    if (mapped) setAgentName(mapped)
+    // Only restore a genuine primary agent; never a stale subagent value.
+    if (mapped && isPrimaryAgent(mapped)) setAgentName(mapped)
     else if (defaultAgentRef.current) setAgentName(defaultAgentRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSession])
@@ -164,8 +177,16 @@ export function App() {
     let newestId = ""
     let newestAgent: string | undefined
     for (const id of state.order) {
-      const info = state.messages[id]?.info as { role?: string; agent?: string } | undefined
-      if (info?.role === "user" && typeof info.agent === "string" && info.agent && id >= newestId) {
+      const info = state.messages[id]?.info as { role?: string; agent?: string; agentID?: string } | undefined
+      // Only the MAIN conversation's primary-agent messages define the mode.
+      // Skip subagent messages (agentID !== "main") and any non-primary agent so
+      // a session that spawned explore/general can't get stuck on it.
+      if (
+        info?.role === "user" &&
+        (info.agentID === undefined || info.agentID === "main") &&
+        isPrimaryAgent(info.agent) &&
+        id >= newestId
+      ) {
         newestId = id
         newestAgent = info.agent
       }
@@ -750,6 +771,16 @@ export function App() {
       const finalRef = ref
       const sendSid = finalRef.sessionID
       setErrorFor(sendSid, null)
+      // Resolve the agent for this turn ONCE, safely: webagent tab is fixed;
+      // otherwise only send a real primary agent. A stale/subagent value (e.g.
+      // explore, which has no write/edit) falls back to the server default so a
+      // main session can never be routed to a restricted subagent.
+      const turnAgent =
+        tab === "webagent"
+          ? "webagent"
+          : isPrimaryAgent(agentName) && agentName !== "webagent"
+            ? agentName ?? undefined
+            : undefined
       let turnModel = model
       let turnVisionModel: ModelRef | undefined
       const atts = files ?? []
@@ -795,7 +826,7 @@ export function App() {
               arguments: cmdArgs,
               model: turnModel ?? undefined,
               visionModel: turnVisionModel,
-              agent: agentName && agentName !== "webagent" ? agentName : undefined,
+              agent: turnAgent,
               directory: finalRef.directory,
             })
           } catch (e: any) {
@@ -815,7 +846,7 @@ export function App() {
           model: turnModel ?? undefined,
           visionModel: turnVisionModel,
           // Never let the webagent-only agent leak into a chat/cowork turn.
-          agent: tab === "webagent" ? "webagent" : agentName && agentName !== "webagent" ? agentName : undefined,
+          agent: turnAgent,
           directory: finalRef.directory,
           files,
         })
@@ -826,7 +857,7 @@ export function App() {
       }
       refreshTitle(finalRef)
     },
-    [activeRef, tab, createChat, createCowork, createWebAgentSession, webSearch, model, agentName, setBusyFor, setErrorFor, refreshTitle],
+    [activeRef, tab, createChat, createCowork, createWebAgentSession, webSearch, model, agentName, isPrimaryAgent, setBusyFor, setErrorFor, refreshTitle],
   )
 
   const abort = useCallback(() => {

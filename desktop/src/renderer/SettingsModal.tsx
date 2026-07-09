@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { AppInfo, CustomModel, McpConfig, McpStatus, ModelRef, ProviderConfigInput, ProviderModel, ProvidersResponse, SkillInfo } from "@shared/types"
+import type { AppInfo, CustomModel, ExecuteApp, McpConfig, McpStatus, ModelRef, ProviderConfigInput, ProviderModel, ProvidersResponse, SkillInfo } from "@shared/types"
 import { useCustomModels, saveCustomModels, loadCustomModels } from "./customModels"
 import ariaTextRaw from "@shared/img/aria-text.svg?raw"
 import { ModelSearchSelect } from "./ModelSearchSelect"
@@ -16,7 +16,7 @@ interface Props {
 }
 
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "ok"; msg: string } | { kind: "error"; msg: string }
-type Page = "general" | "notifications" | "models" | "providers" | "skills" | "connectors" | "server" | "conversations" | "about"
+type Page = "general" | "notifications" | "models" | "providers" | "skills" | "connectors" | "applications" | "server" | "conversations" | "about"
 
 interface PageDef {
   id: Page
@@ -93,6 +93,18 @@ const PAGES: PageDef[] = [
         <path d="M20 16a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4" />
         <path d="M8 20h8" />
         <circle cx="12" cy="20" r="1" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: "applications",
+    label: "Applications",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
       </svg>
     ),
   },
@@ -200,6 +212,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [compactionThreshold, setCompactionThreshold] = useState<string>("")
   const [compactionEnabled, setCompactionEnabled] = useState(false)
   const [compStatus, setCompStatus] = useState<Status>({ kind: "idle" })
+  const [apps, setApps] = useState<ExecuteApp[]>([])
   const [userName, setUserName] = useState("")
   const [userStatus, setUserStatus] = useState<Status>({ kind: "idle" })
   const [githubUsername, setGithubUsername] = useState("")
@@ -281,6 +294,30 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   useEffect(() => {
     window.mimo.getSetting("githubUsername").then((v) => setGithubUsername(typeof v === "string" ? v : ""))
     window.mimo.getSetting("githubToken").then((v) => setGithubToken(typeof v === "string" ? v : ""))
+  }, [])
+
+  useEffect(() => {
+    window.mimo.getSetting("executeApps").then((v) => setApps(Array.isArray(v) ? (v as ExecuteApp[]) : []))
+  }, [])
+
+  // Persist the app registry immediately on every edit (matches the rest of the
+  // settings modal's save-on-change behavior).
+  const persistApps = useCallback((next: ExecuteApp[]) => {
+    setApps(next)
+    window.mimo.setSetting("executeApps", next).catch(() => {})
+  }, [])
+
+  const addApp = useCallback(async () => {
+    const path = await window.mimo.pickExecutable().catch(() => null)
+    if (!path) return
+    const base = path.split(/[\\/]/).pop() ?? path
+    const name = base.replace(/\.(exe|app|bat|cmd|com|sh)$/i, "")
+    const app: ExecuteApp = { id: `app_${Date.now().toString(36)}`, name, path, autoAllow: false }
+    setApps((cur) => {
+      const next = [...cur, app]
+      window.mimo.setSetting("executeApps", next).catch(() => {})
+      return next
+    })
   }, [])
 
   useEffect(() => {
@@ -1908,6 +1945,67 @@ const saveEditModel = async () => {
                 <div className="hint">
                   MCP servers provide tools and resources to Aria. Changes are persisted to mimocode.json.
                 </div>
+              </div>
+            </>
+          )}
+
+          {page === "applications" && (
+            <>
+              <h3 className="settings-page-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                </svg>{" "}
+                Applications
+              </h3>
+              <div className="hint" style={{ marginBottom: 14 }}>
+                Register applications or scripts Aria can launch when you say “run X”, and target from the Scheduler.
+                Aria can only launch apps you add here — auto-allow apps launch immediately, the rest ask for confirmation first.
+              </div>
+
+              <div className="app-list">
+                {apps.length === 0 && (
+                  <div className="hint">No applications registered yet. Add one to get started.</div>
+                )}
+                {apps.map((a) => (
+                  <div key={a.id} className="app-row">
+                    <div className="app-row-head">
+                      <input
+                        className="app-name-input"
+                        value={a.name}
+                        placeholder="Name (what you'll say — e.g. Spotify)"
+                        onChange={(e) => persistApps(apps.map((x) => (x.id === a.id ? { ...x, name: e.target.value } : x)))}
+                      />
+                      <button className="app-remove-btn" onClick={() => persistApps(apps.filter((x) => x.id !== a.id))}>
+                        Remove
+                      </button>
+                    </div>
+                    <div className="app-path" title={a.path}>{a.path}</div>
+                    <div className="app-row-fields">
+                      <input
+                        value={a.args ?? ""}
+                        placeholder="Arguments (optional)"
+                        onChange={(e) => persistApps(apps.map((x) => (x.id === a.id ? { ...x, args: e.target.value } : x)))}
+                      />
+                      <input
+                        value={a.cwd ?? ""}
+                        placeholder="Working directory (optional)"
+                        onChange={(e) => persistApps(apps.map((x) => (x.id === a.id ? { ...x, cwd: e.target.value } : x)))}
+                      />
+                    </div>
+                    <label className="app-autoallow">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(a.autoAllow)}
+                        onChange={(e) => persistApps(apps.map((x) => (x.id === a.id ? { ...x, autoAllow: e.target.checked } : x)))}
+                      />
+                      Launch without asking me each time
+                    </label>
+                  </div>
+                ))}
+                <button className="app-add-btn" onClick={addApp}>+ Add application…</button>
               </div>
             </>
           )}

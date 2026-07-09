@@ -23,6 +23,7 @@ import { getStore } from "./store"
 import { Scheduler, loadRules, saveRules } from "./scheduler"
 import { allowPreviewRoot } from "./preview"
 import { browserManager } from "./browser-manager"
+import { resolveApp, launchApp } from "./app-launcher"
 import type { AuthInfo, BashInteractiveReply, BashInteractiveRequest, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo, SessionInfoFull, ProjectInfo, SchedulerRule } from "@shared/types"
 
 // Sanitize config: remove undefined values from cost/limit objects that cause validation errors
@@ -521,6 +522,29 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
+  })
+
+  ipcMain.handle("pick-executable", async () => {
+    const win = getWindow()
+    const result = await dialog.showOpenDialog(win ?? undefined!, {
+      properties: process.platform === "darwin" ? ["openFile", "treatPackageAsDirectory"] : ["openFile"],
+      title: "Choose an application or script",
+      filters:
+        process.platform === "win32"
+          ? [
+              { name: "Programs", extensions: ["exe", "bat", "cmd", "com"] },
+              { name: "All files", extensions: ["*"] },
+            ]
+          : [{ name: "All files", extensions: ["*"] }],
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle("launch-app", (_e, appId: string, extraArgs?: string) => {
+    const app = resolveApp(appId)
+    if (!app) return { ok: false, error: `App not found: ${appId}` }
+    return launchApp(app, extraArgs)
   })
 
   ipcMain.handle("pick-skill-file", async () => {

@@ -537,6 +537,22 @@ export interface AppInfo {
   arch: string
 }
 
+/** A user-registered application or script the agent (and scheduler) can launch
+ *  by name. The model can only launch entries the user explicitly added — it
+ *  cannot run arbitrary binaries. */
+export interface ExecuteApp {
+  id: string
+  name: string
+  /** Absolute path to the executable / app bundle / script. */
+  path: string
+  /** Optional default arguments (space-separated, quotes respected). */
+  args?: string
+  /** Optional working directory. */
+  cwd?: string
+  /** When true, the agent launches it without asking each time. Default: ask. */
+  autoAllow?: boolean
+}
+
 export interface MimoApi {
   // server lifecycle
   getServerStatus(): Promise<ServerStatus>
@@ -665,6 +681,12 @@ export interface MimoApi {
   listPermissions(directory?: string): Promise<Permission[]>
   listQuestions(directory?: string): Promise<QuestionInfo[]>
 
+  // registered applications (Execute)
+  /** Open a native file picker to choose an executable/app/script. Returns its path or null. */
+  pickExecutable(): Promise<string | null>
+  /** Launch a registered app by id (optionally with extra args). Returns pid or an error. */
+  launchApp(appId: string, extraArgs?: string): Promise<{ ok: boolean; pid?: number; error?: string }>
+
   // scheduler
   getSchedulerRules(): Promise<SchedulerRule[]>
   setSchedulerRules(rules: SchedulerRule[]): Promise<boolean>
@@ -728,6 +750,7 @@ export type SchedulerAction =
   | { type: "bash-detached"; command: string; cwd?: string }
   | { type: "notify"; title: string; body: string }
   | { type: "mcp"; server: string; tool: string; arguments: Record<string, unknown> }
+  | { type: "application"; appId: string; args?: string }
 
 export interface SchedulerRule {
   id: string

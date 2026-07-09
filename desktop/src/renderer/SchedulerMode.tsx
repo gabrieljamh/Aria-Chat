@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
-import type { SchedulerRule, SchedulerTrigger, SchedulerTarget, SchedulerAction, McpStatus, McpToolDef, ExecutionLogEntry, SchedulerStats, RunningProcess } from "@shared/types"
+import type { SchedulerRule, SchedulerTrigger, SchedulerTarget, SchedulerAction, McpStatus, McpToolDef, ExecutionLogEntry, SchedulerStats, RunningProcess, ExecuteApp } from "@shared/types"
 import { IconPlus, IconRefresh, IconTrash } from "./Icons"
 import { RightPanel } from "./RightPanel"
 import type { Suggestion } from "./generate"
@@ -23,6 +23,7 @@ const ACTION_LABELS: Record<string, string> = {
   "bash-detached": "Bash (detached)",
   notify: "Notify",
   mcp: "MCP Tool",
+  application: "Application",
 }
 
 const ACTION_DESCRIPTIONS: Record<string, string> = {
@@ -32,6 +33,7 @@ const ACTION_DESCRIPTIONS: Record<string, string> = {
   "bash-detached": "Launches a background process that keeps running independently. Works with any target — the target directory is used as the working directory.",
   notify: "Shows a desktop notification with a title and body. No session is created — works with any target.",
   mcp: "Calls an MCP tool directly, bypassing the AI session loop. The tool runs server-side and returns its result. Works with any target — the target directory determines which MCP server instance is used.",
+  application: "Launches one of your registered applications (Settings → Applications). No session or confirmation — it just launches on schedule. Works with any target.",
 }
 
 /** Actions that require a session (sandbox or project target). */
@@ -66,6 +68,7 @@ function actionLabel(a: SchedulerAction): string {
   if (a.type === "bash-detached") return `$ ${a.command.slice(0, 60)} (detached)`
   if (a.type === "notify") return `Notify: "${a.body.slice(0, 60)}"`
   if (a.type === "mcp") return `MCP: ${a.server}/${a.tool}`
+  if (a.type === "application") return `Launch app${a.args ? " (with args)" : ""}`
   return "?"
 }
 
@@ -487,6 +490,15 @@ function SchedulerEditor({ rule: initial, isNew, onSave, onDelete, onClose }: Ed
   const [argsText, setArgsText] = useState("{}")
   const [argsError, setArgsError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [apps, setApps] = useState<ExecuteApp[]>([])
+
+  // Registered applications, for the "Application" action's dropdown.
+  useEffect(() => {
+    window.mimo
+      .getSetting("executeApps")
+      .then((v) => setApps(Array.isArray(v) ? (v as ExecuteApp[]) : []))
+      .catch(() => setApps([]))
+  }, [])
 
   const update = (patch: Partial<SchedulerRule>) => setRule((r) => ({ ...r, ...patch }))
 
@@ -661,7 +673,7 @@ function SchedulerEditor({ rule: initial, isNew, onSave, onDelete, onClose }: Ed
         <div className="editor-field">
           <label>Action</label>
           <div className="editor-options">
-            {(["prompt", "command", "bash", "bash-detached", "notify", "mcp"] as const).map((t) => {
+            {(["prompt", "command", "bash", "bash-detached", "notify", "mcp", "application"] as const).map((t) => {
               const compatible = actionCompatible(t, rule.target.type)
               return (
                 <button
@@ -677,6 +689,7 @@ function SchedulerEditor({ rule: initial, isNew, onSave, onDelete, onClose }: Ed
                     else if (t === "bash-detached") update({ action: { type: "bash-detached", command: "" } })
                     else if (t === "notify") update({ action: { type: "notify", title: "Aria Scheduler", body: "" } })
                     else if (t === "mcp") update({ action: { type: "mcp", server: "", tool: "", arguments: {} } })
+                    else if (t === "application") update({ action: { type: "application", appId: apps[0]?.id ?? "" } })
                   }}
                 >
                   {ACTION_LABELS[t]}
@@ -743,6 +756,45 @@ function SchedulerEditor({ rule: initial, isNew, onSave, onDelete, onClose }: Ed
               rows={3}
             />
           </div>
+        )}
+
+        {rule.action.type === "application" && (
+          <>
+            <div className="editor-field">
+              <label>Application</label>
+              {apps.length === 0 ? (
+                <div className="action-description">
+                  No applications registered yet. Add them in Settings → Applications, then pick one here.
+                </div>
+              ) : (
+                <select
+                  value={rule.action.type === "application" ? rule.action.appId : ""}
+                  onChange={(e) => {
+                    if (rule.action.type !== "application") return
+                    updateAction({ type: "application", appId: e.target.value, args: rule.action.args })
+                  }}
+                >
+                  {apps.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="editor-field">
+              <label>Arguments</label>
+              <input
+                type="text"
+                value={rule.action.type === "application" ? rule.action.args ?? "" : ""}
+                onChange={(e) => {
+                  if (rule.action.type !== "application") return
+                  updateAction({ type: "application", appId: rule.action.appId, args: e.target.value })
+                }}
+                placeholder="optional"
+              />
+            </div>
+          </>
         )}
 
         {rule.action.type === "notify" && (

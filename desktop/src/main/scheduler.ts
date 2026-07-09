@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { Notification, app } from "electron"
 import { createChatSandbox, deleteSandbox, ensureProjectMarker } from "./workspaces"
+import { getRegisteredApps, launchApp } from "./app-launcher"
 import type { MimoClient } from "./client"
 import type { SchedulerRule, ExecutionLogEntry, SchedulerStats, RunningProcess } from "@shared/types"
 
@@ -265,6 +266,16 @@ export class Scheduler {
     if (action.type === "notify") {
       notify(action.title, action.body)
       return { ok: true, detail: action.body }
+    }
+
+    // Launch a registered application (no session needed).
+    if (action.type === "application") {
+      const app = getRegisteredApps().find((a) => a.id === action.appId)
+      if (!app) return { ok: false, error: `Registered app not found (id ${action.appId}). It may have been removed.` }
+      const r = launchApp(app, action.args)
+      return r.ok
+        ? { ok: true, detail: `Launched ${app.name}${r.pid ? ` (pid ${r.pid})` : ""}` }
+        : { ok: false, error: r.error ?? `Failed to launch ${app.name}` }
     }
 
     // MCP tool call (no session needed, but needs a directory for the server instance)

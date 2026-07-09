@@ -4976,6 +4976,96 @@ button {
 .webagent-url-input::placeholder {
   color: var(--text-faint);
 }
+/* Settings → Applications */
+.app-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.app-row {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-inset);
+}
+.app-row-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.app-name-input {
+  flex: 1;
+  height: 30px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.app-remove-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.app-remove-btn:hover {
+  background: var(--bg-hover);
+}
+.app-path {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-family: var(--mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-row-fields {
+  display: flex;
+  gap: 8px;
+}
+.app-row-fields input {
+  flex: 1;
+  height: 28px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+}
+.app-autoallow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.app-add-btn {
+  align-self: flex-start;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px dashed var(--border-soft);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.app-add-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .webagent-zoom {
   display: flex;
   align-items: center;
