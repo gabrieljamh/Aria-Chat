@@ -78,8 +78,8 @@ export function App() {
   // AI-generated home-screen content (per tab, cached for the app session).
   const [aiGreetings, setAiGreetings] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState(false)
-  const [genGreeting, setGenGreeting] = useState<{ chat?: string; cowork?: string; scheduler?: string }>({})
-  const [genSuggest, setGenSuggest] = useState<{ chat?: Suggestion[]; cowork?: Suggestion[]; scheduler?: Suggestion[] }>({})
+  const [genGreeting, setGenGreeting] = useState<{ chat?: string; cowork?: string; scheduler?: string; webagent?: string }>({})
+  const [genSuggest, setGenSuggest] = useState<{ chat?: Suggestion[]; cowork?: Suggestion[]; scheduler?: Suggestion[]; webagent?: Suggestion[] }>({})
   const genInflight = useRef<Set<string>>(new Set())
   const [viewerPath, setViewerPath] = useState<string | null>(null)
   const [brandMenuOpen, setBrandMenuOpen] = useState(false)
@@ -308,10 +308,11 @@ export function App() {
   // failure is swallowed so the static content remains.
   useEffect(() => {
     if (status.state !== "ready" || !model) return
-    const kind: "chat" | "cowork" | "scheduler" | null =
+    const kind: "chat" | "cowork" | "scheduler" | "webagent" | null =
       tab === "chat" && activeChatId === null ? "chat"
       : tab === "cowork" && activeCoworkId === null ? "cowork"
       : tab === "scheduler" ? "scheduler"
+      : tab === "webagent" && activeWebAgentId === null ? "webagent"
       : null
     if (!kind) return
     if (aiGreetings && genGreeting[kind] === undefined && !genInflight.current.has("g-" + kind)) {
@@ -334,7 +335,7 @@ export function App() {
           .finally(() => genInflight.current.delete("s-" + kind))
       })()
     }
-  }, [status.state, tab, activeChatId, activeCoworkId, aiGreetings, aiSuggestions, model, agentName, userName, genGreeting, genSuggest])
+  }, [status.state, tab, activeChatId, activeCoworkId, activeWebAgentId, aiGreetings, aiSuggestions, model, agentName, userName, genGreeting, genSuggest])
 
   /* ----------------------- initial load on ready -------------------------- */
   useEffect(() => {
@@ -477,8 +478,8 @@ export function App() {
   // Drop the cached home-screen generations for the current tab so the effect
   // regenerates them (manual, opt-in — costs a token call only when clicked).
   const regenerateHome = useCallback(() => {
-    const kind: "chat" | "cowork" | "scheduler" =
-      tab === "cowork" ? "cowork" : tab === "scheduler" ? "scheduler" : "chat"
+    const kind: "chat" | "cowork" | "scheduler" | "webagent" =
+      tab === "cowork" ? "cowork" : tab === "scheduler" ? "scheduler" : tab === "webagent" ? "webagent" : "chat"
     genInflight.current.delete("g-" + kind)
     genInflight.current.delete("s-" + kind)
     setGenGreeting((s2) => { const n = { ...s2 }; delete n[kind]; return n })
@@ -556,6 +557,31 @@ export function App() {
     fetchSessions(dir)
     return ref
   }, [taskerProjectDir, coworkDir, persist, setCurrentSession, fetchSessions])
+
+  // Used when the user posts a prompt on the webagent tab with no session
+  // selected (e.g. clicked a home-screen suggestion chip). Mirrors the
+  // onNew dance the WebAgentMode sidebar uses, lifted here so sendPrompt
+  // can auto-provision a webagent sandbox just like it does for chats/cowork.
+  const createWebAgentSession = useCallback(async (): Promise<WebAgentRef> => {
+    const sandbox = await window.mimo.webagentCreateSandbox()
+    const session = await window.mimo.createSession({ directory: sandbox.directory, title: "New Web Agent" })
+    const ref: WebAgentRef = {
+      id: sandbox.id,
+      sessionID: session.id,
+      title: "New Web Agent",
+      directory: sandbox.directory,
+      mode: "webagent",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    const updated = [ref, ...webAgentRef.current]
+    webAgentRef.current = updated
+    setWebAgentSessions(updated)
+    await window.mimo.saveRegistry("webagent", updated)
+    setActiveWebAgentId(ref.id)
+    setCurrentSession(session.id)
+    return ref
+  }, [setCurrentSession])
 
   // Phase 1: Select a session from the project tree. Finds or creates the
   // matching ChatRef in the cowork registry so the existing useConversation
@@ -657,7 +683,9 @@ export function App() {
       let ref = activeRef
       if (!ref) {
         try {
-          ref = tab === "cowork" ? await createCowork() : await createChat()
+          ref = tab === "cowork" ? await createCowork()
+            : tab === "webagent" ? await createWebAgentSession()
+            : await createChat()
         } catch (e: any) {
           console.error("[sendPrompt] create failed:", e)
           setError(String(e?.message ?? e))
@@ -741,7 +769,7 @@ export function App() {
       }
       refreshTitle(finalRef)
     },
-    [activeRef, tab, createChat, createCowork, webSearch, model, agentName, setBusy, setError, refreshTitle],
+    [activeRef, tab, createChat, createCowork, createWebAgentSession, webSearch, model, agentName, setBusy, setError, refreshTitle],
   )
 
   const abort = useCallback(() => {
@@ -1255,6 +1283,10 @@ export function App() {
               await window.mimo.saveRegistry("webagent", updated)
             }}
             onOpenSettings={() => openSettings()}
+            greeting={genGreeting.webagent ?? null}
+            suggestions={genSuggest.webagent ?? null}
+            aiHome={aiGreetings || aiSuggestions}
+            onRegenerate={regenerateHome}
           />
         )}
       </div>

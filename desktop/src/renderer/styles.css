@@ -5079,3 +5079,29 @@ button {
 .webagent-composer-wrap .composer textarea:disabled {
   opacity: 0.5;
 }
+
+/* WebAgent greeting hero (no active session) */
+.greeting-webagent {
+  background: var(--bg);
+  text-align: center;
+  overflow-y: auto;
+}
+.webagent-hero-sub {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 540px;
+  margin: 0;
+}
+.webagent-chat-hint {
+  margin: 0 0 14px;
+}
+.chips-sm {
+  max-width: none;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.chips-sm .chip {
+  padding: 6px 11px;
+  font-size: 12px;
+}

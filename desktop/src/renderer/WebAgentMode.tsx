@@ -5,6 +5,14 @@ import { MessageView } from "./MessageView"
 import { Sidebar } from "./Sidebar"
 import { IconRefresh, IconSend } from "./Icons"
 import { useAutoScroll } from "./useAutoScroll"
+import type { Suggestion } from "./generate"
+
+const STATIC_SUGGESTIONS: Suggestion[] = [
+  { label: "Research a topic", text: "Research the latest news on a topic of your choice and summarize the key findings", desc: "Navigate search engines and gather information." },
+  { label: "Compare two products", text: "Find and compare the top two laptops under $1500, including specs and reviews", desc: "Open multiple retailer pages and extract specs." },
+  { label: "Fill out a form", text: "Go to a website and fill out a form with the details I provide", desc: "Automate repetitive form entry." },
+  { label: "Monitor a page", text: "Open a news site and list the top 5 headlines right now", desc: "Extract the current top stories." },
+]
 
 interface Props {
   collapsed: boolean
@@ -21,6 +29,10 @@ interface Props {
   onDelete: (ref: WebAgentRef) => void
   onRename: (id: string, title: string) => void
   onOpenSettings: () => void
+  greeting?: string | null
+  suggestions?: Suggestion[] | null
+  aiHome?: boolean
+  onRegenerate?: () => void
 }
 
 /**
@@ -39,6 +51,9 @@ export function WebAgentMode(props: Props) {
   const activeSession = props.sessions.find((s) => s.id === props.activeId) ?? null
   const agentActive = state.busy
   const noFavorites = useMemo(() => new Set<string>(), [])
+  const suggestions = props.suggestions ?? STATIC_SUGGESTIONS
+  const [prefill, setPrefill] = useState({ text: "", n: 0 })
+  const applyPrefill = useCallback((text: string) => setPrefill((p) => ({ text, n: p.n + 1 })), [])
 
   const { scrollRef } = useAutoScroll([state.order, state.messages], {
     resetKey: activeSession?.sessionID ?? null,
@@ -156,6 +171,13 @@ export function WebAgentMode(props: Props) {
     }
   }, [activeSession?.sessionID])
 
+  useEffect(() => {
+    if (prefill.text) {
+      setInput(prefill.text)
+      setPrefill({ text: "", n: 0 })
+    }
+  }, [prefill])
+
   const navigate = useCallback(async (url: string) => {
     if (!activeSession) return
     let fullUrl = url.trim()
@@ -228,9 +250,39 @@ export function WebAgentMode(props: Props) {
           <div className="webagent-frame" ref={viewportRef}>
             {activeSession && agentActive && <div className="webagent-control-lock" />}
             {!activeSession && (
-              <div className="webagent-empty">
-                <p>No active Web Agent session</p>
-                <p>Create a new session to start browsing</p>
+              <div className="greeting greeting-webagent">
+                <h1>
+                  {props.greeting ? (
+                    <>
+                      <span className="accent">✻</span> {props.greeting}
+                    </>
+                  ) : (
+                    <>
+                      <span className="accent">✻</span> Hand the browser to an agent.<br />
+                      What should it look into?
+                    </>
+                  )}
+                </h1>
+                <p className="webagent-hero-sub">
+                  Create a new session, paste a URL or describe a task, and the agent will navigate, click, and read on your behalf.
+                </p>
+                <div className="chips">
+                  {suggestions.map((sug, i) => (
+                    <button
+                      key={sug.label + i}
+                      className="chip"
+                      title={sug.text}
+                      onClick={() => applyPrefill(sug.text)}
+                    >
+                      {sug.label}
+                    </button>
+                  ))}
+                </div>
+                {props.aiHome && (
+                  <button className="regen-btn" onClick={props.onRegenerate} title="Regenerate with AI">
+                    <IconRefresh size={13} /> Regenerate
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -259,7 +311,25 @@ export function WebAgentMode(props: Props) {
               })}
               {state.order.length === 0 && (
                 <div className="webagent-chat-empty">
-                  {activeSession ? "Tell the agent what to do below." : "Select a session to view its conversation."}
+                  {activeSession ? (
+                    <>
+                      <p className="webagent-chat-hint">Tell the agent what to do below.</p>
+                      <div className="chips chips-sm">
+                        {suggestions.map((sug, i) => (
+                          <button
+                            key={sug.label + i}
+                            className="chip"
+                            title={sug.text}
+                            onClick={() => applyPrefill(sug.text)}
+                          >
+                            {sug.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    "Select a session to view its conversation."
+                  )}
                 </div>
               )}
               {state.error && <div className="status-banner error">{state.error}</div>}
