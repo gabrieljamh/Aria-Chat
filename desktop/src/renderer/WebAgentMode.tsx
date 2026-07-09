@@ -229,6 +229,44 @@ export function WebAgentMode(props: Props) {
     setInput("")
   }, [input, onSend])
 
+  const composer = (
+    <div className="composer-wrap webagent-composer-wrap">
+      <div className="composer">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault()
+              sendPrompt()
+            }
+          }}
+          placeholder="Tell the agent what to do..."
+          rows={2}
+        />
+        <div className="composer-footer">
+          <div className="spacer" />
+          {state.busy ? (
+            <button className="send-btn" onClick={props.onAbort} title="Stop">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              className="send-btn"
+              onClick={sendPrompt}
+              disabled={!input.trim()}
+              title="Send"
+            >
+              <IconSend size={15} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <>
       <Sidebar
@@ -287,6 +325,7 @@ export function WebAgentMode(props: Props) {
                 <IconRefresh size={13} /> Regenerate
               </button>
             )}
+            <div className="webagent-hero-composer">{composer}</div>
           </div>
         ) : (
           <>
@@ -381,42 +420,7 @@ export function WebAgentMode(props: Props) {
             </div>
           </div>
 
-          <div className="composer-wrap webagent-composer-wrap">
-            <div className="composer">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault()
-                    sendPrompt()
-                  }
-                }}
-                placeholder="Tell the agent what to do..."
-                rows={2}
-                disabled={!activeSession}
-              />
-              <div className="composer-footer">
-                <div className="spacer" />
-                {state.busy ? (
-                  <button className="send-btn" onClick={props.onAbort} title="Stop">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                      <rect x="5" y="5" width="14" height="14" rx="2" />
-                    </svg>
-                  </button>
-                ) : (
-                  <button
-                    className="send-btn"
-                    onClick={sendPrompt}
-                    disabled={!activeSession || !input.trim()}
-                    title="Send"
-                  >
-                    <IconSend size={15} />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+          {composer}
         </aside>
       )}
     </>

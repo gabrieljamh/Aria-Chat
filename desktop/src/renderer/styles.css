@@ -5107,6 +5107,10 @@ button {
   font-size: 12.5px;
   margin: 0;
 }
+.webagent-hero-composer {
+  width: 100%;
+  max-width: 640px;
+}
 .webagent-chat-hint {
   margin: 0 0 14px;
 }

@@ -1249,23 +1249,14 @@ export function App() {
             sessions={webAgentSessions}
             activeId={activeWebAgentId}
             onSelect={(ref) => setActiveWebAgentId(ref.id)}
-            onNew={async () => {
-              const sandbox = await window.mimo.webagentCreateSandbox()
-              const session = await window.mimo.createSession({ directory: sandbox.directory, title: "New Web Agent" })
-              const ref: WebAgentRef = {
-                id: sandbox.id,
-                sessionID: session.id,
-                title: "New Web Agent",
-                directory: sandbox.directory,
-                mode: "webagent",
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-              }
-              const updated = [ref, ...webAgentRef.current]
-              webAgentRef.current = updated
-              setWebAgentSessions(updated)
-              await window.mimo.saveRegistry("webagent", updated)
-              setActiveWebAgentId(ref.id)
+            onNew={() => {
+              // Don't pre-create a sandbox: just deselect so the hero /
+              // empty-chat greeting screen is shown. The session is
+              // provisioned lazily in sendPrompt -> createWebAgentSession
+              // when the user actually sends the first message. Avoids
+              // orphaned empty sandboxes accumulating in the sidebar when
+              // the user clicks New then abandons.
+              setActiveWebAgentId(null)
             }}
             onDelete={async (ref) => {
               await window.mimo.webagentDestroyView(ref.sessionID).catch(() => {})
