@@ -85,9 +85,11 @@ class BrowserManager {
 
     view.webContents.on("did-navigate", (_e, navUrl) => {
       sv.url = navUrl
+      this.emitNavigate(sessionId, navUrl)
     })
     view.webContents.on("did-navigate-in-page", (_e, navUrl) => {
       sv.url = navUrl
+      this.emitNavigate(sessionId, navUrl)
     })
     view.webContents.on("page-title-updated", (_e, title) => {
       if (this.win && !this.win.isDestroyed()) {
@@ -95,6 +97,29 @@ class BrowserManager {
           sessionId,
           type: "title",
           title,
+        })
+      }
+    })
+
+    view.webContents.on("did-finish-load", () => {
+      const u = sv.url
+      if (u && this.win && !this.win.isDestroyed()) {
+        this.win.webContents.send("webagent:event", {
+          sessionId,
+          type: "loading",
+          loading: false,
+          url: u,
+          title: view.webContents.getTitle(),
+        })
+      }
+    })
+
+    view.webContents.on("did-start-loading", () => {
+      if (this.win && !this.win.isDestroyed()) {
+        this.win.webContents.send("webagent:event", {
+          sessionId,
+          type: "loading",
+          loading: true,
         })
       }
     })
@@ -179,6 +204,18 @@ class BrowserManager {
 
   getUrl(sessionId: string): string | null {
     return this.views.get(sessionId)?.url ?? null
+  }
+
+  private emitNavigate(sessionId: string, url: string): void {
+    if (this.win && !this.win.isDestroyed()) {
+      this.win.webContents.send("webagent:event", {
+        sessionId,
+        type: "navigate",
+        url,
+        title: this.views.get(sessionId)?.view.webContents.getTitle() ?? "",
+        loading: false,
+      })
+    }
   }
 
   getTitle(sessionId: string): string {

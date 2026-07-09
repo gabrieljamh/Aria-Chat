@@ -5086,11 +5086,25 @@ button {
   text-align: center;
   overflow-y: auto;
 }
+.greeting-webagent-full {
+  /* Full-bleed inside the main column: drop the .webagent-stage padding
+     and make the hero fill the column until the user starts a chat or
+     the browser object has a real URL loaded. */
+  padding: 56px 32px;
+}
+.greeting-webagent-full h1 {
+  font-size: 44px;
+}
 .webagent-hero-sub {
   color: var(--text-dim);
   font-size: 14px;
   line-height: 1.5;
   max-width: 540px;
+  margin: 0;
+}
+.webagent-hero-hint {
+  color: var(--text-faint);
+  font-size: 12.5px;
   margin: 0;
 }
 .webagent-chat-hint {

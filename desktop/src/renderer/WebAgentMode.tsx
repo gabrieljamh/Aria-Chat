@@ -55,6 +55,16 @@ export function WebAgentMode(props: Props) {
   const [prefill, setPrefill] = useState({ text: "", n: 0 })
   const applyPrefill = useCallback((text: string) => setPrefill((p) => ({ text, n: p.n + 1 })), [])
 
+  // Hero / default screen: shown while no chat messages exist AND no real
+  // browser URL is loaded (or saved on the session ref). Either threshold
+  // flips dismisses the hero for the rest of the tab's lifetime — the user
+  // has either started a conversation or the browser object is up. Saved
+  // URLs count as "browser object is up" so a restart with a saved URL
+  // skips the hero and lands straight on the page.
+  const savedUrl = activeSession?.url ?? null
+  const liveUrl = browserState.url
+  const showHero = state.order.length === 0 && !liveUrl && !savedUrl
+
   const { scrollRef } = useAutoScroll([state.order, state.messages], {
     resetKey: activeSession?.sessionID ?? null,
     loading: state.loading,
@@ -115,6 +125,25 @@ export function WebAgentMode(props: Props) {
     return () => clearTimeout(t)
   }, [collapsed, rightCollapsed, sendBounds])
 
+  // Track whether the hero OR any modal/overlay is suppressing the native
+  // BrowserView. The MutationObserver and the hero effect both feed this ref.
+  const hiddenByHeroRef = useRef(false)
+  const hiddenByOverlayRef = useRef(false)
+
+  useEffect(() => {
+    // While the hero / default screen is shown the native BrowserView
+    // (about:blank on a fresh session) would paint over it. Pin it hidden
+    // for the lifetime of the hero, restore on dismiss.
+    hiddenByHeroRef.current = showHero
+    const next = showHero || hiddenByOverlayRef.current
+    window.mimo.webagentSetHidden(next).catch(() => {})
+    return () => {
+      hiddenByHeroRef.current = false
+      const next = hiddenByOverlayRef.current
+      window.mimo.webagentSetHidden(next).catch(() => {})
+    }
+  }, [showHero])
+
   // Native BrowserViews render above ALL renderer DOM — settings modal, delete
   // confirmations, context menus would appear underneath the page. Watch the
   // DOM for overlay elements and hide the view while any is open.
@@ -123,14 +152,14 @@ export function WebAgentMode(props: Props) {
       ".modal-overlay, .ctx-overlay, .rename-overlay, .terminal-modal-overlay, " +
       ".brand-menu-overlay, .model-editor-overlay, .scheduler-editor-overlay, " +
       ".attach-preview-overlay, .settings-modal, .cs-modal, .provider-modal"
-    let hidden = false
     let raf = 0
     const check = () => {
       raf = 0
       const shouldHide = document.querySelector(OVERLAYS) != null
-      if (shouldHide !== hidden) {
-        hidden = shouldHide
-        window.mimo.webagentSetHidden(shouldHide).catch(() => {})
+      if (shouldHide !== hiddenByOverlayRef.current) {
+        hiddenByOverlayRef.current = shouldHide
+        const next = shouldHide || hiddenByHeroRef.current
+        window.mimo.webagentSetHidden(next).catch(() => {})
       }
     }
     const mo = new MutationObserver(() => {
@@ -141,7 +170,11 @@ export function WebAgentMode(props: Props) {
     return () => {
       mo.disconnect()
       if (raf) cancelAnimationFrame(raf)
-      if (hidden) window.mimo.webagentSetHidden(false).catch(() => {})
+      if (hiddenByOverlayRef.current) {
+        hiddenByOverlayRef.current = false
+        const next = hiddenByHeroRef.current
+        window.mimo.webagentSetHidden(next).catch(() => {})
+      }
     }
   }, [])
 
@@ -217,76 +250,88 @@ export function WebAgentMode(props: Props) {
       />
 
       <main className="main">
-        <div className="webagent-bar">
-          <button
-            className="webagent-nav-btn"
-            onClick={() => navigate(browserState.url ?? "")}
-            title="Reload"
-            disabled={!activeSession}
-          >
-            <IconRefresh size={14} />
-          </button>
-          <input
-            className="webagent-url-input"
-            type="text"
-            value={urlInput}
-            placeholder={activeSession ? "Enter URL or search..." : "Create or select a session to browse"}
-            onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && navigate(urlInput)}
-            disabled={!activeSession}
-          />
-          <div className="webagent-status">
-            <div className={`webagent-status-dot ${agentActive ? "working" : "idle"}`} />
-            <span>{agentActive ? "Agent working" : "Your control"}</span>
-          </div>
-          {rightCollapsed && (
-            <button className="webagent-nav-btn" onClick={onToggleRight} title="Show agent chat">
-              «
-            </button>
-          )}
-        </div>
-
-        <div className="webagent-stage">
-          <div className="webagent-frame" ref={viewportRef}>
-            {activeSession && agentActive && <div className="webagent-control-lock" />}
-            {!activeSession && (
-              <div className="greeting greeting-webagent">
-                <h1>
-                  {props.greeting ? (
-                    <>
-                      <span className="accent">✻</span> {props.greeting}
-                    </>
-                  ) : (
-                    <>
-                      <span className="accent">✻</span> Hand the browser to an agent.<br />
-                      What should it look into?
-                    </>
-                  )}
-                </h1>
-                <p className="webagent-hero-sub">
-                  Create a new session, paste a URL or describe a task, and the agent will navigate, click, and read on your behalf.
-                </p>
-                <div className="chips">
-                  {suggestions.map((sug, i) => (
-                    <button
-                      key={sug.label + i}
-                      className="chip"
-                      title={sug.text}
-                      onClick={() => applyPrefill(sug.text)}
-                    >
-                      {sug.label}
-                    </button>
-                  ))}
-                </div>
-                {props.aiHome && (
-                  <button className="regen-btn" onClick={props.onRegenerate} title="Regenerate with AI">
-                    <IconRefresh size={13} /> Regenerate
-                  </button>
-                )}
-              </div>
+        {showHero ? (
+          <div className="greeting greeting-webagent greeting-webagent-full">
+            <h1>
+              {props.greeting ? (
+                <>
+                  <span className="accent">✻</span> {props.greeting}
+                </>
+              ) : (
+                <>
+                  <span className="accent">✻</span> Hand the browser to an agent.<br />
+                  What should it look into?
+                </>
+              )}
+            </h1>
+            <p className="webagent-hero-sub">
+              Create a new session, paste a URL or describe a task, and the agent will navigate, click, and read on your behalf.
+            </p>
+            {activeSession && (
+              <p className="webagent-hero-hint">Send the agent its first instruction to wake the browser.</p>
+            )}
+            <div className="chips">
+              {suggestions.map((sug, i) => (
+                <button
+                  key={sug.label + i}
+                  className="chip"
+                  title={sug.text}
+                  onClick={() => applyPrefill(sug.text)}
+                >
+                  {sug.label}
+                </button>
+              ))}
+            </div>
+            {props.aiHome && (
+              <button className="regen-btn" onClick={props.onRegenerate} title="Regenerate with AI">
+                <IconRefresh size={13} /> Regenerate
+              </button>
             )}
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="webagent-bar">
+              <button
+                className="webagent-nav-btn"
+                onClick={() => navigate(browserState.url ?? "")}
+                title="Reload"
+                disabled={!activeSession}
+              >
+                <IconRefresh size={14} />
+              </button>
+              <input
+                className="webagent-url-input"
+                type="text"
+                value={urlInput}
+                placeholder={activeSession ? "Enter URL or search..." : "Create or select a session to browse"}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && navigate(urlInput)}
+                disabled={!activeSession}
+              />
+              <div className="webagent-status">
+                <div className={`webagent-status-dot ${agentActive ? "working" : "idle"}`} />
+                <span>{agentActive ? "Agent working" : "Your control"}</span>
+              </div>
+              {rightCollapsed && (
+                <button className="webagent-nav-btn" onClick={onToggleRight} title="Show agent chat">
+                  «
+                </button>
+              )}
+            </div>
+
+            <div className="webagent-stage">
+              <div className="webagent-frame" ref={viewportRef}>
+                {activeSession && agentActive && <div className="webagent-control-lock" />}
+                {!activeSession && (
+                  <div className="webagent-empty">
+                    <p>No active Web Agent session</p>
+                    <p>Create a new session to start browsing</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </main>
 
       {!rightCollapsed && (
