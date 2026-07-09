@@ -544,6 +544,14 @@ export function useConversation(
   // switches so we don't refetch a backgrounded session's state on tab switch —
   // this is the multitask win. Keyed by sid, not by the active session pointer.
   const populatedForRef = useRef<Set<string>>(new Set())
+  // Per-session id of the newest user message that has driven an agent-mode
+  // sync. Message IDs are monotonic-ascending (see id.ts), so we only follow
+  // the agent of a user message whose id is >= the last one we synced from.
+  // This stops a late message.updated for an OLDER user message (e.g. the
+  // prompt that triggered plan_enter/plan_exit, re-emitted mid/after the turn)
+  // from dragging the dropdown back to the pre-switch agent — the "blinks and
+  // returns to the previous mode" bug.
+  const lastAgentSyncMsgRef = useRef<Map<string, string>>(new Map())
 
   const setCurrentSession = useCallback((sid: string) => {
     sessionRef.current = sid
@@ -681,10 +689,18 @@ export function useConversation(
       const evtSid = eventSessionId(event)
       // Sync agent mode dropdown when server changes agent (slash command / tool) —
       // only relevant for the active session, since that's the tab the user is on.
-      if (t === "message.updated" && evtSid === sessionRef.current) {
+      if (t === "message.updated" && evtSid && evtSid === sessionRef.current) {
         const info = (event as any).properties?.info
-        if (info?.role === "user" && typeof info.agent === "string" && info.agent) {
-          onAgentSyncRef.current?.(info.agent)
+        if (info?.role === "user" && typeof info.agent === "string" && info.agent && typeof info.id === "string") {
+          // Only follow the NEWEST user message's agent. An update to an older
+          // user message must not revert the dropdown (plan_enter/plan_exit
+          // insert a newer user message with the switched agent, but the older
+          // pre-switch message can still be re-emitted afterwards).
+          const prevId = lastAgentSyncMsgRef.current.get(evtSid)
+          if (!prevId || info.id >= prevId) {
+            lastAgentSyncMsgRef.current.set(evtSid, info.id)
+            onAgentSyncRef.current?.(info.agent)
+          }
         }
       }
       const targetSid = evtSid ?? sessionRef.current

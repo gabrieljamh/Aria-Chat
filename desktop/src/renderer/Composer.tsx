@@ -593,7 +593,13 @@ export function Composer(props: Props) {
             className="select"
             value={props.agentName ?? ""}
             onChange={(e) => props.onAgentChange?.(e.target.value)}
-            title="Autonomy / mode"
+            // Lock the mode selector mid-turn — same guard as the interrupt
+            // button. Switching agents while the server is running a turn would
+            // race the server-driven agent sync (plan_enter/plan_exit) and could
+            // land the wrong mode; force an abort first.
+            disabled={props.busy}
+            title={props.busy ? "Stop the current turn to change mode" : "Autonomy / mode"}
+            style={props.busy ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
           >
             {primaryAgents.filter((a) => a.name !== "webagent").map((a) => (
               <option key={a.name} value={a.name}>
