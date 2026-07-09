@@ -139,7 +139,17 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
       broadcast("server-event", event)
     })
     client.on("sse-state", (state) => broadcast("sse-state", state))
-    client.startEventStream()
+    // Pass a real project directory to the SSE so InstanceMiddleware routes
+    // the stream to a valid instance instead of the server process.cwd(). Pick
+    // the first registered chat/cowork dir; if none exist yet (fresh install),
+    // undefined lets the server fall back. The event.ts fix (no
+    // InstanceDisposed kill) keeps the stream resilient either way.
+    const sseDirs = new Set<string>()
+    for (const kind of ["chats", "cowork"] as RegistryKind[]) {
+      for (const ref of getRegistry(kind)) sseDirs.add(ref.directory)
+    }
+    const sseDir = sseDirs.size ? [...sseDirs][0] : undefined
+    client.startEventStream(sseDir)
   }
 
   // The server respawned itself after a crash: point the client at the new URL.
@@ -281,6 +291,24 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
     await bootPromise
     return ensureClient().questionReject(requestID, directory)
   })
+  ipcMain.handle(
+    "session-permission",
+    async (_e, sessionID: string, permission: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>, directory?: string) => {
+      await bootPromise
+      return ensureClient().updateSessionPermission(sessionID, permission, directory)
+    },
+  )
+
+  // Pending-request lists: used to re-hydrate question/permission cards after a
+  // session switch, since the renderer's event-fed state is reset on switch.
+  ipcMain.handle("list-permissions", async (_e, directory?: string) => {
+    await bootPromise
+    return ensureClient().listPermissions(directory)
+  })
+  ipcMain.handle("list-questions", async (_e, directory?: string) => {
+    await bootPromise
+    return ensureClient().listQuestions(directory)
+  })
   ipcMain.handle("get-providers", async (_e, directory?: string) => {
     await bootPromise
     return ensureClient().getProviders(directory)
@@ -339,9 +367,36 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
     await bootPromise
     await mutateGlobalConfig((cfg) => {
       if (!cfg.provider || typeof cfg.provider !== "object") cfg.provider = {}
-      ;(cfg.provider as Record<string, unknown>)[providerID] = entry
+      const providers = cfg.provider as Record<string, any>
+      const newEntry = entry as any
+      const existing = providers[providerID]
+      if (existing && existing.models && newEntry.models) {
+        // Merge new models into existing provider instead of replacing
+        providers[providerID] = {
+          ...existing,
+          ...newEntry,
+          options: { ...(existing.options ?? {}), ...(newEntry.options ?? {}) },
+          models: { ...existing.models, ...newEntry.models },
+        }
+      } else {
+        providers[providerID] = entry
+      }
     })
     removeProviderFromConfigs(providerID)
+    // Notify the running server so it invalidates its config cache.
+    // Without this, getProviders() returns stale data until restart.
+    // Read the merged provider from the file so the patch carries ALL models.
+    const file = await globalConfigFile()
+    let mergedEntry: unknown = entry
+    try {
+      if (fs.existsSync(file)) {
+        const cfg = JSON.parse(fs.readFileSync(file, "utf8"))
+        if (cfg?.provider?.[providerID]) mergedEntry = cfg.provider[providerID]
+      }
+    } catch {}
+    await ensureClient()
+      .updateGlobalConfig({ provider: { [providerID]: mergedEntry } })
+      .catch(() => {})
     await disposeAllInstances()
     return true
   })
@@ -389,6 +444,38 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
       if (tokens && tokens > 0) cfg.compaction.threshold = Math.round(tokens)
       else delete cfg.compaction.threshold
       if (typeof auto === "boolean") cfg.compaction.auto = auto
+    })
+    await disposeAllInstances()
+    return true
+  })
+
+  /* --------------------------- subagent models --------------------------- */
+  // Model overrides for the research subagents the main agent spawns (plan
+  // mode especially). Persisted as agent.<name>.model in the global config —
+  // merged, so other per-agent fields the user configured are preserved.
+  const SUBAGENT_NAMES = ["explore", "general"] as const
+  ipcMain.handle("get-subagent-models", async () => {
+    const file = await globalConfigFile()
+    try {
+      const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, any>
+      const out: Record<string, string | null> = {}
+      for (const name of SUBAGENT_NAMES) {
+        const m = cfg.agent?.[name]?.model
+        out[name] = typeof m === "string" ? m : null
+      }
+      return out
+    } catch {
+      return { explore: null, general: null }
+    }
+  })
+  ipcMain.handle("set-subagent-model", async (_e, agentName: string, model: string | null) => {
+    if (!(SUBAGENT_NAMES as readonly string[]).includes(agentName)) return false
+    await mutateGlobalConfig((cfg) => {
+      if (!cfg.agent || typeof cfg.agent !== "object") cfg.agent = {}
+      const entry = (cfg.agent[agentName] = { ...(cfg.agent[agentName] ?? {}) })
+      if (model) entry.model = model
+      else delete entry.model
+      if (Object.keys(entry).length === 0) delete cfg.agent[agentName]
     })
     await disposeAllInstances()
     return true
@@ -653,6 +740,90 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
   ipcMain.handle("get-setting", (_e, key: string) => getStore().get(key))
   ipcMain.handle("set-setting", (_e, key: string, value: unknown) => getStore().set(key, value))
 
+  /* ------------------------------ startup ------------------------------ */
+  // "Start with system" registers the packaged app to launch at sign-in;
+  // meaningless for `npm run dev` (execPath would be electron.exe), so both
+  // options report as unavailable when not packaged.
+  //
+  // Per-platform mechanics:
+  //  - Windows/macOS: app.setLoginItemSettings. The hidden-start flag travels
+  //    as a CLI arg on Windows (`args` is Windows-only) and as openAsHidden
+  //    on macOS.
+  //  - Linux: Electron has no login-item support — write/remove an XDG
+  //    autostart .desktop entry (~/.config/autostart), with the CLI flag baked
+  //    into Exec for tray starts. APPIMAGE is preferred over execPath so the
+  //    entry survives AppImage relaunches.
+  const linuxAutostartFile = () => path.join(app.getPath("appData"), "autostart", "mimocode-desktop.desktop")
+  const linuxWriteAutostart = (enabled: boolean, trayFlag: boolean) => {
+    const file = linuxAutostartFile()
+    try {
+      if (!enabled) {
+        fs.rmSync(file, { force: true })
+        return
+      }
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      const exec = process.env["APPIMAGE"] ?? process.execPath
+      fs.writeFileSync(
+        file,
+        [
+          "[Desktop Entry]",
+          "Type=Application",
+          "Name=Aria",
+          "Comment=Aria — MiMo Code desktop",
+          `Exec="${exec}"${trayFlag ? " --start-in-tray" : ""}`,
+          "Terminal=false",
+          "X-GNOME-Autostart-enabled=true",
+          "",
+        ].join("\n"),
+      )
+    } catch (err) {
+      console.error("[startup] linux autostart write failed:", err)
+    }
+  }
+  const getOpenAtLogin = (): boolean => {
+    if (!app.isPackaged) return false
+    if (process.platform === "linux") return fs.existsSync(linuxAutostartFile())
+    return app.getLoginItemSettings().openAtLogin
+  }
+  const startupSettings = () => {
+    const openAtLogin = getOpenAtLogin()
+    return {
+      packaged: app.isPackaged,
+      openAtLogin,
+      // Tray start only makes sense for system-boot launches; a direct launch
+      // starting hidden would just look like the app failed to open.
+      startInTray: openAtLogin && getStore().get("startInTray") === true,
+    }
+  }
+  // Manual "Check now" from Settings. Returns a short status string.
+  ipcMain.handle("update-check-now", async () => {
+    const { checkReleaseUpdate, spawnDevUpdater } = await import("./update")
+    if (app.isPackaged) return checkReleaseUpdate(getWindow(), true)
+    return spawnDevUpdater(true)
+  })
+
+  ipcMain.handle("get-startup-settings", () => startupSettings())
+  ipcMain.handle("set-startup-settings", (_e, patch: { openAtLogin?: boolean; startInTray?: boolean }) => {
+    const store = getStore()
+    if (typeof patch.startInTray === "boolean") store.set("startInTray", patch.startInTray)
+    if (app.isPackaged) {
+      const openAtLogin = typeof patch.openAtLogin === "boolean" ? patch.openAtLogin : getOpenAtLogin()
+      // Gate: disabling autostart also clears the tray-start preference.
+      if (!openAtLogin) store.set("startInTray", false)
+      const trayFlag = openAtLogin && store.get("startInTray") === true
+      if (process.platform === "linux") {
+        linuxWriteAutostart(openAtLogin, trayFlag)
+      } else {
+        app.setLoginItemSettings({
+          openAtLogin,
+          ...(process.platform === "win32" ? { args: trayFlag ? ["--start-in-tray"] : [] } : {}),
+          ...(process.platform === "darwin" ? { openAsHidden: trayFlag } : {}),
+        })
+      }
+    }
+    return startupSettings()
+  })
+
   /* ------------------------------- git -------------------------------- */
   ipcMain.handle("git-push", async (_e, opts: { directory: string; remote?: string; branch?: string; force?: boolean }) => {
     const { directory, remote = "origin", branch, force = false } = opts
@@ -762,8 +933,24 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
     browserManager.setBounds(bounds)
   })
 
+  // Native views draw above the DOM; the renderer hides the browser while
+  // overlays (modals, menus, confirmations) are open.
+  ipcMain.handle("webagent:set-hidden", (_e, hidden: boolean) => {
+    browserManager.setHidden(hidden)
+  })
+
   ipcMain.handle("webagent:navigate", (_e, sessionId: string, url: string) => {
     browserManager.navigate(sessionId, url)
+  })
+
+  ipcMain.handle("webagent:set-session-url", (_e, sandboxId: string, url: string) => {
+    const items = getRegistry("webagent")
+    const ref = items.find((r) => r.id === sandboxId)
+    if (ref) {
+      ;(ref as unknown as Record<string, unknown>).url = url
+      ref.updatedAt = Date.now()
+      saveRegistry("webagent", items)
+    }
   })
 
   ipcMain.handle("webagent:get-state", (_e, sessionId: string) => {

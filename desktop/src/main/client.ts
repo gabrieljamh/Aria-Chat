@@ -14,12 +14,14 @@ import type {
   McpToolDef,
   MessageWithParts,
   PathInfo,
+  Permission,
   PermissionReply,
   ProjectInfo,
   PromptInput,
   ProvidersResponse,
   PtyConnectToken,
   PtyInfo,
+  QuestionInfo,
   ServerEvent,
   SessionInfo,
   SessionInfoFull,
@@ -41,6 +43,7 @@ export class MimoClient extends EventEmitter {
   private abortSSE: AbortController | null = null
   private reconnectTimer: NodeJS.Timeout | null = null
   private stopped = false
+  private sseDirectory: string | undefined
 
   constructor(baseUrl: string, credentials?: { username: string; password: string } | null) {
     super()
@@ -145,6 +148,7 @@ export class MimoClient extends EventEmitter {
     }
     const body: Record<string, unknown> = { parts }
     if (input.model) body.model = input.model
+    if (input.visionModel) body.visionModel = input.visionModel
     if (input.agent) body.agent = input.agent
     try {
       await this.json(
@@ -180,6 +184,7 @@ export class MimoClient extends EventEmitter {
     if (input.model) {
       body.model = typeof input.model === "string" ? input.model : `${input.model.providerID}/${input.model.modelID}`
     }
+    if (input.visionModel) body.visionModel = input.visionModel
     if (input.agent) body.agent = input.agent
     try {
       await this.json(
@@ -344,6 +349,33 @@ export class MimoClient extends EventEmitter {
     return this.json<McpToolCallResult>(`mcp/${encodeURIComponent(server)}/tools/call`, { method: "POST", body: JSON.stringify({ tool, arguments: args }) }, { directory })
   }
 
+  /**
+   * Merge rules into a session's persisted permission ruleset (PATCH merges —
+   * evaluation uses findLast, so a later rule overrides an earlier one for
+   * the same pattern). Used to pre-approve complementary working directories.
+   */
+  async updateSessionPermission(
+    sessionID: string,
+    permission: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>,
+    directory?: string,
+  ): Promise<void> {
+    await this.json(
+      `session/${encodeURIComponent(sessionID)}`,
+      { method: "PATCH", body: JSON.stringify({ permission }) },
+      { directory },
+    )
+  }
+
+  /** Pending permission requests across all sessions (survives renderer resets / session switches). */
+  listPermissions(directory?: string): Promise<Permission[]> {
+    return this.json<Permission[]>("permission", undefined, { directory })
+  }
+
+  /** Pending question requests across all sessions (survives renderer resets / session switches). */
+  listQuestions(directory?: string): Promise<QuestionInfo[]> {
+    return this.json<QuestionInfo[]>("question", undefined, { directory })
+  }
+
   async questionReply(requestID: string, answers: string[][], directory?: string): Promise<void> {
     await this.json(
       `question/${encodeURIComponent(requestID)}/reply`,
@@ -396,19 +428,20 @@ export class MimoClient extends EventEmitter {
 
   /* ---------------------------------- SSE -------------------------------- */
 
-  startEventStream() {
+  startEventStream(directory?: string) {
     this.stopped = false
-    void this.connectSSE()
+    this.sseDirectory = directory
+    void this.connectSSE(directory)
   }
 
-  private async connectSSE() {
+  private async connectSSE(directory?: string) {
     if (this.stopped) return
     this.abortSSE?.abort()
     const controller = new AbortController()
     this.abortSSE = controller
 
     try {
-      const res = await fetch(this.url("event"), {
+      const res = await fetch(this.url("event", { directory }), {
         headers: {
           Accept: "text/event-stream",
           ...(this.authHeader ? { authorization: this.authHeader } : {}),
@@ -459,7 +492,7 @@ export class MimoClient extends EventEmitter {
 
     // Auto-reconnect with a small backoff unless stopped.
     if (!this.stopped) {
-      this.reconnectTimer = setTimeout(() => this.connectSSE(), 1_000)
+      this.reconnectTimer = setTimeout(() => this.connectSSE(this.sseDirectory), 1_000)
     }
   }
 

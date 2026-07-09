@@ -4,7 +4,6 @@ import { describeRoute, resolver } from "hono-openapi"
 import { streamSSE } from "hono/streaming"
 import { Log } from "@/util"
 import { BusEvent } from "@/bus/bus-event"
-import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { AsyncQueue } from "@/util/queue"
 
@@ -82,18 +81,18 @@ export const EventRoutes = () =>
         }
         GlobalBus.on("event", onGlobal)
 
-        const unsub = Bus.subscribeAll((event) => {
-          if (event.type === Bus.InstanceDisposed.type) {
-            stop()
-          }
-        })
-
+        // NOTE: intentionally NOT subscribing to the local instance Bus for
+        // InstanceDisposed. The desktop single SSE connection is routed through
+        // InstanceMiddleware to whatever directory the client passed (or falls
+        // back to process.cwd()). Disposing that instance (e.g. via
+        // disposeAllInstances after a config change) used to kill the SSE stream,
+        // even though GlobalBus keeps relaying events from all other instances.
+        // The client-side auto-reconnect (client.ts) handles genuine loss.
         const stop = () => {
           if (done) return
           done = true
           clearInterval(heartbeat)
           GlobalBus.off("event", onGlobal)
-          unsub()
           q.push(null)
           if (q.dropped > 0) log.warn("event dropped under backpressure", { dropped: q.dropped })
           log.info("event disconnected", { buffered: q.size })
