@@ -4976,6 +4976,38 @@ button {
 .webagent-url-input::placeholder {
   color: var(--text-faint);
 }
+.webagent-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.webagent-zoom .webagent-nav-btn {
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+  line-height: 1;
+}
+.webagent-zoom-label {
+  min-width: 44px;
+  height: 26px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.webagent-zoom-label:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.webagent-zoom-label:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .webagent-status {
   display: flex;
   align-items: center;

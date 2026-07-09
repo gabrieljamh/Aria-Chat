@@ -19,8 +19,8 @@ export function resolveName(name: string, candidates: readonly string[]): string
   if (canonicalMatch) return canonicalMatch
 
   // Models sometimes strip namespace prefixes (e.g. "navigate" instead of
-  // "browser.navigate"). Try matching by suffix after the last dot.
-  return candidates.find((candidate) => candidate.endsWith(`.${name}`))
+  // "browser_navigate"). Try matching by suffix after a "." or "_" separator.
+  return candidates.find((candidate) => candidate.endsWith(`.${name}`) || candidate.endsWith(`_${name}`))
 }
 
 export function schemaPropertyKeys(schema: JSONSchema7): string[] {

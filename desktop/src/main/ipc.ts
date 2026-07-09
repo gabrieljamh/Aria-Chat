@@ -943,6 +943,14 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
     browserManager.navigate(sessionId, url)
   })
 
+  ipcMain.handle(
+    "webagent:set-zoom",
+    (_e, sessionId: string, opts: { factor?: number; direction?: "in" | "out" | "reset" }) =>
+      browserManager.setZoom(sessionId, opts),
+  )
+
+  ipcMain.handle("webagent:get-zoom", (_e, sessionId: string) => browserManager.getZoom(sessionId))
+
   ipcMain.handle("webagent:set-session-url", (_e, sandboxId: string, url: string) => {
     const items = getRegistry("webagent")
     const ref = items.find((r) => r.id === sandboxId)

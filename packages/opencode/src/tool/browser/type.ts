@@ -10,7 +10,7 @@ const paramSchema = z.object({
 })
 
 export const BrowserType = Tool.define(
-  "browser.type",
+  "browser_type",
   Effect.gen(function* () {
     const bridge = yield* BrowserBridge
 

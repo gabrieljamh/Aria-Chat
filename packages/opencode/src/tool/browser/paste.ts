@@ -10,13 +10,13 @@ const paramSchema = z.object({
 })
 
 export const BrowserPaste = Tool.define(
-  "browser.paste",
+  "browser_paste",
   Effect.gen(function* () {
     const bridge = yield* BrowserBridge
 
     return {
       description:
-        "Paste text into an input field via the clipboard. Use for large text that would be slow with browser.type, or when text contains special characters.",
+        "Paste text into an input field via the clipboard. Use for large text that would be slow with browser_type, or when text contains special characters.",
       parameters: paramSchema,
       execute: ({ elementId, text, clear }: z.infer<typeof paramSchema>, ctx) =>
         Effect.gen(function* () {

@@ -4,20 +4,20 @@ import * as Tool from "../tool"
 import { BrowserBridge } from "../browser-bridge"
 
 const paramSchema = z.object({
-  elementId: z.string().optional().describe("The element ID (el-N) from browser.getdom to click"),
-  x: z.number().optional().describe("X coordinate to click (use if elementId not available)"),
-  y: z.number().optional().describe("Y coordinate to click (use if elementId not available)"),
+  elementId: z.string().optional().describe("Element ID (el-N) from browser_getdom. Best for structured pages."),
+  x: z.number().optional().describe("X coordinate from a browser_screenshot. Best for visual/canvas pages. Provide with y."),
+  y: z.number().optional().describe("Y coordinate from a browser_screenshot. Provide with x."),
   button: z.enum(["left", "right", "middle"]).default("left").describe("Mouse button"),
 })
 
 export const BrowserClick = Tool.define(
-  "browser.click",
+  "browser_click",
   Effect.gen(function* () {
     const bridge = yield* BrowserBridge
 
     return {
       description:
-        "Click an element on the page. Prefer elementId (from browser.getdom) over (x,y) coordinates — coordinates drift. After a click that may navigate, re-run browser.getdom to refresh element IDs.",
+        "Click on the page. Two ways to target, pick whichever fits: (1) elementId from browser_getdom — best when the page has meaningful DOM; or (2) x,y coordinates read from a browser_screenshot — best for canvas/visual pages, where the screenshot's pixels map 1:1 to these coordinates. Provide elementId OR both x and y. Coordinates are viewport-relative, so take a fresh browser_screenshot right before using them (don't reuse stale coordinates after scrolling/navigation). After a click that may navigate, re-run browser_getdom or browser_screenshot to refresh.",
       parameters: paramSchema,
       execute: (params: z.infer<typeof paramSchema>, ctx) =>
         Effect.gen(function* () {

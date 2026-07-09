@@ -41,6 +41,9 @@ import { BrowserScroll } from "./browser/scroll"
 import { BrowserDrag } from "./browser/drag"
 import { BrowserCopy } from "./browser/copy"
 import { BrowserPaste } from "./browser/paste"
+import { BrowserZoom } from "./browser/zoom"
+import { BrowserDraw } from "./browser/draw"
+import { BrowserHoldKey } from "./browser/hold-key"
 import { BrowserBridge, BrowserBridgeLive } from "./browser-bridge"
 import { Glob } from "@mimo-ai/shared/util/glob"
 import path from "path"
@@ -165,6 +168,9 @@ export const layer = Layer.effect(
     const browserDrag = yield* BrowserDrag
     const browserCopy = yield* BrowserCopy
     const browserPaste = yield* BrowserPaste
+    const browserZoom = yield* BrowserZoom
+    const browserDraw = yield* BrowserDraw
+    const browserHoldKey = yield* BrowserHoldKey
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -262,6 +268,9 @@ export const layer = Layer.effect(
           browserDrag: Tool.init(browserDrag),
           browserCopy: Tool.init(browserCopy),
           browserPaste: Tool.init(browserPaste),
+          browserZoom: Tool.init(browserZoom),
+          browserDraw: Tool.init(browserDraw),
+          browserHoldKey: Tool.init(browserHoldKey),
         })
 
         return {
@@ -302,6 +311,9 @@ export const layer = Layer.effect(
                   tool.browserDrag,
                   tool.browserCopy,
                   tool.browserPaste,
+                  tool.browserZoom,
+                  tool.browserDraw,
+                  tool.browserHoldKey,
                 ]
               : []),
           ],

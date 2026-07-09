@@ -1,4 +1,4 @@
-﻿import z from "zod"
+import z from "zod"
 import { Effect } from "effect"
 import * as Tool from "../tool"
 import { BrowserBridge } from "../browser-bridge"
@@ -33,7 +33,7 @@ interface DomResult {
 }
 
 export const BrowserGetDom = Tool.define(
-  "browser.getdom",
+  "browser_getdom",
   Effect.gen(function* () {
     const bridge = yield* BrowserBridge
 
@@ -52,10 +52,10 @@ export const BrowserGetDom = Tool.define(
             const repr = JSON.stringify(raw)
             return {
               title: "DOM extraction failed",
-              output: "browser.getdom: bridge returned an unexpected response (raw=" + repr + "). " +
+              output: "browser_getdom: bridge returned an unexpected response (raw=" + repr + "). " +
                 "This usually means the page has not finished loading, " +
                 "or the browser is on a restricted page (about:blank, error page, etc.). " +
-                "Try navigating to a valid URL first, then retry browser.getdom.",
+                "Try navigating to a valid URL first, then retry browser_getdom.",
               metadata: { url: "", title: "", elementCount: 0 },
             }
           }

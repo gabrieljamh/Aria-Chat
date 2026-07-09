@@ -53,6 +53,7 @@ export function WebAgentMode(props: Props) {
   const [urlInput, setUrlInput] = useState("")
   const [input, setInput] = useState("")
   const [autonomous, setAutonomous] = useState(true)
+  const [zoom, setZoom] = useState(1)
   const viewportRef = useRef<HTMLDivElement>(null)
   const attachedRef = useRef<string | null>(null)
 
@@ -93,6 +94,10 @@ export function WebAgentMode(props: Props) {
           loading: event.loading ?? prev.loading,
         }))
         if (event.url) setUrlInput(event.url)
+      }
+      // Keep the toolbar zoom % in sync when the agent zooms via browser_zoom.
+      if (event.type === "zoom" && typeof event.zoom === "number" && event.sessionId === activeSession?.sessionID) {
+        setZoom(event.zoom)
       }
       // Persist URL when browser navigates (e.g. user clicks a link)
       if (event.type === "navigate" && event.url) {
@@ -249,6 +254,25 @@ export function WebAgentMode(props: Props) {
     setInput("")
   }, [input, onSend])
 
+  // Reflect the active session's remembered zoom in the toolbar when switching.
+  useEffect(() => {
+    const sid = activeSession?.sessionID
+    if (!sid) {
+      setZoom(1)
+      return
+    }
+    window.mimo.webagentGetZoom(sid).then(setZoom).catch(() => setZoom(1))
+  }, [activeSession])
+
+  const changeZoom = useCallback(
+    (opts: { factor?: number; direction?: "in" | "out" | "reset" }) => {
+      const sid = activeSession?.sessionID
+      if (!sid) return
+      window.mimo.webagentSetZoom(sid, opts).then(setZoom).catch(() => {})
+    },
+    [activeSession],
+  )
+
   const composer = (
     <div className="composer-wrap webagent-composer-wrap">
       <div className="composer">
@@ -383,6 +407,32 @@ export function WebAgentMode(props: Props) {
                 onKeyDown={(e) => e.key === "Enter" && navigate(urlInput)}
                 disabled={!activeSession}
               />
+              <div className="webagent-zoom" title="Page zoom">
+                <button
+                  className="webagent-nav-btn"
+                  onClick={() => changeZoom({ direction: "out" })}
+                  disabled={!activeSession}
+                  title="Zoom out"
+                >
+                  −
+                </button>
+                <button
+                  className="webagent-zoom-label"
+                  onClick={() => changeZoom({ direction: "reset" })}
+                  disabled={!activeSession}
+                  title="Reset zoom to 100%"
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <button
+                  className="webagent-nav-btn"
+                  onClick={() => changeZoom({ direction: "in" })}
+                  disabled={!activeSession}
+                  title="Zoom in"
+                >
+                  +
+                </button>
+              </div>
               <div className="webagent-status">
                 <div className={`webagent-status-dot ${agentActive ? "working" : "idle"}`} />
                 <span>{agentActive ? "Agent working" : "Your control"}</span>

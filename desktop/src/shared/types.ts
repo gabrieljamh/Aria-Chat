@@ -433,10 +433,12 @@ export interface WebAgentState {
 
 export interface WebAgentEvent {
   sessionId: string
-  type: "title" | "navigate" | "loading"
+  type: "title" | "navigate" | "loading" | "zoom"
   url?: string
   title?: string
   loading?: boolean
+  /** Current page zoom factor (1 = 100%); present on "zoom" events. */
+  zoom?: number
 }
 
 export interface WebAgentBounds {
@@ -692,6 +694,9 @@ export interface MimoApi {
   /** Hide/show the active browser view (native views draw above all DOM, incl. modals). */
   webagentSetHidden(hidden: boolean): Promise<void>
   webagentNavigate(sessionId: string, url: string): Promise<void>
+  /** Set page zoom for a session: absolute factor OR relative direction. Returns the resulting factor. */
+  webagentSetZoom(sessionId: string, opts: { factor?: number; direction?: "in" | "out" | "reset" }): Promise<number>
+  webagentGetZoom(sessionId: string): Promise<number>
   webagentGetState(sessionId: string): Promise<WebAgentState>
   webagentSessionSetUrl(sandboxId: string, url: string): Promise<void>
   onWebagentEvent(cb: (event: WebAgentEvent) => void): () => void

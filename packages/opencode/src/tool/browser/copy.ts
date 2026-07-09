@@ -11,7 +11,7 @@ const paramSchema = z.object({
 })
 
 export const BrowserCopy = Tool.define(
-  "browser.copy",
+  "browser_copy",
   Effect.gen(function* () {
     const bridge = yield* BrowserBridge
 

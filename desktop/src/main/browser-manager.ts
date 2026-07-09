@@ -9,7 +9,15 @@ interface SessionView {
   url: string | null
   createdAt: number
   lastActiveAt: number
+  // Page zoom factor (1 = 100%), persisted per session and re-applied after each
+  // navigation. Electron folds this into the page's devicePixelRatio, so it must
+  // be accounted for when mapping DOM coordinates to input coordinates.
+  zoom: number
 }
+
+const ZOOM_MIN = 0.25
+const ZOOM_MAX = 5
+const ZOOM_STEP = 0.1
 
 class BrowserManager {
   private views = new Map<string, SessionView>()
@@ -72,6 +80,12 @@ class BrowserManager {
         sandbox: true,
         webSecurity: true,
         partition: `persist:webagent-${sessionId}`,
+        // Only one view is attached to the window at a time; the rest are
+        // detached (removed but not destroyed) so their turns keep running in
+        // the background. Electron throttles timers/rAF in unfocused/hidden
+        // renderers by default, which would slow a backgrounded agent's page.
+        // Disable it so background WebAgent sessions execute at full speed.
+        backgroundThrottling: false,
       },
     })
 
@@ -81,6 +95,7 @@ class BrowserManager {
       url: url ?? null,
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
+      zoom: 1,
     }
 
     view.webContents.on("did-navigate", (_e, navUrl) => {
@@ -102,6 +117,13 @@ class BrowserManager {
     })
 
     view.webContents.on("did-finish-load", () => {
+      // Zoom resets across (cross-origin) navigations — re-apply the session's
+      // remembered factor so it persists as the user/agent expect.
+      if (sv.zoom !== 1) {
+        try {
+          sv.view.webContents.setZoomFactor(sv.zoom)
+        } catch {}
+      }
       const u = sv.url
       if (u && this.win && !this.win.isDestroyed()) {
         this.win.webContents.send("webagent:event", {
@@ -292,14 +314,130 @@ class BrowserManager {
     } as any)
   }
 
-  sendScroll(view: BrowserView, dx: number, dy: number): void {
-    view.webContents.sendInputEvent({
-      type: "mouseWheel",
-      x: 0,
-      y: 0,
-      deltaX: dx,
-      deltaY: dy,
-    } as any)
+  // Hold a key (optionally with modifiers, "shift+ArrowRight") pressed down for
+  // durationMs, then release — for games and any UI that reacts to sustained
+  // key presses. keyDown is repeated on an interval because a browser only sees
+  // a single keydown otherwise (no OS auto-repeat via sendInputEvent).
+  async sendHoldKey(view: BrowserView, keys: string, durationMs: number): Promise<void> {
+    const parts = keys.split("+")
+    const modifiers = parts.slice(0, -1).map((m) => m.trim().toLowerCase())
+    const key = parts[parts.length - 1].trim()
+    const evt = (type: "keyDown" | "keyUp") =>
+      view.webContents.sendInputEvent({ type, keyCode: key, modifiers: modifiers as any } as any)
+    const dur = Math.max(0, Math.min(30_000, durationMs))
+    evt("keyDown")
+    const start = Date.now()
+    // Emulate auto-repeat (~30ms) so key-held game loops keep advancing.
+    while (Date.now() - start < dur) {
+      await new Promise((r) => setTimeout(r, 30))
+      if (Date.now() - start >= dur) break
+      evt("keyDown")
+    }
+    evt("keyUp")
+  }
+
+  // Draw/trace a continuous path: press at the first point, glide the mouse
+  // through every point (interpolating between them so the stroke is smooth),
+  // then release. One uninterrupted gesture — needed for things like drawing a
+  // clean circle in a single motion, which chained drags can't do. Coordinates
+  // are in viewport/DIP space (same as screenshot coordinates).
+  async sendDraw(view: BrowserView, points: Array<{ x: number; y: number }>, duration: number): Promise<void> {
+    if (points.length < 2) return
+    const total = Math.max(0, Math.min(20_000, duration))
+    const wc = view.webContents
+    const first = points[0]
+    wc.sendInputEvent({ type: "mouseDown", x: Math.round(first.x), y: Math.round(first.y), button: "left", clickCount: 1 } as any)
+    // Interpolate each segment so fast pointer-move handlers (canvas drawing)
+    // receive a dense, smooth stream rather than a few teleporting points.
+    const perSegment = Math.max(1, Math.floor((total / Math.max(1, points.length - 1)) / 16))
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1]
+      const b = points[i]
+      for (let s = 1; s <= perSegment; s++) {
+        const t = s / perSegment
+        const x = Math.round(a.x + (b.x - a.x) * t)
+        const y = Math.round(a.y + (b.y - a.y) * t)
+        wc.sendInputEvent({ type: "mouseMove", x, y, button: "left" } as any)
+        if (total > 0) await new Promise((r) => setTimeout(r, total / points.length / perSegment))
+      }
+    }
+    const last = points[points.length - 1]
+    wc.sendInputEvent({ type: "mouseUp", x: Math.round(last.x), y: Math.round(last.y), button: "left", clickCount: 1 } as any)
+  }
+
+  // Set the page zoom for a session. Accepts an absolute factor OR a relative
+  // direction ("in"/"out"/"reset"). Clamped, remembered on the SessionView, and
+  // re-applied after navigations. Returns the resulting factor.
+  setZoom(sessionId: string, opts: { factor?: number; direction?: "in" | "out" | "reset" }): number {
+    const sv = this.views.get(sessionId)
+    if (!sv) return 1
+    let z = sv.zoom
+    if (opts.direction === "reset") z = 1
+    else if (opts.direction === "in") z = sv.zoom + ZOOM_STEP
+    else if (opts.direction === "out") z = sv.zoom - ZOOM_STEP
+    else if (typeof opts.factor === "number") z = opts.factor
+    z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100))
+    sv.zoom = z
+    try {
+      sv.view.webContents.setZoomFactor(z)
+    } catch {}
+    // Notify the renderer so the toolbar reflects agent-driven zoom too.
+    if (this.win && !this.win.isDestroyed()) {
+      this.win.webContents.send("webagent:event", { sessionId, type: "zoom", zoom: z })
+    }
+    return z
+  }
+
+  getZoom(sessionId: string): number {
+    return this.views.get(sessionId)?.zoom ?? 1
+  }
+
+  // Scroll the page by an exact pixel delta. Electron's synthetic `mouseWheel`
+  // input events are unreliable: a single event scrolls little or nothing, the
+  // delta doesn't map 1:1 to pixels, and it dispatches at a fixed point that may
+  // sit over a non-scrollable fixed header/sidebar. Instead we scroll in-page —
+  // find the scrollable element under the viewport center and scroll it by the
+  // requested pixels, falling back to the document scroller. This is
+  // deterministic and also handles apps that scroll an inner container rather
+  // than the window. Returns whether anything actually moved.
+  async sendScroll(view: BrowserView, dx: number, dy: number): Promise<{ ok: boolean; scrolled: boolean }> {
+    const script = `
+      (function (dx, dy) {
+        function scrollableInDir(el, dx, dy) {
+          if (!(el instanceof Element)) return false;
+          var s = getComputedStyle(el);
+          var canY = (s.overflowY === 'auto' || s.overflowY === 'scroll');
+          var canX = (s.overflowX === 'auto' || s.overflowX === 'scroll');
+          if (dy > 0 && canY && el.scrollTop + el.clientHeight < el.scrollHeight - 1) return true;
+          if (dy < 0 && canY && el.scrollTop > 0) return true;
+          if (dx > 0 && canX && el.scrollLeft + el.clientWidth < el.scrollWidth - 1) return true;
+          if (dx < 0 && canX && el.scrollLeft > 0) return true;
+          return false;
+        }
+        var cx = Math.floor(window.innerWidth / 2);
+        var cy = Math.floor(window.innerHeight / 2);
+        var el = document.elementFromPoint(cx, cy);
+        var target = null;
+        while (el) { if (scrollableInDir(el, dx, dy)) { target = el; break; } el = el.parentElement; }
+        var doc = document.scrollingElement || document.documentElement;
+        var scroller = target || doc;
+        var beforeTop = scroller.scrollTop, beforeLeft = scroller.scrollLeft;
+        scroller.scrollBy(dx, dy);
+        var moved = (scroller.scrollTop !== beforeTop) || (scroller.scrollLeft !== beforeLeft);
+        if (!moved && scroller !== doc && doc) {
+          var bt = doc.scrollTop, bl = doc.scrollLeft;
+          doc.scrollBy(dx, dy);
+          moved = (doc.scrollTop !== bt) || (doc.scrollLeft !== bl);
+        }
+        return { moved: moved, scrollY: window.scrollY, maxY: doc ? (doc.scrollHeight - doc.clientHeight) : 0 };
+      })(${Number(dx) || 0}, ${Number(dy) || 0});
+    `
+    try {
+      const r = await view.webContents.executeJavaScript(script, true)
+      return { ok: true, scrolled: Boolean(r && (r as any).moved) }
+    } catch {
+      return { ok: false, scrolled: false }
+    }
   }
 
   async sendDrag(view: BrowserView, fromX: number, fromY: number, toX: number, toY: number, duration: number): Promise<void> {

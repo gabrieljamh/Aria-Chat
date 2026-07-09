@@ -8,7 +8,7 @@ const paramSchema = z.object({
 })
 
 export const BrowserNavigate = Tool.define(
-  "browser.navigate",
+  "browser_navigate",
   Effect.gen(function* () {
     const bridge = yield* BrowserBridge
 

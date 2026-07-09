@@ -9,26 +9,32 @@ const paramSchema = z.object({
 })
 
 export const BrowserScroll = Tool.define(
-  "browser.scroll",
+  "browser_scroll",
   Effect.gen(function* () {
     const bridge = yield* BrowserBridge
 
     return {
       description:
-        "Scroll the page by dx (horizontal) and dy (vertical) pixels. Use dy=600 to scroll down one viewport. After scrolling into new content, re-run browser.getdom to see newly visible elements.",
+        "Scroll the page by dx (horizontal) and dy (vertical) pixels. Use dy=600 to scroll down one viewport. After scrolling into new content, re-run browser_getdom to see newly visible elements.",
       parameters: paramSchema,
       execute: ({ dx, dy }: z.infer<typeof paramSchema>, ctx) =>
         Effect.gen(function* () {
-          const result = yield* bridge.post<{ ok: boolean; error?: string }>("scroll", {
+          const result = yield* bridge.post<{ ok: boolean; scrolled?: boolean; error?: string }>("scroll", {
             sessionId: ctx.sessionID,
             dx,
             dy,
           })
 
+          const output = result.error
+            ? `Scroll failed: ${result.error}`
+            : result.scrolled === false
+              ? `Scrolled by (${dx}, ${dy}) but the page did not move — likely already at the ${dy < 0 ? "top" : "bottom"} (or the content isn't scrollable in that direction).`
+              : `Scrolled by (${dx}, ${dy})`
+
           return {
             title: `Scroll (${dx}, ${dy})`,
-            output: result.error ? `Scroll failed: ${result.error}` : `Scrolled by (${dx}, ${dy})`,
-            metadata: { ok: result.ok, error: result.error },
+            output,
+            metadata: { ok: result.ok, scrolled: result.scrolled, error: result.error },
           }
         }),
     }

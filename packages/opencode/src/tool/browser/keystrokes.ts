@@ -12,7 +12,7 @@ const paramSchema = z.object({
 })
 
 export const BrowserKeystrokes = Tool.define(
-  "browser.keystrokes",
+  "browser_keystrokes",
   Effect.gen(function* () {
     const bridge = yield* BrowserBridge
 

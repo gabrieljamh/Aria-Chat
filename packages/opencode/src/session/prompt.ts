@@ -865,14 +865,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           },
         })
         // Register under an API-safe key: strict providers (GLM, others) only
-        // allow [a-zA-Z0-9_-] in function names and reject "browser.navigate".
-        // Everything internal (permissions, registry gating, part.tool ids in
-        // old history) keeps the canonical dotted id — ToolCompat.resolveName
-        // canonical-matches "browser_navigate" back to it when needed.
+        // allow [a-zA-Z0-9_-] in function names, so any stray separator is
+        // collapsed to "_". Tool ids are already API-safe (e.g. browser_navigate)
+        // but this stays as a defensive backstop. Also expose a prefix-stripped
+        // alias (navigate) so a model that drops the "browser_" namespace still
+        // resolves; ToolCompat.resolveName canonical-matches the rest.
         const apiName = item.id.replace(/[^a-zA-Z0-9_-]/g, "_")
         tools[apiName] = toolDef
-        if (item.id.startsWith("browser.")) {
-          const shortName = item.id.slice("browser.".length)
+        if (item.id.startsWith("browser_")) {
+          const shortName = item.id.slice("browser_".length)
           if (!tools[shortName]) tools[shortName] = toolDef
         }
       }
