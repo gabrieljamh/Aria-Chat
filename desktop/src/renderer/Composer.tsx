@@ -3,37 +3,7 @@ import type { AgentInfo, CommandInfo, FileAttachment, ModelRef, ProvidersRespons
 import { IconPlus, IconSend, IconMic, IconFile, IconSkill, IconPlug, IconGlobe, IconCheck, IconSettings } from "./Icons"
 import { useCustomModels } from "./customModels"
 import { ModelSearchSelect } from "./ModelSearchSelect"
-
-interface ModelOption {
-  providerID: string
-  modelID: string
-  label: string
-}
-
-function buildModelOptions(
-  providers: ProvidersResponse | null,
-  custom: { providerID: string; modelID: string; label: string }[],
-): ModelOption[] {
-  const out: ModelOption[] = []
-  const seen = new Set<string>()
-  const push = (o: ModelOption) => {
-    const key = `${o.providerID}/${o.modelID}`
-    if (seen.has(key)) return
-    seen.add(key)
-    out.push(o)
-  }
-  if (providers) {
-    const connected = new Set(providers.connected ?? [])
-    for (const p of providers.all ?? []) {
-      if (connected.size > 0 && !connected.has(p.id)) continue
-      for (const m of Object.values(p.models ?? {})) {
-        push({ providerID: p.id, modelID: m.id, label: `${p.name} · ${m.name}` })
-      }
-    }
-  }
-  for (const c of custom) push({ providerID: c.providerID, modelID: c.modelID, label: c.label || `${c.providerID} · ${c.modelID}` })
-  return out
-}
+import { buildModelOptions } from "./modelOptions"
 
 interface SlashItem {
   name: string

@@ -5040,7 +5040,8 @@ button {
   flex-shrink: 0;
 }
 .webagent-chat-title {
-  flex: 1;
+  flex: 0 0 auto;
+  margin-right: auto;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -5110,6 +5111,22 @@ button {
 .webagent-hero-composer {
   width: 100%;
   max-width: 640px;
+}
+.webagent-hero-model {
+  width: 100%;
+  max-width: 640px;
+}
+.webagent-hero-model .webagent-model-select,
+.webagent-hero-model .model-search-select-wrapper {
+  width: 100%;
+}
+.webagent-model-select {
+  flex: 1 1 auto;
+  min-width: 120px;
+  max-width: 220px;
+}
+.webagent-chat-head .webagent-model-select .model-search-select-wrapper {
+  width: 100%;
 }
 .webagent-chat-hint {
   margin: 0 0 14px;

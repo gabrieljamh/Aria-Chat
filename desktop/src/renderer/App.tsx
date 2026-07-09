@@ -1278,6 +1278,9 @@ export function App() {
             suggestions={genSuggest.webagent ?? null}
             aiHome={aiGreetings || aiSuggestions}
             onRegenerate={regenerateHome}
+            providers={providers}
+            model={model}
+            onModelChange={selectModel}
           />
         )}
       </div>

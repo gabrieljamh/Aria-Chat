@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
-import type { WebAgentRef, WebAgentState } from "@shared/types"
+import type { WebAgentRef, WebAgentState, ModelRef, ProvidersResponse } from "@shared/types"
 import type { State } from "./types-internal"
 import { MessageView } from "./MessageView"
 import { Sidebar } from "./Sidebar"
 import { IconRefresh, IconSend } from "./Icons"
 import { useAutoScroll } from "./useAutoScroll"
+import { useCustomModels } from "./customModels"
+import { ModelSearchSelect } from "./ModelSearchSelect"
+import { buildModelOptions } from "./modelOptions"
 import type { Suggestion } from "./generate"
 
 const STATIC_SUGGESTIONS: Suggestion[] = [
@@ -33,6 +36,9 @@ interface Props {
   suggestions?: Suggestion[] | null
   aiHome?: boolean
   onRegenerate?: () => void
+  providers: ProvidersResponse | null
+  model: ModelRef | null
+  onModelChange: (m: ModelRef) => void
 }
 
 /**
@@ -64,6 +70,12 @@ export function WebAgentMode(props: Props) {
   const savedUrl = activeSession?.url ?? null
   const liveUrl = browserState.url
   const showHero = state.order.length === 0 && !liveUrl && !savedUrl
+
+  const customModels = useCustomModels()
+  const modelOptions = useMemo(
+    () => buildModelOptions(props.providers, customModels),
+    [props.providers, customModels],
+  )
 
   const { scrollRef } = useAutoScroll([state.order, state.messages], {
     resetKey: activeSession?.sessionID ?? null,
@@ -267,6 +279,20 @@ export function WebAgentMode(props: Props) {
     </div>
   )
 
+  const modelSelector = modelOptions.length > 0 ? (
+    <div className="webagent-model-select">
+      <ModelSearchSelect
+        value={props.model ? `${props.model.providerID}/${props.model.modelID}` : ""}
+        options={modelOptions.map((o) => ({ value: `${o.providerID}/${o.modelID}`, label: o.label }))}
+        onChange={(v) => {
+          const [providerID, ...rest] = v.split("/")
+          props.onModelChange({ providerID, modelID: rest.join("/") })
+        }}
+        placeholder="Model"
+      />
+    </div>
+  ) : null
+
   return (
     <>
       <Sidebar
@@ -308,6 +334,7 @@ export function WebAgentMode(props: Props) {
             {activeSession && (
               <p className="webagent-hero-hint">Send the agent its first instruction to wake the browser.</p>
             )}
+            {modelSelector && <div className="webagent-hero-model">{modelSelector}</div>}
             <div className="chips">
               {suggestions.map((sug, i) => (
                 <button
@@ -381,6 +408,7 @@ export function WebAgentMode(props: Props) {
               <input type="checkbox" checked={autonomous} onChange={(e) => setAutonomous(e.target.checked)} />
               Autonomous
             </label>
+            {modelSelector}
             <button className="webagent-nav-btn" onClick={onToggleRight} title="Hide agent chat">
               »
             </button>
