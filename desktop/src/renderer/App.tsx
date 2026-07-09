@@ -112,6 +112,16 @@ export function App() {
   const coworkRef = useRef<ChatRef[]>([])
   const webAgentRef = useRef<WebAgentRef[]>([])
   const hasHistoryImagesRef = useRef(false)
+  // The agent-mode selector is a single shared control, but the chosen mode is
+  // really per-session: a WebAgent session runs the "webagent" agent, a Tasker
+  // session may be in plan/compose/build. Without per-session tracking the
+  // last-synced mode leaks across sessions — e.g. switching WebAgent -> Tasker
+  // leaves the selector on "webagent" (not even a Tasker option) and the next
+  // Tasker send would go out under the wrong agent. This map holds each
+  // session's own mode; the selector mirrors the active session's entry, and a
+  // session switch restores that entry instead of carrying the old one over.
+  const agentBySessionRef = useRef<Map<string, string>>(new Map())
+  const defaultAgentRef = useRef<string | null>(null)
 
   const activeRef: ChatRef | null = useMemo(() => {
     if (tab === "chat") return chats.find((c) => c.id === activeChatId) ?? null
@@ -125,8 +135,47 @@ export function App() {
   const taskerProjectDir = activeRef?.directory ?? coworkDir
 
   const { state, setBusy, setError, setCurrentSession, isSessionBusy, setBusyFor, setErrorFor } = useConversation(activeSession, activeDir, activeRef?.createdAt, (agent) => {
-    if (agent && agent !== agentName) setAgentName(agent)
+    if (!agent) return
+    // Server-driven mode change (plan_enter/plan_exit, slash command) — record
+    // it against the active session so it survives a switch, and mirror it into
+    // the shared selector.
+    if (activeSession) agentBySessionRef.current.set(activeSession, agent)
+    if (agent !== agentName) setAgentName(agent)
   })
+
+  // Session switch: restore THIS session's own mode into the shared selector so
+  // the previous session's mode can't bleed in (the WebAgent -> Tasker leak).
+  // Fall back to the default agent for a session we have no record for yet.
+  useEffect(() => {
+    if (!activeSession) return
+    const mapped = agentBySessionRef.current.get(activeSession)
+    if (mapped) setAgentName(mapped)
+    else if (defaultAgentRef.current) setAgentName(defaultAgentRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession])
+
+  // Prefill a freshly-opened session's mode from its loaded history (newest user
+  // message wins) when we have no live/manual value yet — so a session last left
+  // in plan/compose shows the right mode immediately instead of the default.
+  // Guarded on "no entry yet" so it never fights the live sync above or a manual
+  // selection.
+  useEffect(() => {
+    if (!activeSession || agentBySessionRef.current.has(activeSession)) return
+    let newestId = ""
+    let newestAgent: string | undefined
+    for (const id of state.order) {
+      const info = state.messages[id]?.info as { role?: string; agent?: string } | undefined
+      if (info?.role === "user" && typeof info.agent === "string" && info.agent && id >= newestId) {
+        newestId = id
+        newestAgent = info.agent
+      }
+    }
+    if (newestAgent) {
+      agentBySessionRef.current.set(activeSession, newestAgent)
+      setAgentName(newestAgent)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession, state.order])
 
   // Track whether the conversation history contains images (from tool results
   // like browser.screenshot) so sendPrompt can apply the vision redirect.
@@ -380,9 +429,12 @@ export function App() {
         const preferred = entries.find(([pid]) => (provs.connected ?? []).includes(pid)) ?? entries[0]
         if (preferred) setModel({ providerID: preferred[0], modelID: preferred[1] })
       }
-      if (ags.length && !agentName) {
+      if (ags.length) {
         const primary = ags.find((a) => a.name === "build") ?? ags.find((a) => a.mode !== "subagent") ?? ags[0]
-        setAgentName(primary?.name ?? null)
+        // Remember the default so a session-switch to an untracked session can
+        // fall back to it instead of leaking the previous session's mode.
+        defaultAgentRef.current = primary?.name ?? null
+        if (!agentName) setAgentName(primary?.name ?? null)
       }
       // Restore pinned chats
       const favs = (await window.mimo.getSetting("favoriteIds").catch(() => [])) as string[]
@@ -743,7 +795,7 @@ export function App() {
               arguments: cmdArgs,
               model: turnModel ?? undefined,
               visionModel: turnVisionModel,
-              agent: agentName ?? undefined,
+              agent: agentName && agentName !== "webagent" ? agentName : undefined,
               directory: finalRef.directory,
             })
           } catch (e: any) {
@@ -762,7 +814,8 @@ export function App() {
           text: webSearch ? `${text}\n\n(You may use web search if helpful.)` : text,
           model: turnModel ?? undefined,
           visionModel: turnVisionModel,
-          agent: tab === "webagent" ? "webagent" : agentName ?? undefined,
+          // Never let the webagent-only agent leak into a chat/cowork turn.
+          agent: tab === "webagent" ? "webagent" : agentName && agentName !== "webagent" ? agentName : undefined,
           directory: finalRef.directory,
           files,
         })
@@ -1068,13 +1121,20 @@ export function App() {
 
   
 
+  // Manual selector change: record it against the active session so it persists
+  // across a switch, then update the shared display value.
+  const setAgentForActive = useCallback((n: string) => {
+    if (activeSession) agentBySessionRef.current.set(activeSession, n)
+    setAgentName(n)
+  }, [activeSession])
+
   const shared = {
     providers,
     agents,
     model,
     setModel: selectModel,
     agentName,
-    setAgentName,
+    setAgentName: setAgentForActive,
     webSearch,
     setWebSearch,
     compactThreshold,

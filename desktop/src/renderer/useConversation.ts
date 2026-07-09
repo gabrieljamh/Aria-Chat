@@ -552,6 +552,13 @@ export function useConversation(
   // from dragging the dropdown back to the pre-switch agent — the "blinks and
   // returns to the previous mode" bug.
   const lastAgentSyncMsgRef = useRef<Map<string, string>>(new Map())
+  // Per-session directory (= MiMo instance). Session state is per-directory, but
+  // the registry tracks sessions from every mode/folder at once. This map lets
+  // the reconnect-heal path re-fetch each backgrounded session against its OWN
+  // directory instead of the active tab's — otherwise a cross-folder session
+  // would be healed with the wrong directory and its busy flag / final message
+  // could stay stale after an SSE drop. Recorded on activation (below).
+  const sessionDirRef = useRef<Map<string, string>>(new Map())
 
   const setCurrentSession = useCallback((sid: string) => {
     sessionRef.current = sid
@@ -571,24 +578,36 @@ export function useConversation(
     const now = Date.now()
     if (now - lastResyncRef.current < 1_000) return
     lastResyncRef.current = now
-    const dir = directoryRef.current
-    // Snapshot the status map once (cheap), reuse for all sids in this dir.
-    void window.mimo
-      .getSessionStatus(dir ?? undefined)
-      .catch(() => null)
-      .then((statuses) => {
-        if (!statuses) return
-        for (const sid of known) {
-          void window.mimo
-            .getMessages(sid, dir ?? undefined)
-            .catch(() => null)
-            .then((messages) => {
-              if (!messages) return
-              const busy = statuses[sid]?.type ? statuses[sid].type !== "idle" : undefined
-              dispatch({ kind: "session.sync", sid, messages: messages as ConvMessage[], busy })
-            })
-        }
-      })
+    // Group sessions by their OWN directory (= instance). Session state is
+    // per-directory, so a cross-folder background session must be healed against
+    // the directory it lives in, not the active tab's. Fall back to the active
+    // directory for any session whose dir we haven't recorded yet.
+    const activeDir = directoryRef.current ?? undefined
+    const byDir = new Map<string | undefined, string[]>()
+    for (const sid of known) {
+      const dir = sessionDirRef.current.get(sid) ?? activeDir
+      const list = byDir.get(dir)
+      if (list) list.push(sid)
+      else byDir.set(dir, [sid])
+    }
+    // One status snapshot per distinct directory, reused for its sessions.
+    for (const [dir, sids] of byDir) {
+      void window.mimo
+        .getSessionStatus(dir)
+        .catch(() => null)
+        .then((statuses) => {
+          for (const sid of sids) {
+            void window.mimo
+              .getMessages(sid, dir)
+              .catch(() => null)
+              .then((messages) => {
+                if (!messages) return
+                const busy = statuses?.[sid]?.type ? statuses[sid].type !== "idle" : undefined
+                dispatch({ kind: "session.sync", sid, messages: messages as ConvMessage[], busy })
+              })
+          }
+        })
+    }
   }
 
   // Re-derive the workspace file list from disk for the active session only
@@ -615,6 +634,9 @@ export function useConversation(
       return
     }
     dispatch({ kind: "session.activate", sid: sessionID })
+    // Remember this session's directory so the reconnect-heal path can re-fetch
+    // it against its own instance even while a different folder is active.
+    if (directory) sessionDirRef.current.set(sessionID, directory)
     // Skip the history refetch only if we've already loaded this session once,
     // or its slot already holds live-streamed content. An empty slot that only
     // exists because a background SSE event auto-created it (status pings, idle
