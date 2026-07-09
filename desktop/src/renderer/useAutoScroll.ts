@@ -58,7 +58,7 @@ export function useAutoScroll(deps: unknown[], opts?: { resetKey?: string | null
     const el = scrollRef.current
     if (!el) return
     const onScroll = () => {
-      atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+      atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 240
     }
     onScroll()
     el.addEventListener("scroll", onScroll, { passive: true })

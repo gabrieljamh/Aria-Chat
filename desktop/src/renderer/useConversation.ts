@@ -607,7 +607,13 @@ export function useConversation(
       return
     }
     dispatch({ kind: "session.activate", sid: sessionID })
-    if (populatedForRef.current.has(sessionID)) {
+    // Skip the history refetch only if we've already loaded this session once,
+    // or its slot already holds live-streamed content. An empty slot that only
+    // exists because a background SSE event auto-created it (status pings, idle
+    // frames, other sessions in the same directory) must STILL be fetched —
+    // otherwise the session opens to a blank greeting instead of its messages.
+    const existingSlot = regRef.current.sessions.get(sessionID)
+    if (populatedForRef.current.has(sessionID) || (existingSlot && existingSlot.order.length > 0)) {
       // Already populated — keep the backgrounded state. No refetch.
       return
     }
@@ -642,8 +648,12 @@ export function useConversation(
         .filter((q) => q.sessionID === sid)
         .map((q) => ({ id: q.id, sessionID: q.sessionID, questions: q.questions, tool: q.tool }))
       if (cancelled) return
-      if (populatedForRef.current.has(sid)) {
-        // A concurrent populate raced and won — drop ours.
+      const slotNow = regRef.current.sessions.get(sid)
+      if (populatedForRef.current.has(sid) || (slotNow && slotNow.order.length > 0)) {
+        // A concurrent populate raced and won, or live events already filled the
+        // slot — drop ours rather than clobbering real content. A slot that is
+        // still empty here was only poisoned by a background event, so we keep
+        // going and load its history.
         dispatch({ kind: "session.loading", sid, loading: false })
         return
       }
@@ -679,9 +689,14 @@ export function useConversation(
       }
       const targetSid = evtSid ?? sessionRef.current
       if (!targetSid) return
-      // Mark the session as populated (events are flowing) so the populate
-      // effect won't refetch it on next activation.
-      populatedForRef.current.add(targetSid)
+      // Do NOT mark the session populated here. The SSE stream is per-directory
+      // and carries events for EVERY session, so an event routinely arrives for
+      // a session the user hasn't opened yet (or one whose initial fetch is
+      // still in flight). Marking it populated on a bare event would make the
+      // populate effect skip loading history and leave an empty slot — the
+      // "clicking a session shows the greeting screen" bug. The populate effect
+      // instead decides whether to refetch from real slot content (order.length),
+      // which still preserves live-streamed sessions without a refetch flash.
       dispatch({ kind: "session.event", sid: targetSid, event })
       // A finished turn is the moment files have settled — re-derive from disk
       // but only for the session that actually went idle.
