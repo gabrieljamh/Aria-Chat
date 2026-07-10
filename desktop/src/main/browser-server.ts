@@ -10,14 +10,22 @@ import { getRegisteredApps, resolveApp, launchApp, isProtocolUri, launchProtocol
 // CSS-pixel center of its bounding box — the same coordinate space clicks and
 // drags use. elementId is JSON-encoded into the snippet so it can't break out
 // of the string / inject script.
-async function elementCenter(view: BrowserView, elementId: string): Promise<{ x: number; y: number } | null> {
+async function elementCenter(view: BrowserView, elementId: string): Promise<{ x: number; y: number; inViewport: boolean } | null> {
   return view.webContents.executeJavaScript(
     `(() => {
       const els = document.querySelectorAll('[data-webagent-id]');
       for (const el of els) {
         if (el.getAttribute('data-webagent-id') === ${JSON.stringify(elementId)}) {
           const r = el.getBoundingClientRect();
-          return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+          const vw = window.innerWidth || document.documentElement.clientWidth;
+          const vh = window.innerHeight || document.documentElement.clientHeight;
+          // inViewport requires the element's box to actually overlap the
+          // viewport (not just touch an edge), with non-zero size. Elements
+          // scrolled off (r.top > vh or r.bottom < 0) are NOT inViewport.
+          const inViewport = r.width > 0 && r.height > 0
+            && r.bottom > 0 && r.top < vh
+            && r.right > 0 && r.left < vw;
+          return { x: r.x + r.width / 2, y: r.y + r.height / 2, inViewport };
         }
       }
       return null;
@@ -296,6 +304,15 @@ async function handleClick(res: ServerResponse, sessionId: string, body: any) {
     try {
       const coords = await elementCenter(view, body.elementId)
       if (coords) {
+        if (!coords.inViewport) {
+          // Element exists in the DOM but is scrolled offscreen. Clicking it
+          // via synthetic input events won't work reliably (and a click on
+          // offscreen coords is a no-op in most browsers). Tell the model to
+          // scroll the element into view first — it can use browser_scroll
+          // (page-relative deltas) or its elementId-based scroll hint.
+          sendJson(res, 400, { error: `Element ${body.elementId} is offscreen — use browser_scroll to bring it into view, then re-screenshot and retry. (rect center: x=${Math.round(coords.x)}, y=${Math.round(coords.y)}, negative/out-of-range y means above/below the viewport.)` })
+          return
+        }
         // getBoundingClientRect is in page CSS px; input events are in view-DIP.
         // At page zoom Z, view-DIP = pageCSS × Z, so scale the resolved center.
         const zoom = view.webContents.getZoomFactor() || 1
@@ -335,12 +352,18 @@ async function handleType(res: ServerResponse, sessionId: string, body: any) {
   if (body.elementId) {
     try {
       const coords = await elementCenter(view, body.elementId)
-      if (coords) {
-        const zoom = view.webContents.getZoomFactor() || 1
-        browserManager.sendClick(view, coords.x * zoom, coords.y * zoom)
-        await injectClickMarker(view, coords.x, coords.y, "type-focus")
-        await new Promise((r) => setTimeout(r, 80))
+      if (!coords) {
+        sendJson(res, 400, { error: `Element ${body.elementId} not found` })
+        return
       }
+      if (!coords.inViewport) {
+        sendJson(res, 400, { error: `Element ${body.elementId} is offscreen — use browser_scroll to bring it into view, then re-screenshot and retry.` })
+        return
+      }
+      const zoom = view.webContents.getZoomFactor() || 1
+      browserManager.sendClick(view, coords.x * zoom, coords.y * zoom)
+      await injectClickMarker(view, coords.x, coords.y, "type-focus")
+      await new Promise((r) => setTimeout(r, 80))
     } catch {}
   }
 
@@ -392,6 +415,10 @@ async function handleDrag(res: ServerResponse, sessionId: string, body: any) {
         sendJson(res, 400, { error: `Element ${body.fromElementId} not found` })
         return
       }
+      if (!c.inViewport) {
+        sendJson(res, 400, { error: `Element ${body.fromElementId} (drag start) is offscreen — use browser_scroll to bring it into view, then re-screenshot and retry.` })
+        return
+      }
       fromX = c.x * zoom
       fromY = c.y * zoom
     }
@@ -399,6 +426,10 @@ async function handleDrag(res: ServerResponse, sessionId: string, body: any) {
       const c = await elementCenter(view, body.toElementId)
       if (!c) {
         sendJson(res, 400, { error: `Element ${body.toElementId} not found` })
+        return
+      }
+      if (!c.inViewport) {
+        sendJson(res, 400, { error: `Element ${body.toElementId} (drag end) is offscreen — use browser_scroll to bring it into view, then re-screenshot and retry.` })
         return
       }
       toX = c.x * zoom

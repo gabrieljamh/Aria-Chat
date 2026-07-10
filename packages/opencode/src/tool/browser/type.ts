@@ -16,7 +16,7 @@ export const BrowserType = Tool.define(
 
     return {
       description:
-        "Type text into an input field. Uses real keyboard events (triggers SPAs, React/Vue controlled inputs). Set clear=true to clear the field first.",
+        "Type text into an input field. Uses real keyboard events (triggers SPAs, React/Vue controlled inputs). Set clear=true to clear the field first. Offscreen input fields CANNOT be typed into — if the element is offscreen, the tool returns an 'Element ... is offscreen' error and you MUST use browser_scroll to bring it into view (dy=600 to scroll down, dy=-600 to scroll up), re-screenshot, then retry. Check the y coordinate in browser_getdom: if y < 0 or y > viewport height, scroll first.",
       parameters: paramSchema,
       execute: ({ elementId, text, clear }: z.infer<typeof paramSchema>, ctx) =>
         Effect.gen(function* () {

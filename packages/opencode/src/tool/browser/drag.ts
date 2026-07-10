@@ -23,7 +23,7 @@ export const BrowserDrag = Tool.define(
 
     return {
       description:
-        "Drag from one point to another with interpolated mouse moves (sliders, drag-and-drop, drawing). Each endpoint can be a DOM element (fromElementId/toElementId from browser_getdom) or x,y coordinates read from a browser_screenshot — mix and match. Give each endpoint as an element id OR a coordinate pair.",
+        "Drag from one point to another with interpolated mouse moves (sliders, drag-and-drop, drawing). Each endpoint can be a DOM element (fromElementId/toElementId from browser_getdom) or x,y coordinates read from a browser_screenshot — mix and match. Give each endpoint as an element id OR a coordinate pair. Both endpoints MUST be onscreen — if either is offscreen, the tool returns an 'is offscreen' error and you MUST use browser_scroll to bring it into view, re-screenshot, then retry.",
       parameters: paramSchema,
       execute: (
         { fromElementId, fromX, fromY, toElementId, toX, toY, duration }: z.infer<typeof paramSchema>,

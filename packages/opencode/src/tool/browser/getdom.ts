@@ -23,6 +23,7 @@ interface DomElement {
   y: number
   w: number
   h: number
+  inViewport?: boolean
 }
 
 interface DomResult {
@@ -39,7 +40,7 @@ export const BrowserGetDom = Tool.define(
 
     return {
       description:
-        "Extract the DOM structure of the current page. Returns a list of visible elements with IDs (el-N), tag, role, text, href, type, name, placeholder, and bounding box coordinates. Always call this after navigation to get precise element IDs for clicks and typing.",
+        "Extract the DOM structure of the current page. Returns a list of visible elements with IDs (el-N), tag, role, text, href, type, name, placeholder, bounding box coordinates, and an inViewport flag. Always call this after navigation to get precise element IDs for clicks and typing. Elements with inViewport=false are OFFSCREEN — you CANNOT click or type into them; use browser_scroll (dy=600 to scroll down, dy=-600 to scroll up) to bring them into view first, then re-run browser_getdom to get fresh coordinates. An element is onscreen only when inViewport=true; checking y < 0 or y > viewport height is a quick proxy.",
       parameters: paramSchema,
       execute: ({ maxElements }: z.infer<typeof paramSchema>, ctx) =>
         Effect.gen(function* () {
@@ -71,6 +72,7 @@ export const BrowserGetDom = Tool.define(
             if (e.name) parts.push("name=" + e.name)
             if (e.placeholder) parts.push('placeholder="' + e.placeholder + '"')
             parts.push("@" + e.x + "," + e.y + "," + e.w + "x" + e.h)
+            if (e.inViewport === false) parts.push("[OFFSCREEN]")
             return parts.join(" ")
           })
 

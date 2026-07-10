@@ -15,7 +15,7 @@ export const BrowserScroll = Tool.define(
 
     return {
       description:
-        "Scroll the page by dx (horizontal) and dy (vertical) pixels. Use dy=600 to scroll down one viewport. After scrolling into new content, re-run browser_getdom to see newly visible elements.",
+        "Scroll the page by dx (horizontal) and dy (vertical) pixels. Use dy=600 to scroll down one viewport, dy=-600 to scroll up. After scrolling into new content, re-run browser_getdom to see newly visible elements. Use this to bring offscreen elements into view BEFORE calling browser_click / browser_type / browser_drag — clicking offscreen elements is rejected by the server with an 'is offscreen' error and you must scroll first. After scrolling, always take a fresh browser_screenshot (or browser_getdom) to get updated coordinates, since prior coordinates are stale after a scroll.",
       parameters: paramSchema,
       execute: ({ dx, dy }: z.infer<typeof paramSchema>, ctx) =>
         Effect.gen(function* () {

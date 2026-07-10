@@ -19,6 +19,12 @@ export const DOM_EXTRACTION_SCRIPT = `
       attrs[attr.name] = attr.value.length > 100 ? attr.value.slice(0, 100) + '...' : attr.value
     }
 
+    const vw = window.innerWidth || document.documentElement.clientWidth
+    const vh = window.innerHeight || document.documentElement.clientHeight
+    const inViewport = rect.width > 0 && rect.height > 0
+      && rect.bottom > 0 && rect.top < vh
+      && rect.right > 0 && rect.left < vw
+
     elements.push({
       id: 'el-' + id,
       tag: el.tagName.toLowerCase(),
@@ -32,6 +38,7 @@ export const DOM_EXTRACTION_SCRIPT = `
       y: Math.round(rect.y),
       w: Math.round(rect.width),
       h: Math.round(rect.height),
+      inViewport,
       attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
     })
     id++
