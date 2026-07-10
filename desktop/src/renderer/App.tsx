@@ -290,9 +290,13 @@ export function App() {
   const idleTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const busyMapRef = useRef(sessionBusyMap)
   busyMapRef.current = sessionBusyMap
-  const sessionTitleFor = useCallback((sid: string) => {
+  // Returns the owning registry entry's title, or null for sessions the user
+  // doesn't own — greeting/suggestion generator sandboxes, dream/distill and
+  // other system sessions all flow through the busy map too, and must never
+  // produce "work finished" notifications.
+  const sessionTitleFor = useCallback((sid: string): string | null => {
     const all = [...chatsRef.current, ...coworkRef.current, ...webAgentRef.current]
-    return all.find((r) => r.sessionID === sid)?.title ?? "Chat"
+    return all.find((r) => r.sessionID === sid)?.title ?? null
   }, [])
   useEffect(() => {
     const prev = prevBusyMapRef.current
@@ -313,6 +317,7 @@ export function App() {
         const ms = typeof delay === "number" ? delay * 1000 : 3000
         for (const sid of finished) {
           if (busyMapRef.current[sid]) continue // already running again
+          if (sessionTitleFor(sid) === null) continue // not a user-owned session
           const old = idleTimersRef.current.get(sid)
           if (old) clearTimeout(old)
           idleTimersRef.current.set(
@@ -320,8 +325,12 @@ export function App() {
             setTimeout(() => {
               idleTimersRef.current.delete(sid)
               if (busyMapRef.current[sid]) return
+              // Re-resolve at fire time: the title may have just been
+              // generated, and a session deleted meanwhile shouldn't notify.
+              const title = sessionTitleFor(sid)
+              if (title === null) return
               window.mimo.notify(
-                `Aria Chat - ${sessionTitleFor(sid)}`,
+                `Aria Chat - ${title}`,
                 "Aria has finished working on your request, come take a look!",
               )
             }, ms),
