@@ -213,6 +213,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [compactionEnabled, setCompactionEnabled] = useState(false)
   const [compStatus, setCompStatus] = useState<Status>({ kind: "idle" })
   const [apps, setApps] = useState<ExecuteApp[]>([])
+  const [manualAppPath, setManualAppPath] = useState("")
   const [userName, setUserName] = useState("")
   const [userStatus, setUserStatus] = useState<Status>({ kind: "idle" })
   const [githubUsername, setGithubUsername] = useState("")
@@ -231,6 +232,8 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [notifIdleDelay, setNotifIdleDelay] = useState(3)
   const [visionRedirect, setVisionRedirect] = useState(false)
   const [visionModel, setVisionModel] = useState("")
+  // Ordered describer priority list, each "providerID/modelID".
+  const [visionModels, setVisionModels] = useState<string[]>([])
   const [audioRedirect, setAudioRedirect] = useState(false)
   const [audioModel, setAudioModel] = useState("")
   const [videoRedirect, setVideoRedirect] = useState(false)
@@ -273,9 +276,12 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [baseURL, setBaseURL] = useState("")
   const [apiKey, setApiKey] = useState("")
   const [npm, setNpm] = useState("")
-  // Declared input modalities for the model being added. Without these, Aria
-  // defaults a custom model to text-only and strips images before the provider.
-  const [mImage, setMImage] = useState(true)
+  // Declared input modalities for the model being added. Image defaults OFF:
+  // only opt a model into direct image input when it genuinely reads images.
+  // Text-only models still handle images — Aria auto-describes them via a vision
+  // model (Settings → Vision models priority) — so leaving this off is safe and
+  // avoids sending raw images to a model that can't read them (context overflow).
+  const [mImage, setMImage] = useState(false)
   const [mAudio, setMAudio] = useState(false)
   const [mVideo, setMVideo] = useState(false)
   const [mPdf, setMPdf] = useState(false)
@@ -311,7 +317,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     const path = await window.mimo.pickExecutable().catch(() => null)
     if (!path) return
     const base = path.split(/[\\/]/).pop() ?? path
-    const name = base.replace(/\.(exe|app|bat|cmd|com|sh)$/i, "")
+    const name = base.replace(/\.(exe|app|bat|cmd|com|sh|lnk|url)$/i, "")
     const app: ExecuteApp = { id: `app_${Date.now().toString(36)}`, name, path, autoAllow: false }
     setApps((cur) => {
       const next = [...cur, app]
@@ -319,6 +325,28 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       return next
     })
   }, [])
+
+  const addManualApp = useCallback(() => {
+    const raw = manualAppPath.trim()
+    if (!raw) return
+    const isUri = /^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^[a-z]:[\\/]/i.test(raw)
+    let name: string
+    if (isUri) {
+      const scheme = raw.match(/^([a-z][a-z0-9+.-]*):/i)?.[1] ?? raw
+      const tail = raw.slice(scheme.length + 1).replace(/^\/+/, "")
+      name = tail.split(/[/?#]/)[0] || scheme
+    } else {
+      const base = raw.split(/[\\/]/).pop() ?? raw
+      name = base.replace(/\.(exe|app|bat|cmd|com|sh|lnk|url)$/i, "")
+    }
+    const app: ExecuteApp = { id: `app_${Date.now().toString(36)}`, name, path: raw, autoAllow: false }
+    setApps((cur) => {
+      const next = [...cur, app]
+      window.mimo.setSetting("executeApps", next).catch(() => {})
+      return next
+    })
+    setManualAppPath("")
+  }, [manualAppPath])
 
   useEffect(() => {
     window.mimo.getSetting("aiGreetings").then((v) => setAiGreetings(v === true))
@@ -382,9 +410,20 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
 
   useEffect(() => {
     window.mimo.getSetting("visionRedirect").then((v) => setVisionRedirect(v === true))
+    let single = ""
     window.mimo.getSetting("visionModel").then((v) => {
       const m = v as { providerID?: string; modelID?: string } | null
-      if (m?.providerID && m?.modelID) setVisionModel(`${m.providerID}/${m.modelID}`)
+      if (m?.providerID && m?.modelID) {
+        single = `${m.providerID}/${m.modelID}`
+        setVisionModel(single)
+      }
+    })
+    // Priority list; migrate from the legacy single setting when empty.
+    window.mimo.getSetting("visionModels").then((v) => {
+      const arr = Array.isArray(v) ? (v as { providerID?: string; modelID?: string }[]) : []
+      const strs = arr.filter((m) => m?.providerID && m?.modelID).map((m) => `${m!.providerID}/${m!.modelID}`)
+      if (strs.length) setVisionModels(strs)
+      else if (single) setVisionModels([single])
     })
     window.mimo.getSetting("webAgentMode").then((v) => setWebAgentMode(v === true))
   }, [])
@@ -396,10 +435,31 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       return next
     })
   }
-  const changeVisionModel = (value: string) => {
-    setVisionModel(value)
-    const [providerID, ...rest] = value.split("/")
-    window.mimo.setSetting("visionModel", { providerID, modelID: rest.join("/") }).catch(() => {})
+  const persistVisionModels = (strs: string[]) => {
+    setVisionModels(strs)
+    const refs = strs.map((s) => {
+      const [providerID, ...rest] = s.split("/")
+      return { providerID, modelID: rest.join("/") }
+    })
+    window.mimo.setSetting("visionModels", refs).catch(() => {})
+    // Keep the legacy single setting in sync with the top priority so older
+    // code paths (and the mid-turn auto-swap) still resolve a model.
+    if (refs[0]) {
+      setVisionModel(strs[0])
+      window.mimo.setSetting("visionModel", refs[0]).catch(() => {})
+    }
+  }
+  const addVisionModel = (value: string) => {
+    if (!value || visionModels.includes(value)) return
+    persistVisionModels([...visionModels, value])
+  }
+  const removeVisionModel = (idx: number) => persistVisionModels(visionModels.filter((_, i) => i !== idx))
+  const moveVisionModel = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir
+    if (j < 0 || j >= visionModels.length) return
+    const next = [...visionModels]
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    persistVisionModels(next)
   }
 
   useEffect(() => {
@@ -1544,13 +1604,27 @@ const saveEditModel = async () => {
                 </button>
               </div>
 
-              {visionRedirect && (
-                <div className="settings-field">
-                  <label htmlFor="vision-model">Vision model</label>
-                  <ModelSearchSelect id="vision-model" value={visionModel} options={modelOptions} onChange={changeVisionModel} placeholder="Select vision model…" />
-                  <div className="hint">Used only for messages that contain an image attachment.</div>
+              <div className="settings-field">
+                <label>Vision models — priority</label>
+                <div className="hint" style={{ marginBottom: 8 }}>
+                  When the active model can't read an image, Aria describes it using the first available model in this list (put a free one first). The top model is also the target when “Redirect image attachments” is on. If the list is empty, Aria auto-picks any vision-capable model.
                 </div>
-              )}
+                {visionModels.map((m, i) => (
+                  <div key={m} className="vision-priority-row">
+                    <span className="vision-priority-rank">{i + 1}</span>
+                    <span className="vision-priority-name">{modelOptions.find((o) => o.value === m)?.label ?? m}</span>
+                    <button className="vision-priority-btn" disabled={i === 0} onClick={() => moveVisionModel(i, -1)} title="Move up">↑</button>
+                    <button className="vision-priority-btn" disabled={i === visionModels.length - 1} onClick={() => moveVisionModel(i, 1)} title="Move down">↓</button>
+                    <button className="vision-priority-btn danger" onClick={() => removeVisionModel(i)} title="Remove">✕</button>
+                  </div>
+                ))}
+                <ModelSearchSelect
+                  value=""
+                  options={modelOptions.filter((o) => !visionModels.includes(o.value))}
+                  onChange={addVisionModel}
+                  placeholder="Add a vision model…"
+                />
+              </div>
 
               <div className="settings-row" onClick={toggleAudioRedirect} role="button">
                 <div className="settings-row-text">
@@ -2006,6 +2080,15 @@ const saveEditModel = async () => {
                   </div>
                 ))}
                 <button className="app-add-btn" onClick={addApp}>+ Add application…</button>
+                <div className="app-manual-row">
+                  <input
+                    value={manualAppPath}
+                    placeholder="…or paste a path / protocol URL (e.g. steam://run/730)"
+                    onChange={(e) => setManualAppPath(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") addManualApp() }}
+                  />
+                  <button className="app-manual-btn" onClick={addManualApp} disabled={!manualAppPath.trim()}>Add</button>
+                </div>
               </div>
             </>
           )}

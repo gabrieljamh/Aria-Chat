@@ -4976,6 +4976,61 @@ button {
 .webagent-url-input::placeholder {
   color: var(--text-faint);
 }
+/* Settings → Vision models priority */
+.vision-priority-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: var(--bg-inset);
+}
+.vision-priority-rank {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.vision-priority-name {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vision-priority-btn {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+}
+.vision-priority-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.vision-priority-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.vision-priority-btn.danger {
+  color: var(--danger);
+}
+
 /* Settings → Applications */
 .app-list {
   display: flex;
@@ -5064,6 +5119,41 @@ button {
 .app-add-btn:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+.app-manual-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  width: 100%;
+  max-width: 480px;
+}
+.app-manual-row input {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.app-manual-row input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.app-manual-btn {
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.app-manual-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .webagent-zoom {

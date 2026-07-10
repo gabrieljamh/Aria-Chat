@@ -532,7 +532,7 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
       filters:
         process.platform === "win32"
           ? [
-              { name: "Programs", extensions: ["exe", "bat", "cmd", "com"] },
+              { name: "Programs", extensions: ["exe", "bat", "cmd", "com", "lnk", "url"] },
               { name: "All files", extensions: ["*"] },
             ]
           : [{ name: "All files", extensions: ["*"] }],
