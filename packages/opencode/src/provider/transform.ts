@@ -8,6 +8,9 @@ import crypto from "node:crypto"
 import type * as Provider from "./provider"
 import type * as ModelsDev from "./models"
 import { iife } from "@/util/iife"
+import { Log } from "@/util"
+
+const tlog = Log.create({ service: "provider-transform" })
 import { Flag } from "@/flag/flag"
 import { Global } from "@/global"
 
@@ -578,6 +581,17 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
       }
       const supported = modality === "image" ? supportsImageInput(model) : model.capabilities.input[modality]
       if (supported) return part
+
+      // Forensics: silent stripping made "model says it can't see" bugs
+      // undiagnosable — log exactly which model/capability rejected what.
+      tlog.warn("stripping unsupported media part", {
+        model: `${model.providerID}/${model.id}`,
+        modality,
+        mime,
+        filename: filename ?? "",
+        declaredImage: model.capabilities.input.image,
+        confidentVision: supportsImageInput(model),
+      })
 
       const name = filename ? `"${filename}"` : modality
       if (modality === "audio" && hasTranscriptSibling) {

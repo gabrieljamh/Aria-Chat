@@ -194,6 +194,11 @@ export type StreamInput = {
   retries?: number
   toolChoice?: "auto" | "required" | "none"
   agentID?: string
+  // Treat the model as image-capable for this request's transform even if its
+  // config doesn't declare the modality. Used by the vision describer, whose
+  // target the user explicitly chose — stripping its input image would defeat
+  // the entire call.
+  assumeImageSupport?: boolean
 }
 
 export type StreamRequest = StreamInput & {
@@ -632,8 +637,23 @@ const live: Layer.Layer<
               specificationVersion: "v3" as const,
               async transformParams(args) {
                 if (args.type === "stream") {
+                  // assumeImageSupport: the vision describer is called with a
+                  // model the USER explicitly listed as vision-capable. If its
+                  // config entry lacks declared modalities, unsupportedParts
+                  // would strip the very image it was asked to describe and
+                  // the describer would reply "I can't see images". Patch the
+                  // capability for THIS request only.
+                  const effModel = input.assumeImageSupport
+                    ? {
+                        ...input.model,
+                        capabilities: {
+                          ...input.model.capabilities,
+                          input: { ...input.model.capabilities.input, image: true },
+                        },
+                      }
+                    : input.model
                   // @ts-expect-error
-                  args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, options)
+                  args.params.prompt = ProviderTransform.message(args.params.prompt, effModel, options)
                 }
                 return args.params
               },

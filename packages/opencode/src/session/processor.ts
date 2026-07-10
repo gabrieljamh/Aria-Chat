@@ -538,8 +538,47 @@ export const layer: Layer.Layer<
               const reported = t.input + t.output + t.reasoning + t.cache.read + t.cache.write
               if (reported === 0 && ctx.lastStreamInput) {
                 const si = ctx.lastStreamInput
-                const inputEstimate =
-                  Token.estimate(si.system.join("\n")) + Token.estimate(JSON.stringify(si.messages))
+                // Estimate from message TEXT, not the raw JSON: stringifying
+                // the messages counted base64 image payloads at chars/4 — one
+                // ~1MB screenshot "weighed" ~350K tokens and instantly forced
+                // auto-compaction. Vision models actually tokenize images at
+                // a roughly fixed budget, so count media at a flat rate.
+                const IMAGE_TOKENS = 1100
+                let textChars = si.system.join("\n").length
+                let mediaCount = 0
+                for (const m of si.messages) {
+                  const content = (m as { content?: unknown }).content
+                  if (typeof content === "string") {
+                    textChars += content.length
+                    continue
+                  }
+                  if (!Array.isArray(content)) continue
+                  for (const part of content) {
+                    if (typeof part === "string") {
+                      textChars += part.length
+                      continue
+                    }
+                    const p = part as { type?: string; text?: string; image?: unknown; data?: unknown; output?: unknown }
+                    if (typeof p.text === "string") textChars += p.text.length
+                    else if (p.type === "image" || p.type === "file") mediaCount++
+                    else if (p.output !== undefined) {
+                      // tool-result content: count its JSON minus any media blobs
+                      try {
+                        textChars += JSON.stringify(p.output).replace(/[A-Za-z0-9+/=]{2048,}/g, "").length
+                        if (/[A-Za-z0-9+/=]{2048,}/.test(JSON.stringify(p.output))) mediaCount++
+                      } catch {
+                        /* skip */
+                      }
+                    } else {
+                      try {
+                        textChars += JSON.stringify(p).length
+                      } catch {
+                        /* skip */
+                      }
+                    }
+                  }
+                }
+                const inputEstimate = Math.round(textChars / 4) + mediaCount * IMAGE_TOKENS
                 let outChars = ctx.currentText?.text?.length ?? 0
                 for (const r of Object.values(ctx.reasoningMap)) outChars += r.text?.length ?? 0
                 const outputEstimate = Math.max(1, Math.round(outChars / 4))

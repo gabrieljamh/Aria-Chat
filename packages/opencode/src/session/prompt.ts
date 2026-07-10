@@ -802,6 +802,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             model: describer,
             sessionID: input.sessionID,
             retries: 1,
+            // The describer may be a trusted-priority pick whose config lacks
+            // declared modalities — never strip its own input image.
+            assumeImageSupport: true,
             messages: [
               {
                 role: "user",
