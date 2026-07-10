@@ -694,11 +694,44 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           typeof (p as MessageV2.FilePart).url === "string" &&
           (p as MessageV2.FilePart).url.startsWith("data:"),
       )
-      if (images.length === 0) return input.messages
+
+      // Tool-result screenshots (browser.screenshot & friends) live as image
+      // attachments on ASSISTANT tool parts — a completely different path from
+      // user-attached images, and previously invisible to the describer: the
+      // conversion layer extracted them into a synthetic user message which
+      // unsupportedParts then stripped with a "cannot read" error, so webagent
+      // models reported blindness. Scope the scan to the current turn plus the
+      // previous one (the "what did you just see?" case); the hash cache makes
+      // re-described screenshots free.
+      const lastUserIdx = input.messages.lastIndexOf(userMsg)
+      let prevUserIdx = -1
+      for (let i = lastUserIdx - 1; i >= 0; i--) {
+        if (input.messages[i].info.role === "user") {
+          prevUserIdx = i
+          break
+        }
+      }
+      type ToolImage = { msgIdx: number; partID: string; att: { mime: string; url: string; filename?: string } }
+      const toolImages: ToolImage[] = []
+      for (let i = Math.max(0, prevUserIdx); i < input.messages.length; i++) {
+        const m = input.messages[i]
+        if (m.info.role !== "assistant") continue
+        for (const p of m.parts) {
+          if (p.type !== "tool" || p.state?.status !== "completed") continue
+          for (const att of p.state.attachments ?? []) {
+            if (typeof att.mime === "string" && att.mime.startsWith("image/") && att.url?.startsWith("data:")) {
+              toolImages.push({ msgIdx: i, partID: p.id, att })
+            }
+          }
+        }
+      }
+
+      if (images.length === 0 && toolImages.length === 0) return input.messages
 
       yield* elog.info("vision-describe: active model can't read images; describing", {
         model: `${input.model.providerID}/${input.model.id}`,
         images: images.length,
+        toolImages: toolImages.length,
       })
 
       const describer = yield* pickDescriber({
@@ -723,58 +756,62 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         ? { ...titleAgent, prompt: DESCRIBE_IMAGE_SYSTEM }
         : input.agent
 
-      for (const part of images) {
-        const b64 = part.url.slice(part.url.indexOf(",") + 1)
-        if (!b64) continue
+      // Shared describe-with-cache for any data-URL image (user attachments
+      // and tool-result screenshots alike).
+      const describeDataUrl = Effect.fnUntraced(function* (dataUrl: string) {
+        const b64 = dataUrl.slice(dataUrl.indexOf(",") + 1)
+        if (!b64) return ""
         const hash = crypto.createHash("sha256").update(b64).digest("hex")
         const cacheFile = path.join(Global.Path.data, "vision-cache", `${hash}.txt`)
-        let desc = ""
         try {
-          desc = fs.readFileSync(cacheFile, "utf8")
+          return fs.readFileSync(cacheFile, "utf8")
         } catch {
           /* cache miss */
         }
-        if (!desc) {
-          desc = yield* llm
-            .stream({
-              agent: describerAgent,
-              user: userMsg.info as MessageV2.User,
-              system: [],
-              small: true,
-              tools: {},
-              model: describer,
-              sessionID: input.sessionID,
-              retries: 1,
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    { type: "text", text: "Describe this image in full detail." },
-                    { type: "image", image: part.url },
-                  ],
-                },
-              ],
-            })
-            .pipe(
-              Stream.filter((e): e is Extract<LLM.Event, { type: "text-delta" }> => e.type === "text-delta"),
-              Stream.map((e) => e.text),
-              Stream.mkString,
-              Effect.catchCause(() => Effect.succeed("")),
-            )
-          desc = desc.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim()
-          yield* elog.info("vision-describe: describe result", {
-            describer: `${describer.providerID}/${describer.id}`,
-            chars: desc.length,
+        let desc = yield* llm
+          .stream({
+            agent: describerAgent,
+            user: userMsg.info as MessageV2.User,
+            system: [],
+            small: true,
+            tools: {},
+            model: describer,
+            sessionID: input.sessionID,
+            retries: 1,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Describe this image in full detail." },
+                  { type: "image", image: dataUrl },
+                ],
+              },
+            ],
           })
-          if (desc) {
-            try {
-              fs.mkdirSync(path.dirname(cacheFile), { recursive: true })
-              fs.writeFileSync(cacheFile, desc)
-            } catch {
-              /* best-effort cache write */
-            }
+          .pipe(
+            Stream.filter((e): e is Extract<LLM.Event, { type: "text-delta" }> => e.type === "text-delta"),
+            Stream.map((e) => e.text),
+            Stream.mkString,
+            Effect.catchCause(() => Effect.succeed("")),
+          )
+        desc = desc.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim()
+        yield* elog.info("vision-describe: describe result", {
+          describer: `${describer.providerID}/${describer.id}`,
+          chars: desc.length,
+        })
+        if (desc) {
+          try {
+            fs.mkdirSync(path.dirname(cacheFile), { recursive: true })
+            fs.writeFileSync(cacheFile, desc)
+          } catch {
+            /* best-effort cache write */
           }
         }
+        return desc
+      })
+
+      for (const part of images) {
+        const desc = yield* describeDataUrl(part.url)
         if (desc) {
           replacements.set(part.id, {
             id: PartID.ascending(),
@@ -786,18 +823,55 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           } satisfies MessageV2.TextPart)
         }
       }
+
+      // Tool-result screenshots: append the description to the tool part's
+      // output and drop the image attachment from this request's working copy
+      // (the stored part keeps the real image for the UI and vision models).
+      const toolPatches = new Map<string, { drop: Set<string>; blocks: string[] }>() // partID → patch
+      for (const t of toolImages) {
+        const desc = yield* describeDataUrl(t.att.url)
+        if (!desc) continue
+        const patch = toolPatches.get(t.partID) ?? { drop: new Set<string>(), blocks: [] }
+        patch.drop.add(t.att.url)
+        patch.blocks.push(
+          `[Screenshot description (via ${describer.providerID}/${describer.id} — the active model can't view images; act on this description):\n${desc}\n]`,
+        )
+        toolPatches.set(t.partID, patch)
+      }
+
       // Swap each described image part out for its description — NON-destructively:
-      // copy the user message so the stored/original parts (and the real image)
-      // are never mutated. Only this request's working copy carries the swap.
-      if (replacements.size === 0) return input.messages
-      const rebuiltParts = userMsg.parts.flatMap((p) => {
-        const r = replacements.get(p.id)
-        return r ? [r as MessageV2.Part] : [p]
+      // copy the affected messages so the stored/original parts (and the real
+      // images) are never mutated. Only this request's working copy changes.
+      if (replacements.size === 0 && toolPatches.size === 0) return input.messages
+      const out = input.messages.map((m) => {
+        if (m.info.role === "user" && m === userMsg && replacements.size > 0) {
+          return {
+            ...m,
+            parts: m.parts.flatMap((p) => {
+              const r = replacements.get(p.id)
+              return r ? [r as MessageV2.Part] : [p]
+            }),
+          }
+        }
+        if (m.info.role === "assistant" && m.parts.some((p) => p.type === "tool" && toolPatches.has(p.id))) {
+          return {
+            ...m,
+            parts: m.parts.map((p) => {
+              if (p.type !== "tool" || !toolPatches.has(p.id) || p.state?.status !== "completed") return p
+              const patch = toolPatches.get(p.id)!
+              return {
+                ...p,
+                state: {
+                  ...p.state,
+                  output: [p.state.output, ...patch.blocks].filter(Boolean).join("\n\n"),
+                  attachments: (p.state.attachments ?? []).filter((a) => !patch.drop.has(a.url)),
+                },
+              } as MessageV2.Part
+            }),
+          }
+        }
+        return m
       })
-      const idx = input.messages.indexOf(userMsg)
-      if (idx === -1) return input.messages
-      const out = [...input.messages]
-      out[idx] = { ...userMsg, parts: rebuiltParts }
       return out
     })
 

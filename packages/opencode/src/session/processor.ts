@@ -309,9 +309,15 @@ export const layer: Layer.Layer<
         )
         if (hasImage) {
           const canSee = ProviderTransform.supportsImageInput(ctx.model)
-          if (canSee && !ProviderTransform.supportsMediaInToolResults(ctx.model)) {
-            ctx.needsVisionSwap = true
-          } else if (!canSee && ctx.visionSwapAvailable) {
+          // Break whenever the image can't reach the model on THIS stream:
+          //  - vision model but provider can't carry media in tool results →
+          //    re-delivered next iteration as a user message (history path).
+          //  - non-vision model → next iteration either swaps to the vision
+          //    override (runLoop auto-swap) or the describe-and-inject
+          //    fallback replaces the screenshot with a text description
+          //    (ensureImageDescriptions). Both need the re-iteration, so break
+          //    even when no explicit vision override is configured.
+          if (!canSee || !ProviderTransform.supportsMediaInToolResults(ctx.model)) {
             ctx.needsVisionSwap = true
           }
         }
