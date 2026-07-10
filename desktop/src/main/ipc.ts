@@ -1037,7 +1037,7 @@ const ATTACH_MIME: Record<string, string> = {
   ".csv": "text/csv", ".html": "text/html", ".htm": "text/html", ".xml": "text/xml",
   ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".mkv": "video/x-matroska",
   ".avi": "video/x-msvideo", ".m4v": "video/mp4", ".mp3": "audio/mpeg", ".wav": "audio/wav",
-  ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".flac": "audio/flac", ".aac": "audio/aac",
+  ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac", ".aac": "audio/aac",
   ".md": "text/plain", ".markdown": "text/plain", ".txt": "text/plain", ".log": "text/plain",
   ".yml": "text/plain", ".yaml": "text/plain", ".toml": "text/plain", ".ini": "text/plain",
   ".ts": "text/plain", ".tsx": "text/plain", ".js": "text/plain", ".jsx": "text/plain",

@@ -54,6 +54,9 @@ export function Composer(props: Props) {
   const dragCounterRef = useRef(0)
   const [recording, setRecording] = useState(false)
   const [recSeconds, setRecSeconds] = useState(0)
+  // Duration mirror readable from the MediaRecorder onstop closure (state
+  // there would be stale) — gates the WAV re-encode for very long takes.
+  const recSecondsRef = useRef(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recChunksRef = useRef<Blob[]>([])
   const recStreamRef = useRef<MediaStream | null>(null)
@@ -216,28 +219,92 @@ export function Composer(props: Props) {
     mediaRecorderRef.current?.stop()
   }
 
+  // Re-encode a recording to 16kHz mono 16-bit PCM WAV — the most universally
+  // accepted format for speech/ASR-capable models (webm/opus support is
+  // spotty). 16kHz mono is the standard ASR rate, keeping size reasonable
+  // (~1.9MB/min).
+  const blobToWav = async (blob: Blob): Promise<Blob> => {
+    const raw = await blob.arrayBuffer()
+    const probe = new AudioContext()
+    const decoded = await probe.decodeAudioData(raw).finally(() => probe.close())
+    const rate = 16000
+    const offline = new OfflineAudioContext(1, Math.max(1, Math.ceil(decoded.duration * rate)), rate)
+    const src = offline.createBufferSource()
+    src.buffer = decoded // multi-channel input downmixes into the mono destination
+    src.connect(offline.destination)
+    src.start()
+    const rendered = await offline.startRendering()
+    const samples = rendered.getChannelData(0)
+    const buf = new ArrayBuffer(44 + samples.length * 2)
+    const view = new DataView(buf)
+    const writeStr = (o: number, s: string) => {
+      for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i))
+    }
+    writeStr(0, "RIFF")
+    view.setUint32(4, 36 + samples.length * 2, true)
+    writeStr(8, "WAVE")
+    writeStr(12, "fmt ")
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true) // PCM
+    view.setUint16(22, 1, true) // mono
+    view.setUint32(24, rate, true)
+    view.setUint32(28, rate * 2, true) // byte rate
+    view.setUint16(32, 2, true) // block align
+    view.setUint16(34, 16, true) // bits per sample
+    writeStr(36, "data")
+    view.setUint32(40, samples.length * 2, true)
+    let o = 44
+    for (let i = 0; i < samples.length; i++, o += 2) {
+      const s = Math.max(-1, Math.min(1, samples[i]))
+      view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+    }
+    return new Blob([buf], { type: "audio/wav" })
+  }
+
   const startRecording = async () => {
     setAttachError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       recStreamRef.current = stream
       recChunksRef.current = []
-      const preferred = ["audio/webm", "audio/ogg", "audio/mp4"].find((m) => MediaRecorder.isTypeSupported(m))
+      // codecs=opus variants probe more reliably on Chromium than bare types.
+      const preferred = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"].find(
+        (m) => MediaRecorder.isTypeSupported(m),
+      )
       const mr = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined)
       mediaRecorderRef.current = mr
       mr.ondataavailable = (e) => {
         if (e.data.size) recChunksRef.current.push(e.data)
       }
       mr.onstop = async () => {
-        const type = (mr.mimeType || "audio/webm").split(";")[0]
+        // Chromium quirk: an audio-only MediaRecorder can still report a
+        // "video/webm" container. Never let a video/* mime escape — it broke
+        // the audio-model redirect (audio/* check), server modality routing,
+        // and confused audio-capable models into treating speech as video.
+        const container = (mr.mimeType || "audio/webm").split(";")[0]
+        const type = container.startsWith("video/") ? container.replace(/^video\//, "audio/") : container
         const blob = new Blob(recChunksRef.current, { type })
         recStreamRef.current?.getTracks().forEach((t) => t.stop())
         recStreamRef.current = null
         if (!blob.size) return
         try {
-          const url = await blobToDataUrl(blob)
-          const ext = type.includes("ogg") ? "ogg" : type.includes("mp4") ? "m4a" : "webm"
-          setAttachments((a) => [...a, { filename: `recording-${Date.now()}.${ext}`, mime: type, url }])
+          // Prefer WAV for maximum model compatibility; keep the compact
+          // original for very long recordings (WAV ≈ 1.9MB/min) or if
+          // decoding fails.
+          let outBlob = blob
+          let mime = type
+          let ext = type.includes("ogg") ? "ogg" : type.includes("mp4") ? "m4a" : "webm"
+          if (recSecondsRef.current <= 600) {
+            try {
+              outBlob = await blobToWav(blob)
+              mime = "audio/wav"
+              ext = "wav"
+            } catch {
+              /* keep original container */
+            }
+          }
+          const url = await blobToDataUrl(outBlob)
+          setAttachments((a) => [...a, { filename: `recording-${Date.now()}.${ext}`, mime, url }])
         } catch {
           setAttachError("Could not process the recording.")
         }
@@ -245,7 +312,11 @@ export function Composer(props: Props) {
       mr.start()
       setRecording(true)
       setRecSeconds(0)
-      recTimerRef.current = setInterval(() => setRecSeconds((sec) => sec + 1), 1000)
+      recSecondsRef.current = 0
+      recTimerRef.current = setInterval(() => {
+        recSecondsRef.current += 1
+        setRecSeconds((sec) => sec + 1)
+      }, 1000)
     } catch (e: any) {
       setAttachError("Microphone unavailable: " + String(e?.message ?? e))
     }
@@ -265,6 +336,13 @@ export function Composer(props: Props) {
     ".sh": "text/plain", ".css": "text/plain", ".scss": "text/plain", ".sql": "text/plain",
     ".json": "application/json", ".csv": "text/csv", ".html": "text/html", ".htm": "text/html",
     ".xml": "text/xml", ".pdf": "application/pdf",
+    // Audio/video: browsers report empty File.type for several of these
+    // (.m4a/.opus especially); without a fallback they became
+    // application/octet-stream and the server rejected them.
+    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".ogg": "audio/ogg",
+    ".oga": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac", ".aac": "audio/aac",
+    ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska", ".avi": "video/x-msvideo", ".m4v": "video/mp4",
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
     ".webp": "image/webp", ".avif": "image/avif", ".bmp": "image/bmp", ".svg": "image/svg+xml",
     ".zip": "application/zip", ".tar": "application/x-tar",
@@ -272,8 +350,17 @@ export function Composer(props: Props) {
     ".7z": "application/x-7z-compressed", ".rar": "application/x-rar-compressed",
   }
 
+  // Same per-file ceiling as the native picker (ipc.ts pick-attachments).
+  // Drag/paste had NO cap — a dropped multi-GB video would balloon into a
+  // base64 data URL in renderer memory before anything could refuse it.
+  const MAX_ATTACH_BYTES = 25 * 1024 * 1024
+
   const fileToAttachment = (file: File) =>
     new Promise<FileAttachment>((resolve, reject) => {
+      if (file.size > MAX_ATTACH_BYTES) {
+        reject(new Error(`"${file.name}" is larger than 25 MB`))
+        return
+      }
       const r = new FileReader()
       const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
       r.onload = () => resolve({ filename: file.name, mime: file.type || EXT_MIME[ext] || "application/octet-stream", url: r.result as string })

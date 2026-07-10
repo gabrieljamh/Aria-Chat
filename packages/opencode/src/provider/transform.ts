@@ -473,9 +473,46 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
       const filename = part.type === "file" ? part.filename : undefined
       const modality = mimeToModality(mime)
       if (!modality) {
-        // Unrecognized MIME (e.g. application/octet-stream that wasn't inlined as text).
-        // Don't pass opaque binary to the model — it will reject with "unexpected media format".
+        // Unrecognized MIME: archives (zip/tar/7z/rar), office files
+        // (docx/xlsx are zips), arbitrary binaries. The model can't ingest
+        // them as message content, but it CAN inspect them with shell tools —
+        // spill the bytes to tool-output (read-tool/permission exempt) and
+        // hand over the path instead of a dead-end error.
         const name = filename ? `"${filename}"` : mime
+        const bytes = (() => {
+          try {
+            if (part.type !== "file") return undefined
+            const d = part.data
+            if (d instanceof Uint8Array) return d
+            const s = d instanceof URL ? d.toString() : typeof d === "string" ? d : undefined
+            if (s && s.startsWith("data:")) {
+              const comma = s.indexOf(",")
+              if (comma !== -1) return new Uint8Array(Buffer.from(s.slice(comma + 1), "base64"))
+            }
+          } catch {
+            /* fall through to the plain error */
+          }
+          return undefined
+        })()
+        if (bytes && bytes.byteLength > 0) {
+          try {
+            const dir = path.join(Global.Path.data, "tool-output")
+            const safeName = (filename ?? "attachment.bin").replace(/[^\w.\- ]+/g, "_")
+            const file = path.join(dir, `attachment-${crypto.randomUUID().slice(0, 8)}-${safeName}`)
+            fs.mkdirSync(dir, { recursive: true })
+            fs.writeFileSync(file, bytes)
+            return {
+              type: "text" as const,
+              text:
+                `${name} (${mime}, ${bytes.byteLength} bytes) is a binary attachment that cannot be shown inline. ` +
+                `The file has been saved to:\n${file}\n\n` +
+                `Inspect it with shell tools: list zip contents with \`unzip -l\` (PowerShell: \`Expand-Archive\`; note .docx/.xlsx are zip containers), ` +
+                `tarballs with \`tar -tzf\`, or identify unknown formats with \`file\`. Only extract into the project if the user asked for that.`,
+            }
+          } catch {
+            /* disk write failed — fall through to the plain error */
+          }
+        }
         return {
           type: "text" as const,
           text: `ERROR: Cannot read ${name} (unsupported file type: ${mime}). Inform the user and suggest they attach the file as text.`,
