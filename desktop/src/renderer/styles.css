@@ -3918,6 +3918,47 @@ button {
   gap: 6px;
   padding: 9px 12px 0;
 }
+/* Voice transcript block inside user messages (reasoning-style collapsible) */
+.msg.user .transcript-block {
+  margin-top: 6px;
+}
+
+/* Local STT status on audio attachment chips */
+.attach-stt {
+  font-size: 10.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.attach-stt.working {
+  color: var(--text-faint);
+  animation: todo-pulse 1.2s ease-in-out infinite;
+}
+.attach-stt.done {
+  color: var(--good);
+  cursor: help;
+}
+.attach-stt.nospeech {
+  color: #d9b45a;
+  cursor: help;
+}
+.attach-stt.error {
+  color: var(--danger);
+}
+.attach-stt-btn {
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.attach-stt-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .attach-chip {
   display: inline-flex;
   align-items: center;

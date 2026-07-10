@@ -54,6 +54,34 @@ export function Composer(props: Props) {
   const dragCounterRef = useRef(0)
   const [recording, setRecording] = useState(false)
   const [recSeconds, setRecSeconds] = useState(0)
+  // Local STT (Whisper): per-attachment transcript state, keyed by filename.
+  // Mic recordings auto-transcribe when the setting is on; audio FILES get a
+  // manual button (people attach music as music — auto-transcribing it would
+  // mostly exercise Whisper's hallucination modes).
+  const [transcripts, setTranscripts] = useState<
+    Record<string, { status: "working" | "done" | "no-speech" | "error"; text?: string }>
+  >({})
+  const [sttEnabled, setSttEnabled] = useState(false)
+  useEffect(() => {
+    window.mimo.getSetting("sttEnabled").then((v) => setSttEnabled(v === true)).catch(() => {})
+  }, [])
+
+  const runTranscription = async (filename: string, data: Blob | ArrayBuffer) => {
+    setTranscripts((t) => ({ ...t, [filename]: { status: "working" } }))
+    try {
+      const buf = data instanceof Blob ? await data.arrayBuffer() : data
+      const { transcribeAudio } = await import("./stt")
+      const size = await window.mimo.getSetting("sttModel").catch(() => null)
+      const model = size === "tiny" || size === "small" ? size : "base"
+      const out = await transcribeAudio(buf, model)
+      setTranscripts((t) => ({
+        ...t,
+        [filename]: out.status === "ok" ? { status: "done", text: out.text } : { status: "no-speech", text: out.text },
+      }))
+    } catch {
+      setTranscripts((t) => ({ ...t, [filename]: { status: "error" } }))
+    }
+  }
   // Duration mirror readable from the MediaRecorder onstop closure (state
   // there would be stale) — gates the WAV re-encode for very long takes.
   const recSecondsRef = useRef(0)
@@ -200,7 +228,17 @@ export function Composer(props: Props) {
     if (bad.length) setAttachError(bad.map((b) => `${b.filename}: ${b.error}`).join("  Â·  "))
   }
 
-  const removeAttachment = (idx: number) => setAttachments((a) => a.filter((_, i) => i !== idx))
+  const removeAttachment = (idx: number) =>
+    setAttachments((a) => {
+      const removed = a[idx]
+      if (removed) {
+        setTranscripts((t) => {
+          const { [removed.filename]: _, ...rest } = t
+          return rest
+        })
+      }
+      return a.filter((_, i) => i !== idx)
+    })
 
   const blobToDataUrl = (blob: Blob) =>
     new Promise<string>((resolve, reject) => {
@@ -304,7 +342,12 @@ export function Composer(props: Props) {
             }
           }
           const url = await blobToDataUrl(outBlob)
-          setAttachments((a) => [...a, { filename: `recording-${Date.now()}.${ext}`, mime, url }])
+          const filename = `recording-${Date.now()}.${ext}`
+          setAttachments((a) => [...a, { filename, mime, url }])
+          // Mic capture = speech intent — auto-transcribe when enabled. The
+          // transcript shows on the chip before send, so garbage is catchable.
+          const stt = await window.mimo.getSetting("sttEnabled").catch(() => null)
+          if (stt === true) void runTranscription(filename, outBlob)
         } catch {
           setAttachError("Could not process the recording.")
         }
@@ -404,9 +447,24 @@ export function Composer(props: Props) {
   const send = () => {
     const t = text.trim()
     if ((!t && attachments.length === 0) || props.busy) return
-    props.onSend(t, attachments.length ? attachments : undefined)
+    // Inject local STT results as text so every model (audio-capable or not)
+    // gets the speech content; the audio attachment still rides along for
+    // models that can genuinely listen.
+    const transcriptBlocks = attachments
+      .map((a) => {
+        const tr = transcripts[a.filename]
+        if (!tr) return null
+        if (tr.status === "done" && tr.text) return `[Transcript of ${a.filename}]: ${tr.text}`
+        if (tr.status === "no-speech")
+          return `[No clear speech detected in ${a.filename} — may be music or ambient audio]`
+        return null
+      })
+      .filter((b): b is string => b !== null)
+    const finalText = [t, ...transcriptBlocks].filter(Boolean).join("\n\n")
+    props.onSend(finalText, attachments.length ? attachments : undefined)
     setText("")
     setAttachments([])
+    setTranscripts({})
     setAttachError(null)
   }
 
@@ -536,6 +594,8 @@ export function Composer(props: Props) {
         <div className="composer-attachments">
           {attachments.map((a, i) => {
             const isImage = a.mime.startsWith("image/")
+            const isAudio = a.mime.startsWith("audio/")
+            const tr = transcripts[a.filename]
             return (
               <span className={"attach-chip" + (isImage ? " attach-chip-img" : "")} key={a.filename + i} title={a.filename}>
                 {isImage ? (
@@ -549,6 +609,30 @@ export function Composer(props: Props) {
                   <IconFile size={13} />
                 )}
                 <span className="attach-name">{a.filename}</span>
+                {isAudio && tr?.status === "working" && <span className="attach-stt working">transcribing…</span>}
+                {isAudio && tr?.status === "done" && (
+                  <span className="attach-stt done" title={tr.text}>✓ transcript</span>
+                )}
+                {isAudio && tr?.status === "no-speech" && (
+                  <span className="attach-stt nospeech" title={tr.text || "No clear speech detected"}>♪ no speech</span>
+                )}
+                {isAudio && tr?.status === "error" && <span className="attach-stt error">transcription failed</span>}
+                {isAudio && !tr && sttEnabled && (
+                  <button
+                    className="attach-stt-btn"
+                    title="Transcribe locally (Whisper)"
+                    onClick={async () => {
+                      try {
+                        const buf = await (await fetch(a.url)).arrayBuffer()
+                        void runTranscription(a.filename, buf)
+                      } catch {
+                        setTranscripts((t) => ({ ...t, [a.filename]: { status: "error" } }))
+                      }
+                    }}
+                  >
+                    Transcribe
+                  </button>
+                )}
                 <button className="attach-remove" title="Remove" onClick={() => removeAttachment(i)}>
                   Ã—
                 </button>

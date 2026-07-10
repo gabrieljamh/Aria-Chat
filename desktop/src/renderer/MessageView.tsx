@@ -73,6 +73,40 @@ function CollapsibleReasoning({ text }: { text: string }) {
   )
 }
 
+// Voice-note transcripts are injected into the message text as
+// "[Transcript of <file>]: …" blocks (Composer send). Pull them out of the
+// visible body and render them as collapsed blocks (same look as Thinking) —
+// the transcript is context for the model, not something the user needs to
+// re-read inline every time.
+const TRANSCRIPT_RE =
+  /(?:^|\n\n)\[Transcript of ([^\]]+)\]: ([\s\S]*?)(?=\n\n\[(?:Transcript of|No clear speech detected)|$)/g
+
+function extractTranscripts(body: string): { main: string; items: { name: string; text: string }[] } {
+  const items: { name: string; text: string }[] = []
+  const main = body
+    .replace(TRANSCRIPT_RE, (_m, name: string, text: string) => {
+      items.push({ name, text: text.trim() })
+      return ""
+    })
+    .trim()
+  return { main, items }
+}
+
+function CollapsibleTranscript({ name, text }: { name: string; text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="reasoning transcript-block">
+      <div className="reasoning-header" onClick={() => setOpen(!open)}>
+        {open ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
+        <span>Transcript · {name}</span>
+      </div>
+      <div className="reasoning-content" style={{ maxHeight: open ? "none" : 0, opacity: open ? 1 : 0 }}>
+        <Markdown>{text}</Markdown>
+      </div>
+    </div>
+  )
+}
+
 function SubagentMessageRow({ msg }: { msg: MessageWithParts }) {
   const [toolOpen, setToolOpen] = useState(false)
   const role = msg.info.role
@@ -531,16 +565,29 @@ export const MessageView = React.memo(function MessageView({ message, showDots, 
               })}
             </div>
           )}
-          {body &&
-            // Unbalanced ``` fences (truncated JSON dumps, nested codeblocks)
-            // derail markdown: the stray fence closes early and the rest of the
-            // message renders as mangled plaintext/markdown soup. Render such
-            // bodies as plain preformatted text instead.
-            ((body.match(/```/g)?.length ?? 0) % 2 === 1 ? (
-              <div className="bubble" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{body}</div>
-            ) : (
-              <div className="bubble"><Markdown>{body}</Markdown></div>
-            ))}
+          {(() => {
+            // Voice transcripts render as collapsed blocks below the bubble
+            // instead of inline text (they're model context, not prose the
+            // user needs to re-read).
+            const { main, items } = extractTranscripts(body)
+            return (
+              <>
+                {main &&
+                  // Unbalanced ``` fences (truncated JSON dumps, nested codeblocks)
+                  // derail markdown: the stray fence closes early and the rest of
+                  // the message renders as mangled plaintext/markdown soup. Render
+                  // such bodies as plain preformatted text instead.
+                  ((main.match(/```/g)?.length ?? 0) % 2 === 1 ? (
+                    <div className="bubble" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{main}</div>
+                  ) : (
+                    <div className="bubble"><Markdown>{main}</Markdown></div>
+                  ))}
+                {items.map((t, i) => (
+                  <CollapsibleTranscript key={t.name + i} name={t.name} text={t.text} />
+                ))}
+              </>
+            )
+          })()}
         </div>
 <MsgFooter msg={message} actions={actions} editMode={editMode} busy={busy} onStartEdit={() => setEditMode(true)} onSaveEdit={saveEdit} onCancelEdit={() => setEditMode(false)} />
         {ctxMenu && <MsgContextMenu state={ctxMenu} onClose={() => setCtxMenu(null)} />}

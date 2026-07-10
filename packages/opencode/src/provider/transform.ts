@@ -452,6 +452,20 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
   return msgs.map((msg) => {
     if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
 
+    // The desktop's local STT injects "[Transcript of …]" / "[No clear speech
+    // detected …]" text alongside the audio attachment. When such a sibling
+    // exists, an unsupported audio part must NOT turn into the directive
+    // "ERROR … Inform the user." — models follow that instruction and tell
+    // the user they can't listen, ignoring the perfectly good transcript in
+    // the same message.
+    const hasTranscriptSibling = msg.content.some(
+      (p) =>
+        typeof p === "object" &&
+        p !== null &&
+        (p as { type?: string }).type === "text" &&
+        /\[(?:Transcript of|No clear speech detected)/.test((p as { text?: string }).text ?? ""),
+    )
+
     const filtered = msg.content.map((part) => {
       if (part.type !== "file" && part.type !== "image") return part
 
@@ -566,6 +580,14 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
       if (supported) return part
 
       const name = filename ? `"${filename}"` : modality
+      if (modality === "audio" && hasTranscriptSibling) {
+        // Transcript travels in this same message — the audio content is NOT
+        // lost, so don't tell the model to complain to the user.
+        return {
+          type: "text" as const,
+          text: `(Voice recording ${name} attached — this model cannot listen to audio directly, but its transcript is included in this message. Answer based on the transcript; do not tell the user you can't hear audio.)`,
+        }
+      }
       return {
         type: "text" as const,
         text: `ERROR: Cannot read ${name} (this model does not support ${modality} input). Inform the user.`,

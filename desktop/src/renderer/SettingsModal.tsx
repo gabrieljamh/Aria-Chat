@@ -543,6 +543,27 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     window.mimo.setSubagentModel(agentName, value || null).catch(() => {})
   }
 
+  // ---- local speech-to-text ----
+  const [sttEnabled, setSttEnabled] = useState(false)
+  const [sttModel, setSttModel] = useState<"tiny" | "base" | "small">("base")
+  useEffect(() => {
+    window.mimo.getSetting("sttEnabled").then((v) => setSttEnabled(v === true)).catch(() => {})
+    window.mimo.getSetting("sttModel").then((v) => {
+      if (v === "tiny" || v === "base" || v === "small") setSttModel(v)
+    }).catch(() => {})
+  }, [])
+  const toggleStt = () => {
+    setSttEnabled((v) => {
+      const next = !v
+      window.mimo.setSetting("sttEnabled", next).catch(() => {})
+      return next
+    })
+  }
+  const changeSttModel = (v: "tiny" | "base" | "small") => {
+    setSttModel(v)
+    window.mimo.setSetting("sttModel", v).catch(() => {})
+  }
+
   // ---- compact redirect ----
   const [compactRedirect, setCompactRedirect] = useState(false)
   const [compactModel, setCompactModel] = useState("")
@@ -1625,6 +1646,40 @@ const saveEditModel = async () => {
                   placeholder="Add a vision model…"
                 />
               </div>
+
+              <div className="settings-row" onClick={toggleStt} role="button">
+                <div className="settings-row-text">
+                  <div className="settings-row-title">Transcribe voice recordings locally</div>
+                  <div className="settings-row-desc">
+                    Run Whisper on-device (WebGPU/WASM) to turn mic recordings into text, so every model —
+                    audio-capable or not — gets the speech content. Audio file attachments get a manual
+                    Transcribe button. Downloads a ~80MB model on first use; nothing leaves your machine.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={"toggle" + (sttEnabled ? " on" : "")}
+                  aria-pressed={sttEnabled}
+                  onClick={(e) => { e.stopPropagation(); toggleStt() }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+
+              {sttEnabled && (
+                <div className="settings-field">
+                  <label>Whisper model size</label>
+                  <div className="accent-text-toggle-group" style={{ width: "fit-content" }}>
+                    <button className={"accent-text-opt" + (sttModel === "tiny" ? " active" : "")} onClick={() => changeSttModel("tiny")} title="~40MB — fastest, lowest accuracy">Tiny</button>
+                    <button className={"accent-text-opt" + (sttModel === "base" ? " active" : "")} onClick={() => changeSttModel("base")} title="~80MB — balanced (default)">Base</button>
+                    <button className={"accent-text-opt" + (sttModel === "small" ? " active" : "")} onClick={() => changeSttModel("small")} title="~250MB — most accurate; best for noisy mics and non-English speech">Small</button>
+                  </div>
+                  <div className="hint">
+                    Larger models handle mic noise and accents noticeably better. Each size downloads once on first
+                    use and is cached; switching takes effect on the next transcription.
+                  </div>
+                </div>
+              )}
 
               <div className="settings-row" onClick={toggleAudioRedirect} role="button">
                 <div className="settings-row-text">
