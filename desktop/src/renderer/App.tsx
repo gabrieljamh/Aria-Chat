@@ -268,11 +268,18 @@ export function App() {
   const busyRef = useRef(state.busy)
   busyRef.current = state.busy
   const chatTitle = activeRef?.title ?? "Chat"
+  // Session the last observed busy state belonged to. A busy→idle transition
+  // caused by SWITCHING away from a busy session (its state resets to the new
+  // session's idle) is not "Aria finished" — firing the idle notification
+  // there was a false alarm while the old session kept working in background.
+  const prevBusySession = useRef<string | null>(activeSession)
   useEffect(() => {
     const wasBusy = prevBusy.current
+    const wasSession = prevBusySession.current
     prevBusy.current = state.busy
+    prevBusySession.current = activeSession
     if (idleTimer.current) { clearTimeout(idleTimer.current); idleTimer.current = null }
-    if (wasBusy && !state.busy) {
+    if (wasBusy && !state.busy && wasSession === activeSession) {
       const busyAtSchedule = busyRef.current
       window.mimo.getSetting("notifIdle").then((enabled) => {
         if (enabled === false) return
@@ -289,7 +296,7 @@ export function App() {
         })
       })
     }
-  }, [state.busy, chatTitle])
+  }, [state.busy, chatTitle, activeSession])
   useEffect(() => {
     const len = state.permissions.length
     if (len > prevPermCount.current && len > 0) {

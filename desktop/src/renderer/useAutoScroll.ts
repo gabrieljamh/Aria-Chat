@@ -34,11 +34,19 @@ export function useAutoScroll(deps: unknown[], opts?: { resetKey?: string | null
   // ended the phase before the new chat's messages ever arrived — the view
   // then fell through to the at-bottom rule and stayed at the top.
   const sawLoadingRef = useRef(false)
+  // Whether a loading cycle should be REQUIRED before ending the force phase.
+  // True only on a session switch (resetKey change) — useConversation reloads
+  // and loading goes true→false. On a plain component mount (tab switch, the
+  // conversation hook lives in App and does NOT reload) no cycle ever comes;
+  // requiring one left the force phase stuck on, and every stream delta
+  // pinned to the bottom regardless of the auto-scroll toggle.
+  const expectLoadCycleRef = useRef(false)
   const lastKeyRef = useRef<string | null | undefined>(opts?.resetKey)
   if (lastKeyRef.current !== opts?.resetKey) {
     lastKeyRef.current = opts?.resetKey
     pendingInitialRef.current = true
     sawLoadingRef.current = false
+    expectLoadCycleRef.current = true
   }
 
   // Load the persisted preference once.
@@ -98,11 +106,18 @@ export function useAutoScroll(deps: unknown[], opts?: { resetKey?: string | null
     if (pendingInitialRef.current) {
       if (opts?.loading) sawLoadingRef.current = true
       pinToBottom()
-      // End the force phase only after a full load cycle (true -> false) has
-      // been observed for THIS session; content arriving afterwards flows
-      // through the normal stick-to-bottom rules.
-      if (opts?.loading === undefined || (opts.loading === false && sawLoadingRef.current)) {
+      // End the force phase:
+      //  - after a session switch: only once the full load cycle (true→false)
+      //    has been observed for THIS session (the first render still carries
+      //    the previous session's loading=false).
+      //  - after a plain mount: as soon as loading isn't active — no reload is
+      //    coming, one pin is the whole "open at the bottom" behavior.
+      const settled = expectLoadCycleRef.current
+        ? opts?.loading === false && sawLoadingRef.current
+        : opts?.loading !== true
+      if (opts?.loading === undefined || settled) {
         pendingInitialRef.current = false
+        expectLoadCycleRef.current = false
       }
       return
     }
