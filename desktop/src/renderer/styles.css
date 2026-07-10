@@ -5377,7 +5377,8 @@ button {
   padding: 56px 32px;
 }
 .greeting-webagent-full h1 {
-  font-size: 44px;
+  font-size: 36px;
+  margin-bottom: -6px;
 }
 .webagent-hero-sub {
   color: var(--text-dim);

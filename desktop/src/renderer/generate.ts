@@ -76,8 +76,8 @@ Do not offer a menu of capabilities.`
     ? `Write a brief, warm greeting for a web browsing agent session with ${assistantName}. 
 Address the user as "${name}". 
 Tone: curious and ready to explore the web - like a friend who loves research. 
-Keep it to 1-2 short sentences. 
-No markdown, no formatting, no lists. 
+Keep it to one short sentence (under 80 characters).
+No markdown, no formatting, no lists.
 Do not offer a menu of capabilities.`
     : `Write a brief, warm greeting for a scheduler/automation session with ${assistantName}. 
 Address the user as "${name}". 
@@ -92,7 +92,8 @@ Do not offer a menu of capabilities.`
     .map((s) => s.trim())
     .filter(Boolean)[0]
   const clean = (line ?? "").replace(/^["'`*]+|["'`*]+$/g, "").trim()
-  if (!clean || clean.length > 120) throw new Error("greeting rejected")
+  const maxLen = kind === "webagent" ? 90 : 120
+  if (!clean || clean.length > maxLen) throw new Error("greeting rejected")
   return clean
 }
 

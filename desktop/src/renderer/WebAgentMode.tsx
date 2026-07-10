@@ -127,8 +127,15 @@ export function WebAgentMode(props: Props) {
     }
   }, [])
 
+  // showHero in the deps is essential: the .webagent-frame element only exists
+  // when the hero is NOT shown, so this must RE-RUN when the hero dismisses to
+  // attach the observer to the freshly-mounted frame and send its bounds.
+  // Without it the effect ran once at mount (frame null → early return) and the
+  // BrowserView was never positioned — the page rendered at 0×0 (invisible).
   useEffect(() => {
-    if (!viewportRef.current) return
+    if (showHero || !viewportRef.current) return
+    // Frame just mounted — position the view now, then keep it glued.
+    sendBounds()
     const ro = new ResizeObserver(sendBounds)
     ro.observe(viewportRef.current)
     window.addEventListener("resize", sendBounds)
@@ -136,13 +143,14 @@ export function WebAgentMode(props: Props) {
       ro.disconnect()
       window.removeEventListener("resize", sendBounds)
     }
-  }, [sendBounds])
+  }, [sendBounds, showHero])
 
   useEffect(() => {
     // Layout shifted (columns collapsed/expanded): reposition after paint.
+    if (showHero) return
     const t = setTimeout(sendBounds, 50)
     return () => clearTimeout(t)
-  }, [collapsed, rightCollapsed, sendBounds])
+  }, [collapsed, rightCollapsed, sendBounds, showHero])
 
   // Track whether the hero OR any modal/overlay is suppressing the native
   // BrowserView. The MutationObserver and the hero effect both feed this ref.
@@ -356,14 +364,10 @@ export function WebAgentMode(props: Props) {
                 </>
               ) : (
                 <>
-                  <span className="accent">✻</span> Hand the browser to an agent.<br />
-                  What should it look into?
+                  <span className="accent">✻</span> Where should the agent browse?
                 </>
               )}
             </h1>
-            <p className="webagent-hero-sub">
-              Create a new session, paste a URL or describe a task, and the agent will navigate, click, and read on your behalf.
-            </p>
             {activeSession && (
               <p className="webagent-hero-hint">Send the agent its first instruction to wake the browser.</p>
             )}
