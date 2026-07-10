@@ -7,6 +7,7 @@ import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { HistoryTool } from "./history"
 import { MemoryTool } from "./memory"
+import { WorkdirsTool } from "./workdirs"
 import { ReadTool } from "./read"
 import { ActorTool } from "./actor"
 import { TaskTool } from "./task"
@@ -158,6 +159,7 @@ export const layer = Layer.effect(
     const skilltool = yield* SkillTool
     const historytool = yield* HistoryTool
     const memorytool = yield* MemoryTool
+    const workdirstool = yield* WorkdirsTool
     const tasktool = yield* TaskTool
     const workflowtool = yield* WorkflowTool
 
@@ -261,6 +263,7 @@ export const layer = Layer.effect(
           planenter: Tool.init(planenter),
           memory: Tool.init(memorytool),
           history: Tool.init(historytool),
+          workdirs: Tool.init(workdirstool),
           task: Tool.init(tasktool),
           workflow: Tool.init(workflowtool),
           browserNavigate: Tool.init(browserNavigate),
@@ -304,6 +307,7 @@ export const layer = Layer.effect(
             tool.planenter,
             tool.memory,
             tool.history,
+            tool.workdirs,
             tool.task,
             tool.listApps,
             tool.runApp,
