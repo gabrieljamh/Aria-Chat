@@ -47,7 +47,25 @@ function uuid(): string {
 }
 
 // RGB accent cycle lives in accent.ts (startRgbCycle/stopRgbCycle) so the
-// settings modal can stop/start it instantly instead of waiting for close.
+  // settings modal can stop/start it instantly instead of waiting for close.
+  
+  // Modifier keys for window close: Shift/Ctrl+Click quits instead of hiding to tray.
+  const [killMode, setKillMode] = useState(false)
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "Shift" || e.key === "Control") setKillMode(true)
+    }
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "Shift" || e.key === "Control") setKillMode(false)
+    }
+    window.addEventListener("keydown", down)
+    window.addEventListener("keyup", up)
+    return () => {
+      window.removeEventListener("keydown", down)
+      window.removeEventListener("keyup", up)
+    }
+  }, [])
 
 export function App() {
   const [tab, setTab] = useState<Tab>("chat")
@@ -1238,7 +1256,11 @@ export function App() {
           <button className="window-btn maximize" onClick={() => window.mimo.maximizeWindow()} title="Maximize">
             <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1"/></svg>
           </button>
-          <button className="window-btn close" onClick={() => window.mimo.closeWindow()} title="Close to tray — Aria keeps running in the background">
+          <button 
+            className={`window-btn close${killMode ? " kill-mode" : ""}`} 
+            onClick={() => window.mimo.closeWindow(killMode)} 
+            title={killMode ? "Quit Aria completely (app will exit)" : "Close to tray — Aria keeps running in the background"}
+          >
             <svg width="12" height="12" viewBox="0 0 12 12"><line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" strokeWidth="1.2"/><line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" strokeWidth="1.2"/></svg>
           </button>
         </div>

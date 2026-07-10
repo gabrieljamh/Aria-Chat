@@ -649,7 +649,7 @@ export interface MimoApi {
   onMenu(cb: (command: string) => void): () => void
   minimizeWindow(): void
   maximizeWindow(): void
-  closeWindow(): void
+  closeWindow(quit?: boolean): void
 
   // settings store
   getSetting(key: string): Promise<unknown>

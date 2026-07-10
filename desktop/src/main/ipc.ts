@@ -529,9 +529,16 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
       else win.maximize()
     }
   })
-  ipcMain.on("window-close", () => {
+  ipcMain.on("window-close", (_e, quit?: boolean) => {
     const win = getWindow()
-    if (win) win.close()
+    if (quit) {
+      // Quit the entire app (all windows, tray, server) — user explicitly held Shift/Ctrl.
+      app.quit()
+    } else if (win) {
+      // Default: hide to tray (window.close() fires the 'close' handler in index.ts
+      // which prevents default and hides; tray + server keep running).
+      win.close()
+    }
   })
 
   /* ------------------------------- native ------------------------------ */

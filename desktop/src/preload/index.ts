@@ -125,7 +125,7 @@ const api: MimoApi = {
   onMenu: (cb) => sub<string>("menu-command", cb),
   minimizeWindow: () => ipcRenderer.send("window-minimize"),
   maximizeWindow: () => ipcRenderer.send("window-maximize"),
-  closeWindow: () => ipcRenderer.send("window-close"),
+  closeWindow: (quit?: boolean) => ipcRenderer.send("window-close", quit),
 
   getSetting: (key) => ipcRenderer.invoke("get-setting", key),
   setSetting: (key, value) => ipcRenderer.invoke("set-setting", key, value) as Promise<void>,

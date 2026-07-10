@@ -234,6 +234,11 @@ button {
   background: #e81123;
   color: #fff;
 }
+/* Kill mode: user holds Shift/Ctrl to quit instead of tray — button turns red even without hover */
+.window-btn.close.kill-mode {
+  background: #e81123;
+  color: #fff;
+}
 
 .icon-btn {
   background: transparent;
