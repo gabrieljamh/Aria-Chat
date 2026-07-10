@@ -29,25 +29,29 @@ const MAX_WRITER_FAILURES = 3
 /**
  * Default checkpoint thresholds by context window size.
  *
- * Schedule (Part 2 density):
- *   < 25K          → []                    (subsystem disabled)
- *   25K ≤ w ≤ 200K → 4 triggers @ 20%      (mid-tier models)
- *   200K < w ≤ 500K → 9 triggers @ 10%     (extended-context models)
- *   w > 500K        → 18 triggers @ 5%     (1M+ window models)
+ * Schedule (sparse):
+ *   < 25K          → []                (subsystem disabled)
+ *   25K ≤ w ≤ 200K → 2 triggers (50/85%)
+ *   200K < w ≤ 500K → 3 triggers (40/65/85%)
+ *   w > 500K        → 4 triggers (30/50/70/85%)
  *
- * Density mirrors cc's intent that writers fire often enough that overflow
- * almost always finds a fresh `checkpoint.md` to rebuild from (avoiding
- * fallback to lossy compaction). cc uses growth+toolcall triggers; we use
- * % of window for a simpler implementation that doesn't require new state.
- * See docs/superpowers/specs/2026-06-03-checkpoint-threshold-density-design.md.
+ * Deliberately sparser than cc's dense schedule (which fired every 5-20% of
+ * the window; see 2026-06-03-checkpoint-threshold-density-design.md). Each
+ * checkpoint writer is a FORK of the parent conversation: on prompt-caching
+ * providers that's nearly free, but on non-caching ones (OpenAI-compatible
+ * bridges, most local/self-hosted setups) every writer re-prefills the
+ * parent's ENTIRE context — the dense schedule turned into "replay the whole
+ * session through the provider up to 18 times", crowding out the user's
+ * actual turns. The final 85% trigger is the one that matters: it keeps a
+ * fresh `checkpoint.md` available for overflow rebuild (avoiding fallback to
+ * lossy compaction); earlier triggers are safety copies. Override via
+ * `checkpoint.thresholds` in config (percentages or absolute token counts).
  */
 export function defaultThresholdsFor(window: number): readonly string[] {
   if (window < 25_000) return []
-  if (window <= 200_000) return ["20%", "40%", "60%", "80%"]
-  if (window <= 500_000) {
-    return ["10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%"]
-  }
-  return Array.from({ length: 18 }, (_, i) => `${(i + 1) * 5}%`)
+  if (window <= 200_000) return ["50%", "85%"]
+  if (window <= 500_000) return ["40%", "65%", "85%"]
+  return ["30%", "50%", "70%", "85%"]
 }
 
 function isCacheCold(model?: Provider.Model, lastAssistantTime?: number): boolean {
