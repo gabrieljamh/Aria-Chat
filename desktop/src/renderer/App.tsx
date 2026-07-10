@@ -47,8 +47,17 @@ function uuid(): string {
 }
 
 // RGB accent cycle lives in accent.ts (startRgbCycle/stopRgbCycle) so the
-  // settings modal can stop/start it instantly instead of waiting for close.
-  
+// settings modal can stop/start it instantly instead of waiting for close.
+
+export function App() {
+  const [tab, setTab] = useState<Tab>("chat")
+  const [status, setStatus] = useState<ServerStatus>({ state: "starting" })
+  const [providers, setProviders] = useState<ProvidersResponse | null>(null)
+  const [agents, setAgents] = useState<AgentInfo[]>([])
+  const [model, setModel] = useState<ModelRef | null>(null)
+  const [agentName, setAgentName] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string>("")
+  const [webSearch, setWebSearch] = useState(false)
   // Modifier keys for window close: Shift/Ctrl+Click quits instead of hiding to tray.
   const [killMode, setKillMode] = useState(false)
 
@@ -66,16 +75,6 @@ function uuid(): string {
       window.removeEventListener("keyup", up)
     }
   }, [])
-
-export function App() {
-  const [tab, setTab] = useState<Tab>("chat")
-  const [status, setStatus] = useState<ServerStatus>({ state: "starting" })
-  const [providers, setProviders] = useState<ProvidersResponse | null>(null)
-  const [agents, setAgents] = useState<AgentInfo[]>([])
-  const [model, setModel] = useState<ModelRef | null>(null)
-  const [agentName, setAgentName] = useState<string | null>(null)
-  const [userName, setUserName] = useState<string>("")
-  const [webSearch, setWebSearch] = useState(false)
   // Auto-compaction token threshold (null when disabled/unset). Drives the
   // "forced auto-compaction" progress bar in the right-panel Stats section.
   const [compactThreshold, setCompactThreshold] = useState<number | null>(null)
