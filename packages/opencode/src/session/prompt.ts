@@ -84,6 +84,7 @@ import { isArchive, archiveTypeFromMime, archiveTypeFromExt, extMime, isTextExt 
 import { Cause, Effect, Exit, Layer, Option, Scope, Context } from "effect"
 import { EffectLogger } from "@/effect"
 import { InstanceState } from "@/effect"
+import { extraWorkdirs, workdirsSystemBlock } from "@/tool/workdirs"
 import { ActorTool, type ActorPromptOps } from "@/tool/actor"
 import { SessionRunState } from "./run-state"
 import { Goal } from "./goal"
@@ -275,7 +276,16 @@ export const layer = Layer.effect(
         ])
         // (checkpoint-writer never requests json_schema output, so STRUCTURED_OUTPUT_SYSTEM_PROMPT
         // is not included; parent's runLoop adds it conditionally based on user.format)
-        const additions = [...env, ...(skills ? [skills] : []), ...instructions.content]
+        // Workdirs block mirrors the runLoop additions for prompt-cache parity.
+        const captureExtraDirs = extraWorkdirs(captureSession.permission)
+        const additions = [
+          ...env,
+          ...(captureExtraDirs.length
+            ? [workdirsSystemBlock((yield* InstanceState.context).directory, captureExtraDirs)]
+            : []),
+          ...(skills ? [skills] : []),
+          ...instructions.content,
+        ]
         const prefix = yield* buildLLMRequestPrefix({
           sessionID: input.sessionID,
           agent: ag,
@@ -555,6 +565,7 @@ Use good judgment: take the read-only action yourself rather than pushing avoida
 ## Plan File Info:
 ${exists ? `A plan file already exists at ${plan}. You can read it and make incremental edits using the edit tool.` : `No plan file exists yet. You should create your plan at ${plan} using the write tool.`}
 You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
+IMPORTANT — write the plan in SECTIONS, never in one giant call: use a single \`write\` for the first section, then \`edit\` calls to append each remaining section. A large plan sent as one \`write\` can exceed your model's single-response output limit and be truncated, which aborts the turn. Keep each write/edit to roughly a section at a time.
 
 ## Plan Workflow
 
@@ -623,6 +634,171 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       })
       userMessage.parts.push(part)
       return input.messages
+    })
+
+    // Vision fallback: instead of a manual "this model is vision-capable" toggle,
+    // we attempt to send images to any model AND — when the active model isn't
+    // confidently vision-capable — auto-describe each attached image with a VL
+    // model and inject the description as text, so a text-only model still gets
+    // the content. Descriptions are cached by content hash so a given image is
+    // described at most once (reused across turns / regenerations). Entirely
+    // best-effort: any failure leaves the messages untouched (attempt-only).
+    const DESCRIBE_IMAGE_SYSTEM =
+      "You are a precise vision-to-text assistant serving a text-only model that cannot see the image. Describe the attached image thoroughly and faithfully so the reader can fully reason about it: transcribe ALL visible text verbatim (OCR), describe layout/structure and UI elements, diagrams and charts including their values, people/objects, colors, and any other salient detail. Output ONLY the description — no preamble, no apologies."
+
+    const pickDescriber = Effect.fn("SessionPrompt.pickDescriber")(function* (input: {
+      active: Provider.Model
+      visionModels?: { providerID: ProviderID; modelID: ModelID }[]
+      visionModel?: { providerID: ProviderID; modelID: ModelID }
+    }) {
+      // Explicit priority list wins: walk it top-to-bottom and use the first
+      // entry that resolves AND is actually vision-capable. Lets a user put a
+      // free describer first and a paid one only as a last resort. The legacy
+      // single visionModel setting is appended as the lowest explicit priority.
+      const priority = [...(input.visionModels ?? []), ...(input.visionModel ? [input.visionModel] : [])]
+      for (const ref of priority) {
+        const m = yield* provider
+          .getModel(ref.providerID, ref.modelID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (m && ProviderTransform.supportsImageInput(m)) return m
+      }
+      // Auto-pick: any confidently-vision model from the configured providers,
+      // preferring the active model's provider so credentials/latency match.
+      const providers = yield* provider.list()
+      const candidates: Provider.Model[] = []
+      for (const info of Object.values(providers)) {
+        for (const m of Object.values(info.models)) {
+          if (ProviderTransform.supportsImageInput(m)) candidates.push(m)
+        }
+      }
+      return candidates.find((m) => m.providerID === input.active.providerID) ?? candidates[0]
+    })
+
+    const ensureImageDescriptions = Effect.fn("SessionPrompt.ensureImageDescriptions")(function* (input: {
+      messages: MessageV2.WithParts[]
+      model: Provider.Model
+      visionModels?: { providerID: ProviderID; modelID: ModelID }[]
+      visionModel?: { providerID: ProviderID; modelID: ModelID }
+      sessionID: SessionID
+      agent: Agent.Info
+    }) {
+      // Confidently-vision models read images directly — nothing to inject.
+      if (ProviderTransform.supportsImageInput(input.model)) return input.messages
+      const userMsg = input.messages.findLast((m) => m.info.role === "user")
+      if (!userMsg) return input.messages
+      const images = userMsg.parts.filter(
+        (p): p is MessageV2.FilePart =>
+          p.type === "file" &&
+          typeof (p as MessageV2.FilePart).mime === "string" &&
+          (p as MessageV2.FilePart).mime.startsWith("image/") &&
+          typeof (p as MessageV2.FilePart).url === "string" &&
+          (p as MessageV2.FilePart).url.startsWith("data:"),
+      )
+      if (images.length === 0) return input.messages
+
+      yield* elog.info("vision-describe: active model can't read images; describing", {
+        model: `${input.model.providerID}/${input.model.id}`,
+        images: images.length,
+      })
+
+      const describer = yield* pickDescriber({
+        active: input.model,
+        visionModels: input.visionModels,
+        visionModel: input.visionModel,
+      })
+      yield* elog.info("vision-describe: describer resolved", {
+        describer: describer ? `${describer.providerID}/${describer.id}` : "none",
+      })
+      if (!describer) return input.messages
+
+      // Described images are REPLACED by their description text (not sent as
+      // raw image_url) — a text-only OpenAI-compatible endpoint typically 400s
+      // on an image it can't read, so we hand it the description instead.
+      const replacements = new Map<string, MessageV2.TextPart>()
+
+      // Minimal, clean system: reuse the hidden `title` agent's plumbing but
+      // swap its prompt for the describe prompt (skips memory instructions).
+      const titleAgent = yield* agents.get("title").pipe(Effect.catch(() => Effect.succeed(undefined)))
+      const describerAgent: Agent.Info = titleAgent
+        ? { ...titleAgent, prompt: DESCRIBE_IMAGE_SYSTEM }
+        : input.agent
+
+      for (const part of images) {
+        const b64 = part.url.slice(part.url.indexOf(",") + 1)
+        if (!b64) continue
+        const hash = crypto.createHash("sha256").update(b64).digest("hex")
+        const cacheFile = path.join(Global.Path.data, "vision-cache", `${hash}.txt`)
+        let desc = ""
+        try {
+          desc = fs.readFileSync(cacheFile, "utf8")
+        } catch {
+          /* cache miss */
+        }
+        if (!desc) {
+          desc = yield* llm
+            .stream({
+              agent: describerAgent,
+              user: userMsg.info as MessageV2.User,
+              system: [],
+              small: true,
+              tools: {},
+              model: describer,
+              sessionID: input.sessionID,
+              retries: 1,
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: "Describe this image in full detail." },
+                    { type: "image", image: part.url },
+                  ],
+                },
+              ],
+            })
+            .pipe(
+              Stream.filter((e): e is Extract<LLM.Event, { type: "text-delta" }> => e.type === "text-delta"),
+              Stream.map((e) => e.text),
+              Stream.mkString,
+              Effect.catchCause(() => Effect.succeed("")),
+            )
+          desc = desc.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim()
+          yield* elog.info("vision-describe: describe result", {
+            describer: `${describer.providerID}/${describer.id}`,
+            chars: desc.length,
+          })
+          if (desc) {
+            try {
+              fs.mkdirSync(path.dirname(cacheFile), { recursive: true })
+              fs.writeFileSync(cacheFile, desc)
+            } catch {
+              /* best-effort cache write */
+            }
+          }
+        }
+        if (desc) {
+          replacements.set(part.id, {
+            id: PartID.ascending(),
+            messageID: userMsg.info.id,
+            sessionID: input.sessionID,
+            type: "text",
+            text: `[Auto-generated description of attached image${part.filename ? ` "${part.filename}"` : ""} (via ${describer.providerID}/${describer.id} — the active model can't read images directly):\n${desc}\n]`,
+            synthetic: true,
+          } satisfies MessageV2.TextPart)
+        }
+      }
+      // Swap each described image part out for its description — NON-destructively:
+      // copy the user message so the stored/original parts (and the real image)
+      // are never mutated. Only this request's working copy carries the swap.
+      if (replacements.size === 0) return input.messages
+      const rebuiltParts = userMsg.parts.flatMap((p) => {
+        const r = replacements.get(p.id)
+        return r ? [r as MessageV2.Part] : [p]
+      })
+      const idx = input.messages.indexOf(userMsg)
+      if (idx === -1) return input.messages
+      const out = [...input.messages]
+      out[idx] = { ...userMsg, parts: rebuiltParts }
+      return out
     })
 
     const resolveTools = Effect.fn("SessionPrompt.resolveTools")(function* (input: {
@@ -2016,6 +2192,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           agentID: input.agentID ?? "main",
           task_id: input.task_id,
           visionModel: input.visionModel,
+          visionModels: input.visionModels,
         })
       },
     )
@@ -2045,10 +2222,17 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       agentID?: string,
       task_id?: string,
       visionModel?: { providerID: ProviderID; modelID: ModelID },
+      visionModels?: { providerID: ProviderID; modelID: ModelID }[],
     ) => Effect.Effect<MessageV2.WithParts> = Effect.fn(
       "SessionPrompt.run",
     )(
-      function* (sessionID: SessionID, agentID?: string, task_id?: string, visionModel?: { providerID: ProviderID; modelID: ModelID }) {
+      function* (
+        sessionID: SessionID,
+        agentID?: string,
+        task_id?: string,
+        visionModel?: { providerID: ProviderID; modelID: ModelID },
+        visionModels?: { providerID: ProviderID; modelID: ModelID }[],
+      ) {
         const ctx = yield* InstanceState.context
         const slog = elog.with({ sessionID })
         let structured: unknown | undefined
@@ -3087,6 +3271,11 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           const maxSteps = agent.steps ?? Infinity
           const isLastStep = step >= maxSteps
           msgs = yield* insertReminders({ messages: msgs, agent, session })
+          // Auto-describe attached images for non-vision models (best-effort;
+          // failures leave msgs untouched so a describe hiccup can't break the turn).
+          msgs = yield* ensureImageDescriptions({ messages: msgs, model, visionModels, visionModel, sessionID, agent }).pipe(
+            Effect.catchCause(() => Effect.succeed(msgs)),
+          )
 
           const msg: MessageV2.Assistant = {
             id: MessageID.ascending(),
@@ -3397,8 +3586,17 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 yield* bus.publish(TuiEvent.InstructionsLoaded, { files }).pipe(Effect.ignore)
               }
             }
+            // Complementary working dirs: without an explicit system section the
+            // model stays hesitant to touch them even though permissions allow
+            // it. Derived from the session ruleset (single source of truth).
+            // NOTE: mirrored in the fork-capture path above — keep in sync for
+            // prompt-cache parity.
+            const sessionExtraDirs = extraWorkdirs(session.permission)
             const additions = [
               ...env,
+              ...(sessionExtraDirs.length
+                ? [workdirsSystemBlock((yield* InstanceState.context).directory, sessionExtraDirs)]
+                : []),
               ...(skills ? [skills] : []),
               ...instructions.content,
               ...(format.type === "json_schema" ? [STRUCTURED_OUTPUT_SYSTEM_PROMPT] : []),
@@ -3752,7 +3950,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         input.sessionID,
         agentID,
         lastAssistant(input.sessionID, agentID),
-        runLoop(input.sessionID, agentID, input.task_id, input.visionModel),
+        runLoop(input.sessionID, agentID, input.task_id, input.visionModel, input.visionModels),
       )
     })
 
@@ -3908,6 +4106,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         messageID: input.messageID,
         model: userModel,
         visionModel: input.visionModel,
+        visionModels: input.visionModels,
         agent: userAgent,
         parts,
         variant: input.variant,
@@ -4002,6 +4201,12 @@ export const PromptInput = z.object({
       modelID: ModelID.zod,
     })
     .optional(),
+  // Ordered priority list of vision-capable describer models. The image-describe
+  // fallback walks this top-to-bottom and uses the first that resolves and is
+  // vision-capable (so a free model can be preferred over a paid one).
+  visionModels: z
+    .array(z.object({ providerID: ProviderID.zod, modelID: ModelID.zod }))
+    .optional(),
   modelRef: z
     .string()
     .optional()
@@ -4081,6 +4286,12 @@ export const LoopInput = z.object({
       modelID: ModelID.zod,
     })
     .optional(),
+  // Ordered priority list of vision-capable describer models. The image-describe
+  // fallback walks this top-to-bottom and uses the first that resolves and is
+  // vision-capable (so a free model can be preferred over a paid one).
+  visionModels: z
+    .array(z.object({ providerID: ProviderID.zod, modelID: ModelID.zod }))
+    .optional(),
 })
 
 export const ShellInput = z.object({
@@ -4115,6 +4326,12 @@ export const CommandInput = z.object({
       providerID: ProviderID.zod,
       modelID: ModelID.zod,
     })
+    .optional(),
+  // Ordered priority list of vision-capable describer models. The image-describe
+  // fallback walks this top-to-bottom and uses the first that resolves and is
+  // vision-capable (so a free model can be preferred over a paid one).
+  visionModels: z
+    .array(z.object({ providerID: ProviderID.zod, modelID: ModelID.zod }))
     .optional(),
   arguments: z.string(),
   command: z.string(),

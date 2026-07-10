@@ -359,19 +359,23 @@ const live: Layer.Layer<
       }
 
       const isWorkflow = language instanceof GitLabWorkflowLanguageModel
+      // buildSystemArray keeps the prompt split into 2 entries (prefix + memory
+      // instructions) so Anthropic prompt-caching can cache the stable prefix.
+      // But OpenAI-compatible servers (llama.cpp / LM Studio / local proxies)
+      // apply a chat template that requires a SINGLE leading system message and
+      // reject a second one ("System message must be at the beginning"). Those
+      // providers get no caching benefit from the split, so collapse the system
+      // array into one message for them.
+      const singleSystemMessage = input.model.api.npm === "@ai-sdk/openai-compatible"
+      const systemMessages: ModelMessage[] =
+        singleSystemMessage && system.length > 0
+          ? [{ role: "system", content: system.join("\n") }]
+          : system.map((x): ModelMessage => ({ role: "system", content: x }))
       const messages = isOpenaiOauth
         ? input.messages
         : isWorkflow
           ? input.messages
-          : [
-              ...system.map(
-                (x): ModelMessage => ({
-                  role: "system",
-                  content: x,
-                }),
-              ),
-              ...input.messages,
-            ]
+          : [...systemMessages, ...input.messages]
 
       const params = yield* plugin.trigger(
         "chat.params",

@@ -783,12 +783,26 @@ export function App() {
             : undefined
       let turnModel = model
       let turnVisionModel: ModelRef | undefined
+      let turnVisionModels: ModelRef[] | undefined
       const atts = files ?? []
       const hasImageAtts = atts.some((f) => f.mime?.startsWith("image/"))
+      // Vision describer priority list (Settings → ordered list), falling back to
+      // the legacy single "visionModel" setting. Always advertised to the server
+      // so the image-describe fallback honors the user's order even when Vision
+      // redirect is off. The top entry doubles as the whole-turn redirect target.
+      const visionList: ModelRef[] = await (async () => {
+        const list = (await window.mimo.getSetting("visionModels").catch(() => null)) as ModelRef[] | null
+        if (Array.isArray(list)) {
+          const clean = list.filter((m) => m?.providerID && m?.modelID)
+          if (clean.length) return clean
+        }
+        const single = (await window.mimo.getSetting("visionModel").catch(() => null)) as ModelRef | null
+        return single?.providerID && single?.modelID ? [single] : []
+      })()
+      if (visionList.length) turnVisionModels = visionList
       if (hasImageAtts || hasHistoryImagesRef.current) {
         const on = await window.mimo.getSetting("visionRedirect").catch(() => null)
-        const vm = (await window.mimo.getSetting("visionModel").catch(() => null)) as ModelRef | null
-        if (on === true && vm?.providerID && vm?.modelID) turnModel = vm
+        if (on === true && visionList[0]) turnModel = visionList[0]
       } else if (atts.some((f) => f.mime?.startsWith("audio/"))) {
         const on = await window.mimo.getSetting("audioRedirect").catch(() => null)
         const am = (await window.mimo.getSetting("audioModel").catch(() => null)) as ModelRef | null
@@ -807,10 +821,7 @@ export function App() {
       // the client-side hasHistoryImagesRef check can never catch in time.
       if (!turnModel || turnModel === model) {
         const on = await window.mimo.getSetting("visionRedirect").catch(() => null)
-        if (on === true) {
-          const vm = (await window.mimo.getSetting("visionModel").catch(() => null)) as ModelRef | null
-          if (vm?.providerID && vm?.modelID) turnVisionModel = vm
-        }
+        if (on === true && visionList[0]) turnVisionModel = visionList[0]
       }
       const slashMatch = text.match(/^\/(\S+)(?:\s+(.*))?$/s)
       if (slashMatch && !files?.length) {
@@ -826,6 +837,7 @@ export function App() {
               arguments: cmdArgs,
               model: turnModel ?? undefined,
               visionModel: turnVisionModel,
+              visionModels: turnVisionModels,
               agent: turnAgent,
               directory: finalRef.directory,
             })
@@ -845,6 +857,7 @@ export function App() {
           text: webSearch ? `${text}\n\n(You may use web search if helpful.)` : text,
           model: turnModel ?? undefined,
           visionModel: turnVisionModel,
+          visionModels: turnVisionModels,
           // Never let the webagent-only agent leak into a chat/cowork turn.
           agent: turnAgent,
           directory: finalRef.directory,

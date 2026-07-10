@@ -149,6 +149,7 @@ export class MimoClient extends EventEmitter {
     const body: Record<string, unknown> = { parts }
     if (input.model) body.model = input.model
     if (input.visionModel) body.visionModel = input.visionModel
+    if (input.visionModels?.length) body.visionModels = input.visionModels
     if (input.agent) body.agent = input.agent
     try {
       await this.json(
@@ -185,6 +186,7 @@ export class MimoClient extends EventEmitter {
       body.model = typeof input.model === "string" ? input.model : `${input.model.providerID}/${input.model.modelID}`
     }
     if (input.visionModel) body.visionModel = input.visionModel
+    if (input.visionModels?.length) body.visionModels = input.visionModels
     if (input.agent) body.agent = input.agent
     try {
       await this.json(

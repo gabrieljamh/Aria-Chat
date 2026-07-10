@@ -330,6 +330,8 @@ export interface CommandInput {
   // Optional vision model override (see PromptInput.visionModel). Plumbed
   // through to the command's expanded prompt server-side.
   visionModel?: ModelRef
+  // Ordered priority list of describer models for the image-describe fallback.
+  visionModels?: ModelRef[]
   directory?: string
 }
 
@@ -502,6 +504,9 @@ export interface PromptInput {
   // can't read images but a tool result (e.g. browser.screenshot) produced one.
   // Paired with the visionRedirect client toggle in App.tsx sendPrompt.
   visionModel?: ModelRef
+  // Ordered priority list of describer models for the image-describe fallback
+  // (first available/vision-capable wins). Set from the Settings vision list.
+  visionModels?: ModelRef[]
   agent?: string
   directory?: string
   files?: FileAttachment[]
