@@ -56,19 +56,28 @@ export function launchApp(appEntry: ExecuteApp, extraArgs?: string): { ok: boole
   try {
     let child
     if (process.platform === "darwin" && appEntry.path.endsWith(".app")) {
-      // `open -a <bundle> [--args ...]` launches a macOS app bundle correctly.
       const openArgs = ["-a", appEntry.path]
       if (args.length) openArgs.push("--args", ...args)
       child = spawn("open", openArgs, { detached: true, stdio: "ignore", cwd })
+    } else if (process.platform === "win32") {
+      // Windows CreateProcess can only launch .exe directly. For .bat/.cmd/.ps1
+      // / .lnk paths we need shell:true so cmd.exe resolves them; for .exe paths
+      // shell:true is also safer (handles paths with parens/quoted segments).
+      // Build a single command-line string (no args array) so Node doesn't emit
+      // DEP0190 about unescaped args with shell:true.
+      const quotedPath = `"${appEntry.path}"`
+      const fullCmd = args.length ? `${quotedPath} ${args.join(" ")}` : quotedPath
+      child = spawn(fullCmd, [], { shell: true, detached: true, stdio: "ignore", cwd, windowsHide: false })
     } else {
       child = spawn(appEntry.path, args, { detached: true, stdio: "ignore", cwd, windowsHide: false })
     }
     const pid = child.pid
-    child.on("error", () => {
-      /* swallow — reported via the missing pid below is unreliable, best-effort launch */
+    let asyncError: string | undefined
+    child.on("error", (e) => {
+      asyncError = e instanceof Error ? e.message : String(e)
     })
     child.unref()
-    if (!pid) return { ok: false, error: "Failed to start process" }
+    if (!pid) return { ok: false, error: asyncError ?? "Failed to start process" }
     return { ok: true, pid }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
