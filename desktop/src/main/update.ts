@@ -212,7 +212,22 @@ function writeSwapHelper(tmp: string, archive: string, installDir: string, exe: 
   if (process.platform === "win32") {
     const file = join(tmp, "aria-update-helper.ps1")
     // robocopy overlays new files over the install dir without purging
-    // anything the archive doesn't contain (exit codes 0-7 are success).
+    // anything the archive doesn't contain. Both $stage and $installDir are
+    // quoted because TEMP and the install path commonly contain spaces
+    // (e.g. "C:\Users\John Doe\AppData\Local\Programs\Aria Chat"). An earlier
+    // build left $stage unquoted and robocopy silently mis-parsed it as two
+    // arguments when the username had a space, so the update failed silently
+    // after the user confirmed the close-to-unzip prompt.
+    //
+    // If the install dir is under Program Files (or anywhere the current user
+    // lacks write perms), the first robocopy attempt fails with access-denied.
+    // We detect that and re-launch the helper elevated via Start-Process -Verb
+    // RunAs so the user gets a UAC prompt and the update completes.
+    // Pre-escape the file path for the Start-Process -ArgumentList inside the
+    // elevated re-launch (PowerShell needs the embedded quotes doubled as `").
+    // Done outside the script body so the JS template literal doesn't have to
+    // embed a backtick (which would close the JS string prematurely).
+    const fileEscapedForPsArg = file.replace(/"/g, '`"')
     writeFileSync(
       file,
       [
@@ -223,14 +238,30 @@ function writeSwapHelper(tmp: string, archive: string, installDir: string, exe: 
         `  $stage = Join-Path $env:TEMP "aria-update-stage"`,
         `  if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }`,
         `  Expand-Archive -LiteralPath "${archive}" -DestinationPath $stage -Force`,
-        `  robocopy $stage "${installDir}" /E /R:3 /W:1 | Out-Null`,
+        `  robocopy "$stage" "${installDir}" /E /R:3 /W:1 | Out-Null`,
         `  if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" }`,
         `  Start-Process -FilePath "${exe}"`,
         `  Remove-Item "${archive}" -Force -ErrorAction SilentlyContinue`,
         `  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue`,
         `} catch {`,
         `  Add-Type -AssemblyName PresentationFramework`,
-        `  [System.Windows.MessageBox]::Show("Aria update failed: $($_.Exception.Message)\`n\`nThe downloaded archive is at:\`n${archive}\`n\`nYou can extract it over the install folder manually.", "Aria updater") | Out-Null`,
+        `  $msg = $_.Exception.Message`,
+        `  # Permission/access-denied: retry elevated via UAC — but only ONCE.`,
+        `  # The elevated re-launch sets ARIA_UPDATE_ELEVATED so we don't loop if`,
+        `  # even admin can't write the install dir (corrupted install, antivirus, etc).`,
+        `  $alreadyElevated = [bool]$env:ARIA_UPDATE_ELEVATED`,
+        `  $needElevate = -not $alreadyElevated -and (($msg -match "Access is denied|permission|denied|Unauthorized") -or ($LASTEXITCODE -eq 5))`,
+        `  if ($needElevate) {`,
+        `    try {`,
+        `      $env:ARIA_UPDATE_ELEVATED = "1"`,
+        `      Start-Process -FilePath "powershell.exe" -Verb RunAs -Wait -ArgumentList @("-NoProfile","-ExecutionPolicy","Bypass","-File","${fileEscapedForPsArg}")`,
+        `      exit 0`,
+        `    } catch {`,
+        `      [System.Windows.MessageBox]::Show("Aria update needs elevated permissions but the UAC prompt was dismissed.\`n\`nError: $msg\`n\`nThe downloaded archive is at:\`n${archive}\`n\`nYou can extract it over the install folder manually as administrator.", "Aria updater") | Out-Null`,
+        `      exit 1`,
+        `    }`,
+        `  }`,
+        `  [System.Windows.MessageBox]::Show("Aria update failed: $msg\`n\`nThe downloaded archive is at:\`n${archive}\`n\`nYou can extract it over the install folder manually.", "Aria updater") | Out-Null`,
         `}`,
         "",
       ].join("\r\n"),

@@ -283,6 +283,9 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const selectAddTarget = (id: string) => {
     setAddTarget(id)
     setApiKey("")
+    setFetchedModels([])
+    setShowFetched(false)
+    setFetchError("")
     if (!id) {
       setPid("")
       setPname("")
@@ -325,6 +328,37 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [mPdf, setMPdf] = useState(false)
   const [modelId, setModelId] = useState("")
   const [status, setStatus] = useState<Status>({ kind: "idle" })
+
+  // Models fetched from the provider's /v1/models endpoint. Populated by the
+  // "Fetch models" button next to the Model ID input — so the user can pick a
+  // real id from the API instead of typing a guess. Empty until fetched.
+  const [fetchedModels, setFetchedModels] = useState<{ id: string; name?: string }[]>([])
+  const [fetchingModels, setFetchingModels] = useState(false)
+  const [fetchError, setFetchError] = useState("")
+  const [showFetched, setShowFetched] = useState(false)
+
+  const fetchProviderModels = async () => {
+    setFetchError("")
+    if (!baseURL.trim()) {
+      setFetchError("Enter a Base URL first")
+      return
+    }
+    setFetchingModels(true)
+    try {
+      const list = await window.mimo.listProviderModels(baseURL.trim(), apiKey.trim())
+      if (list.length === 0) {
+        setFetchedModels([])
+        setFetchError("No models returned — check Base URL and API key")
+      } else {
+        setFetchedModels(list)
+        setShowFetched(true)
+      }
+    } catch (e) {
+      setFetchError(`Couldn't fetch: ${String((e as Error)?.message ?? e)}`)
+    } finally {
+      setFetchingModels(false)
+    }
+  }
 
   useEffect(() => {
     window.mimo.getSetting("serverUrl").then((v) => setServerUrl(typeof v === "string" ? v : ""))
@@ -1887,6 +1921,35 @@ const saveEditModel = async () => {
                     onChange={(e) => setApiKey(e.target.value)}
                   />
                   <input placeholder="Model ID (e.g. gpt-4o)" value={modelId} onChange={(e) => setModelId(e.target.value)} />
+                  <div className="provider-model-fetch">
+                    <button
+                      type="button"
+                      className="fetch-models-btn"
+                      onClick={fetchProviderModels}
+                      disabled={!baseURL.trim() || fetchingModels}
+                      title="Fetch the provider's available model IDs via GET ${baseURL}/models so you can pick instead of typing"
+                    >
+                      {fetchingModels ? "Fetching…" : "Fetch models"}
+                    </button>
+                    {showFetched && fetchedModels.length > 0 && (
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            setModelId(e.target.value)
+                            setShowFetched(false)
+                          }
+                        }}
+                        title="Pick a model from the provider's /v1/models list"
+                      >
+                        <option value="">Pick from {fetchedModels.length} fetched…</option>
+                        {fetchedModels.map((m) => (
+                          <option key={m.id} value={m.id}>{m.id}{m.name ? ` — ${m.name}` : ""}</option>
+                        ))}
+                      </select>
+                    )}
+                    {fetchError && <span className="fetch-err">{fetchError}</span>}
+                  </div>
                   <select
                     value={NPM_CHOICES.some((c) => c.value === npm) ? npm : ""}
                     disabled={!!addTarget}

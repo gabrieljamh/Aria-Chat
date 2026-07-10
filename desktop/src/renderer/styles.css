@@ -2733,6 +2733,39 @@ button {
   color: var(--text-faint);
   cursor: not-allowed;
 }
+.provider-model-fetch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.provider-model-fetch .fetch-models-btn {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.provider-model-fetch .fetch-models-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.provider-model-fetch .fetch-models-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.provider-model-fetch select {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+.provider-model-fetch .fetch-err {
+  font-size: 11.5px;
+  color: var(--danger, #c33);
+  font-style: italic;
+}
 .form-msg {
   font-size: 12.5px;
   margin-top: 8px;

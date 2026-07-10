@@ -691,6 +691,10 @@ export interface MimoApi {
   pickExecutable(): Promise<string | null>
   /** Launch a registered app by id (optionally with extra args). Returns pid or an error. */
   launchApp(appId: string, extraArgs?: string): Promise<{ ok: boolean; pid?: number; error?: string }>
+  /** Fetch a provider's available model IDs via GET ${baseURL}/models (v1/models).
+   *  Used to populate the add-model dropdown in Settings. Returns an array of
+   *  { id, name? } — empty on error (auth, network, or non-OpenAI-compatible shape). */
+  listProviderModels(baseURL: string, apiKey: string): Promise<{ id: string; name?: string }[]>
 
   // scheduler
   getSchedulerRules(): Promise<SchedulerRule[]>

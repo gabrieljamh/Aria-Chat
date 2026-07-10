@@ -575,6 +575,63 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
     return launchApp(app, extraArgs)
   })
 
+  // Fetch a provider's available model IDs via GET ${baseURL}/models.
+  // Used by the add-model dropdown in Settings. Returns an array of
+  // { id, name? } on success, or [] on any error (auth, network, unexpected
+  // shape) — the renderer shows a small "couldn't fetch" hint in that case.
+  ipcMain.handle("list-provider-models", async (_e, baseURL: string, apiKey: string) => {
+    try {
+      const base = (baseURL || "").trim().replace(/\/+$/, "")
+      if (!base) return []
+      const headers: Record<string, string> = { "content-type": "application/json" }
+      if (apiKey && apiKey.trim()) headers["authorization"] = `Bearer ${apiKey.trim()}`
+      // Try ${base}/models first; some providers serve a bare /models without /v1.
+      const tryUrls = [`${base}/models`]
+      if (base.endsWith("/v1")) tryUrls.push(`${base.slice(0, -3)}/models`)
+      let parsed: unknown = null
+      let lastErr = ""
+      for (const url of tryUrls) {
+        try {
+          const res = await fetch(url, { headers, signal: AbortSignal.timeout(8_000) })
+          if (!res.ok) { lastErr = `HTTP ${res.status}`; continue }
+          parsed = await res.json()
+          break
+        } catch (e) {
+          lastErr = String((e as Error)?.message ?? e)
+        }
+      }
+      if (parsed == null) {
+        console.warn("[list-provider-models] no endpoint responded:", lastErr)
+        return []
+      }
+      // OpenAI-compat shape: { data: [{ id: "gpt-4o", ... }, ...] }
+      // Some providers return a bare array: [{ id, ... }, ...]
+      // Some return { models: [{ id, ... }] }
+      const arr: unknown[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray((parsed as any)?.data)
+          ? (parsed as any).data
+          : Array.isArray((parsed as any)?.models)
+            ? (parsed as any).models
+            : []
+      const out: { id: string; name?: string }[] = []
+      for (const item of arr) {
+        const id = (item as any)?.id
+        if (typeof id !== "string" || !id) continue
+        // Skip obvious sibling-endpoint "models" that some providers expose
+        // (e.g. the /models endpoint returned by some servers includes fine-tune
+        // checkpoints with ids like "ft:gpt-4o:..."). We keep them — the user
+        // is the filter. Just avoid duplicates.
+        if (out.some((m) => m.id === id)) continue
+        out.push({ id, name: (item as any)?.name ?? undefined })
+      }
+      return out
+    } catch (err) {
+      console.warn("[list-provider-models] failed:", err)
+      return []
+    }
+  })
+
   ipcMain.handle("pick-skill-file", async () => {
     const win = getWindow()
     const result = await dialog.showOpenDialog(win ?? undefined!, {

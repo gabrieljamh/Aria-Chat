@@ -81,6 +81,8 @@ const api: MimoApi = {
   pickExecutable: () => ipcRenderer.invoke("pick-executable") as Promise<string | null>,
   launchApp: (appId: string, extraArgs?: string) =>
     ipcRenderer.invoke("launch-app", appId, extraArgs) as Promise<{ ok: boolean; pid?: number; error?: string }>,
+  listProviderModels: (baseURL: string, apiKey: string) =>
+    ipcRenderer.invoke("list-provider-models", baseURL, apiKey) as Promise<{ id: string; name?: string }[]>,
   getTodos: (sessionID, directory) => ipcRenderer.invoke("get-todos", sessionID, directory) as Promise<Todo[]>,
   getTasks: (sessionID, directory) => ipcRenderer.invoke("get-tasks", sessionID, directory) as Promise<TaskInfo[]>,
   getSessionStatus: (directory) => ipcRenderer.invoke("get-session-status", directory) as Promise<Record<string, import("@shared/types").SessionStatusInfo>>,
