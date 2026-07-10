@@ -1874,7 +1874,7 @@ const saveEditModel = async () => {
                   >
                     <option value="">New provider…</option>
                     {allProviderIds.map((id) => (
-                      <option key={id} value={id}>Add model to: {providerLabel(id)}</option>
+                      <option key={id} value={id}>Add model to: {id} ({providerLabel(id)})</option>
                     ))}
                   </select>
                   <input placeholder="Provider ID (e.g. openai, my-llm)" value={pid} disabled={!!addTarget} onChange={(e) => setPid(e.target.value)} />
