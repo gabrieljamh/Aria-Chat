@@ -276,6 +276,44 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   const [baseURL, setBaseURL] = useState("")
   const [apiKey, setApiKey] = useState("")
   const [npm, setNpm] = useState("")
+  // "" = create a new provider; otherwise the id of an existing provider the
+  // model is being added to (identity fields auto-fill and lock; the saved
+  // API key is preserved so it never needs re-entering).
+  const [addTarget, setAddTarget] = useState("")
+  const selectAddTarget = (id: string) => {
+    setAddTarget(id)
+    setApiKey("")
+    if (!id) {
+      setPid("")
+      setPname("")
+      setBaseURL("")
+      setNpm("")
+      return
+    }
+    const p = providers?.all.find((x) => x.id === id)
+    setPid(id)
+    setPname(p?.name && p.name !== id ? p.name : "")
+    setBaseURL(String((p?.options as Record<string, unknown> | undefined)?.baseURL ?? ""))
+    setNpm(p?.npm ?? "")
+  }
+
+  // The fixed set of provider SDKs bundled with the server, described by the
+  // API surface each one speaks (free-text npm input invited typos for what
+  // is really a closed list).
+  const NPM_CHOICES: { value: string; label: string }[] = [
+    { value: "", label: "Auto — OpenAI-compatible when a Base URL is set" },
+    { value: "@ai-sdk/openai-compatible", label: "OpenAI-compatible — POST /v1/chat/completions (LM Studio, vLLM, llama.cpp, bridges)" },
+    { value: "@ai-sdk/openai", label: "OpenAI — official API (Responses + Chat Completions)" },
+    { value: "@ai-sdk/anthropic", label: "Anthropic — /v1/messages (Claude)" },
+    { value: "@ai-sdk/google", label: "Google Generative AI — Gemini generateContent" },
+    { value: "@ai-sdk/google-vertex", label: "Google Vertex AI — GCP-hosted models" },
+    { value: "@ai-sdk/azure", label: "Azure OpenAI — deployment-scoped endpoints" },
+    { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock — AWS runtime API" },
+    { value: "@openrouter/ai-sdk-provider", label: "OpenRouter — /api/v1/chat/completions" },
+    { value: "@ai-sdk/groq", label: "Groq — OpenAI-style chat API" },
+    { value: "@ai-sdk/mistral", label: "Mistral — /v1/chat/completions" },
+    { value: "@ai-sdk/xai", label: "xAI — Grok API" },
+  ]
   // Declared input modalities for the model being added. Image defaults OFF:
   // only opt a model into direct image input when it genuinely reads images.
   // Text-only models still handle images — Aria auto-describes them via a vision
@@ -735,13 +773,27 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
     const providerID = pid.trim()
     const mId = modelId.trim()
     if (!providerID || !mId) return
+    // Provider ids are used as the prefix of "provider/model" refs everywhere
+    // (model selectors, agent overrides, redirects). A slash or whitespace in
+    // the id corrupts that parsing app-wide — reject it up front. Model ids
+    // MAY contain slashes (e.g. deepseek-ai/deepseek-v4-flash).
+    if (!/^[A-Za-z0-9_.-]+$/.test(providerID)) {
+      setStatus({ kind: "error", msg: "Provider ID can only contain letters, digits, dots, dashes and underscores (no spaces or slashes)." })
+      return
+    }
     setStatus({ kind: "saving" })
     try {
+      // setGlobalProvider REPLACES the provider entry, so always merge with
+      // whatever already exists under this id — identity fields, saved API
+      // key, and previously-added models all survive. (Adding a second model
+      // to the same id used to silently wipe the first.)
+      const existing = providers?.all.find((p) => p.id === providerID)
       const entry: ProviderConfigInput = {}
-      if (pname.trim()) entry.name = pname.trim()
-      const npmPkg = npm.trim() || (baseURL.trim() ? "@ai-sdk/openai-compatible" : "")
+      const name = pname.trim() || existing?.name
+      if (name) entry.name = name
+      const npmPkg = npm.trim() || existing?.npm || (baseURL.trim() ? "@ai-sdk/openai-compatible" : "")
       if (npmPkg) entry.npm = npmPkg
-      const options: Record<string, unknown> = {}
+      const options: Record<string, unknown> = { ...((existing?.options as Record<string, unknown>) ?? {}) }
       if (baseURL.trim()) options.baseURL = baseURL.trim()
       if (apiKey.trim()) options.apiKey = apiKey.trim()
       if (Object.keys(options).length) entry.options = options
@@ -752,13 +804,17 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
         ...(mVideo ? ["video"] : []),
         ...(mPdf ? ["pdf"] : []),
       ]
-      entry.models = {
-        [mId]: {
-          name: pname.trim() ? `${pname.trim()} ${mId}` : mId,
-          attachment: inputModalities.length > 1,
-          modalities: { input: inputModalities, output: ["text"] },
-        },
+      const mergedModels: NonNullable<ProviderConfigInput["models"]> = {}
+      for (const [key, model] of Object.entries(existing?.models ?? {})) {
+        const { status: _status, ...rest } = model as unknown as { status?: string } & Record<string, unknown>
+        mergedModels[key] = { ...rest, name: (model as { name?: string }).name }
       }
+      mergedModels[mId] = {
+        name: pname.trim() ? `${pname.trim()} ${mId}` : mId,
+        attachment: inputModalities.length > 1,
+        modalities: { input: inputModalities, output: ["text"] },
+      }
+      entry.models = mergedModels
 
       // Write the provider into the GLOBAL server config via the server API
       // (PATCH /global/config) so the server itself manages reading, writing,
@@ -797,6 +853,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       const modelListed = liveProvider ? Object.keys(liveProvider.models ?? {}).includes(mId) : false
 
       setApiKey("")
+      if (addTarget) setModelId("") // ready for the next model on the same provider
       if (modelListed) {
         setStatus({ kind: "ok", msg: `Configured and verified ${providerID} / ${mId} (available in every chat).` })
       } else {
@@ -1183,6 +1240,10 @@ const saveEditModel = async () => {
 
   const [baseProviders, setBaseProviders] = useState<string[]>([])
   const [removingProvider, setRemovingProvider] = useState<string | null>(null)
+  // Two-step destructive action: first click arms, second click within 4s removes.
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [removeStatus, setRemoveStatus] = useState<string | null>(null)
 
   useEffect(() => {
     window.mimo.getSetting("baseConfig").then((v) => {
@@ -1203,14 +1264,29 @@ const saveEditModel = async () => {
 
   const handleRemoveProvider = async (id: string) => {
     if (removingProvider) return
+    // First click arms the confirmation; second click within the window removes.
+    if (confirmRemove !== id) {
+      setConfirmRemove(id)
+      if (confirmTimer.current) clearTimeout(confirmTimer.current)
+      confirmTimer.current = setTimeout(() => setConfirmRemove(null), 4000)
+      return
+    }
+    if (confirmTimer.current) clearTimeout(confirmTimer.current)
+    setConfirmRemove(null)
     setRemovingProvider(id)
+    setRemoveStatus(null)
     try {
       await window.mimo.removeProvider(id)
       await loadCustomModels()
       await onRefreshProviders()
       setBaseProviders((ps) => ps.filter((p) => p !== id))
-    } catch {
-      /* ignore */
+      // The add-form may be locked onto the provider that just vanished.
+      if (addTarget === id) selectAddTarget("")
+      setRemoveStatus(`Removed ${id} — API key, config, and its custom models were cleared.`)
+    } catch (e: any) {
+      // Swallowing this made failed removals look like "the button did
+      // nothing" — the row just stayed.
+      setRemoveStatus(`Failed to remove ${id}: ${String(e?.message ?? e)}`)
     } finally {
       setRemovingProvider(null)
     }
@@ -1764,15 +1840,18 @@ const saveEditModel = async () => {
                           <span className="custom-id">{providerLabel(id)}</span>
                         </span>
                         <button
-                          className="custom-remove"
+                          className={"custom-remove" + (confirmRemove === id ? " danger-armed" : "")}
                           disabled={removingProvider === id}
                           onClick={() => handleRemoveProvider(id)}
                         >
-                          {removingProvider === id ? "Removing…" : "Remove"}
+                          {removingProvider === id ? "Removing…" : confirmRemove === id ? "Click to confirm" : "Remove"}
                         </button>
                       </div>
                     ))}
                   </div>
+                  {removeStatus && (
+                    <div className={"form-msg " + (removeStatus.startsWith("Failed") ? "err" : "ok")}>{removeStatus}</div>
+                  )}
                   <div className="hint">
                     Removing clears the provider's API key, config, and custom models from the app and the server.
                   </div>
@@ -1786,14 +1865,38 @@ const saveEditModel = async () => {
               <div className="settings-divider" />
 
               <div className="settings-field">
-                <label>Add a provider</label>
+                <label>Add a provider or model</label>
                 <div className="provider-form">
-                  <input placeholder="Provider ID (e.g. openai, my-llm)" value={pid} onChange={(e) => setPid(e.target.value)} />
-                  <input placeholder="Display name (optional)" value={pname} onChange={(e) => setPname(e.target.value)} />
-                  <input placeholder="Base URL (optional)" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} />
-                  <input placeholder="API key" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+                  <select
+                    value={addTarget}
+                    onChange={(e) => selectAddTarget(e.target.value)}
+                    title="Add a model to an existing provider (its connection settings and API key are reused) or configure a new provider"
+                  >
+                    <option value="">New provider…</option>
+                    {allProviderIds.map((id) => (
+                      <option key={id} value={id}>Add model to: {providerLabel(id)}</option>
+                    ))}
+                  </select>
+                  <input placeholder="Provider ID (e.g. openai, my-llm)" value={pid} disabled={!!addTarget} onChange={(e) => setPid(e.target.value)} />
+                  <input placeholder="Display name (optional)" value={pname} disabled={!!addTarget} onChange={(e) => setPname(e.target.value)} />
+                  <input placeholder="Base URL (optional)" value={baseURL} disabled={!!addTarget} onChange={(e) => setBaseURL(e.target.value)} />
+                  <input
+                    placeholder={addTarget ? "API key — kept from provider (leave empty)" : "API key"}
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                  />
                   <input placeholder="Model ID (e.g. gpt-4o)" value={modelId} onChange={(e) => setModelId(e.target.value)} />
-                  <input placeholder="npm package (optional)" value={npm} onChange={(e) => setNpm(e.target.value)} />
+                  <select
+                    value={NPM_CHOICES.some((c) => c.value === npm) ? npm : ""}
+                    disabled={!!addTarget}
+                    onChange={(e) => setNpm(e.target.value)}
+                    title="Which API protocol the provider speaks — the SDK packages are bundled, so this is a fixed list"
+                  >
+                    {NPM_CHOICES.map((c) => (
+                      <option key={c.value || "auto"} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
                   <div className="provider-modalities">
                     <span className="provider-modalities-label">Input types</span>
                     <button type="button" className={"mod-chip" + (mImage ? " on" : "")} onClick={() => setMImage((v) => !v)}>Image</button>
@@ -1802,7 +1905,7 @@ const saveEditModel = async () => {
                     <button type="button" className={"mod-chip" + (mPdf ? " on" : "")} onClick={() => setMPdf((v) => !v)}>PDF</button>
                   </div>
                   <button className="primary" onClick={saveProvider} disabled={!pid.trim() || !modelId.trim() || status.kind === "saving"}>
-                    {status.kind === "saving" ? "Saving…" : "Save provider"}
+                    {status.kind === "saving" ? "Saving…" : addTarget ? `Add model to ${addTarget}` : "Save provider"}
                   </button>
                 </div>
                 {status.kind === "ok" && <div className="form-msg ok">{status.msg}</div>}

@@ -2638,6 +2638,11 @@ button {
   padding: 5px 10px;
   font-size: 12px;
 }
+.custom-remove.danger-armed {
+  background: rgba(217, 106, 90, 0.15);
+  border-color: var(--danger);
+  font-weight: 600;
+}
 .custom-remove:hover {
   background: var(--bg-hover);
 }
@@ -2686,7 +2691,8 @@ button {
   flex-direction: column;
   gap: 7px;
 }
-.provider-form input {
+.provider-form input,
+.provider-form select {
   width: 100%;
   background: var(--bg-inset);
   border: 1px solid var(--border-soft);
@@ -2697,8 +2703,13 @@ button {
   font-size: 12.5px;
   outline: none;
 }
-.provider-form input:focus {
+.provider-form input:focus,
+.provider-form select:focus {
   border-color: var(--accent);
+}
+.provider-form input:disabled,
+.provider-form select:disabled {
+  opacity: 0.55;
 }
 .provider-form .primary {
   align-self: flex-start;

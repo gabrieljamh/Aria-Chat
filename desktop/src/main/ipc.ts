@@ -114,8 +114,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
   // re-reads the (just-changed) global config. Used after add/remove provider.
   const disposeAllInstances = async () => {
     const dirs = new Set<string>()
-    // "cowork" is the internal key for Tasker mode
-    for (const kind of ["chats", "cowork"] as RegistryKind[]) {
+    // "cowork" is the internal key for Tasker mode. webagent sessions cache
+    // config in their own per-sandbox instances too — omitting them left
+    // removed/changed providers alive inside webagent sessions until restart.
+    for (const kind of ["chats", "cowork", "webagent"] as RegistryKind[]) {
       for (const ref of getRegistry(kind)) dirs.add(ref.directory)
     }
     await Promise.allSettled([...dirs].map((d) => client?.disposeInstance(d) ?? Promise.resolve()))
@@ -409,9 +411,14 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
     const store = getStore()
     const customModels = (store.get("customModels") as { providerID?: string }[] | undefined) ?? []
     store.set("customModels", customModels.filter((c) => c.providerID !== providerID))
-    for (const key of ["lastModel", "visionModel", "audioModel", "videoModel", "homeModel"]) {
+    for (const key of ["lastModel", "visionModel", "audioModel", "videoModel", "homeModel", "compactModel"]) {
       const m = store.get(key) as { providerID?: string } | undefined
       if (m && m.providerID === providerID) store.set(key, null)
+    }
+    // Vision describer priority lists store ModelRef arrays.
+    const visionList = store.get("visionModels") as { providerID?: string }[] | undefined
+    if (Array.isArray(visionList)) {
+      store.set("visionModels", visionList.filter((m) => m?.providerID !== providerID))
     }
     const baseCfg = store.get("baseConfig") as Record<string, unknown> | null
     if (baseCfg?.provider && typeof baseCfg.provider === "object") {
@@ -426,10 +433,24 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
       const file = await globalConfigFile()
       if (fs.existsSync(file)) {
         const cfg = JSON.parse(fs.readFileSync(file, "utf8"))
+        let dirty = false
         if (cfg?.provider && cfg.provider[providerID]) {
           delete cfg.provider[providerID]
-          fs.writeFileSync(file, JSON.stringify(cfg, null, 2))
+          dirty = true
         }
+        // Dangling per-agent model overrides (agent.<name>.model =
+        // "provider/model") would make every spawn of that agent fail with
+        // "model not found" after the provider is gone.
+        if (cfg?.agent && typeof cfg.agent === "object") {
+          for (const [agentName, agentCfg] of Object.entries(cfg.agent as Record<string, any>)) {
+            if (agentCfg && typeof agentCfg.model === "string" && agentCfg.model.startsWith(`${providerID}/`)) {
+              delete agentCfg.model
+              if (Object.keys(agentCfg).length === 0) delete (cfg.agent as Record<string, any>)[agentName]
+              dirty = true
+            }
+          }
+        }
+        if (dirty) fs.writeFileSync(file, JSON.stringify(cfg, null, 2))
       }
     } catch {
       /* best-effort */
