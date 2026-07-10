@@ -634,7 +634,7 @@ export function Composer(props: Props) {
                   </button>
                 )}
                 <button className="attach-remove" title="Remove" onClick={() => removeAttachment(i)}>
-                  Ã—
+                  {"×"}
                 </button>
               </span>
             )
@@ -646,7 +646,7 @@ export function Composer(props: Props) {
         <div className="attach-preview-overlay" onClick={() => setPreviewUrl(null)}>
           <div className="attach-preview-box">
             <img src={previewUrl} alt="preview" className="attach-preview-img" />
-            <button className="attach-preview-close" onClick={() => setPreviewUrl(null)}>Ã—</button>
+            <button className="attach-preview-close" onClick={() => setPreviewUrl(null)}>{"×"}</button>
           </div>
         </div>
       )}

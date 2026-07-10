@@ -388,9 +388,25 @@ export const layer = Layer.effect(
           ? yield* provider.getModel(ag.model.providerID, ag.model.modelID)
           : ((yield* provider.getSmallModel(input.providerID)) ??
             (yield* provider.getModel(input.providerID, input.modelID)))
-      const msgs = onlySubtasks
+      const rawMsgs = onlySubtasks
         ? [{ role: "user" as const, content: subtasks.map((p) => p.prompt).join("\n") }]
         : yield* MessageV2.toModelMessagesEffect(context, mdl)
+      // Titles never need pixels. Strip media parts so the title request (a)
+      // can't race the vision describer / mix vision handling into the main
+      // model's turn, and (b) never carries an "ERROR: Cannot read image"
+      // replacement into the title prompt — which produced junk titles like
+      // "Image visibility check" for any chat that opened with an image.
+      const msgs = rawMsgs.map((m) => {
+        if (!Array.isArray(m.content)) return m
+        return {
+          ...m,
+          content: m.content.map((part) =>
+            typeof part === "object" && part !== null && ((part as { type?: string }).type === "image" || (part as { type?: string }).type === "file")
+              ? { type: "text" as const, text: "[attachment]" }
+              : part,
+          ),
+        } as typeof m
+      })
       const text = yield* llm
         .stream({
           agent: ag,
@@ -651,17 +667,25 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       visionModels?: { providerID: ProviderID; modelID: ModelID }[]
       visionModel?: { providerID: ProviderID; modelID: ModelID }
     }) {
-      // Explicit priority list wins: walk it top-to-bottom and use the first
-      // entry that resolves AND is actually vision-capable. Lets a user put a
-      // free describer first and a paid one only as a last resort. The legacy
-      // single visionModel setting is appended as the lowest explicit priority.
+      // Explicit priority list wins: walk it top-to-bottom. Prefer the first
+      // entry that resolves AND is declared vision-capable — but if none of
+      // the entries carry the `image` modality in config, TRUST the user's
+      // list anyway and use the first entry that resolves at all. (Requiring
+      // the declaration silently skipped every entry whose config lacked
+      // modalities and fell through to auto-pick, which chose an arbitrary
+      // model — the priority list appeared to be ignored.) The legacy single
+      // visionModel setting is appended as the lowest explicit priority.
       const priority = [...(input.visionModels ?? []), ...(input.visionModel ? [input.visionModel] : [])]
+      let firstResolved: Provider.Model | undefined
       for (const ref of priority) {
         const m = yield* provider
           .getModel(ref.providerID, ref.modelID)
           .pipe(Effect.catch(() => Effect.succeed(undefined)))
-        if (m && ProviderTransform.supportsImageInput(m)) return m
+        if (!m) continue
+        if (ProviderTransform.supportsImageInput(m)) return m
+        firstResolved ??= m
       }
+      if (firstResolved) return firstResolved
       // Auto-pick: any confidently-vision model from the configured providers,
       // preferring the active model's provider so credentials/latency match.
       const providers = yield* provider.list()
@@ -3098,8 +3122,16 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           // it can't see the screenshot. The swap is per-iteration; the next
           // iteration re-resolves from lastUser.model unless another image is
           // present, so a non-vision model still drives non-visual turns.
-          if (visionModel && !ProviderTransform.supportsImageInput(model)) {
-            const lastAssistantWithImgs = msgs.findLast(
+          if ((visionModel || visionModels?.length) && !ProviderTransform.supportsImageInput(model)) {
+            // Trigger scope: image-bearing tool results of the CURRENT turn
+            // only (assistant messages after the last user message). The old
+            // findLast over the WHOLE history meant a single ancient
+            // screenshot kept swapping every later iteration onto the vision
+            // model — the entire (large) conversation flowed into a usually
+            // smaller-context VL model and overflowed it. Old screenshots are
+            // served by describe-and-inject instead.
+            const lastUserIdxForSwap = msgs.findLastIndex((m) => m.info.role === "user")
+            const currentTurnImgs = msgs.slice(lastUserIdxForSwap + 1).find(
               (m) =>
                 m.info.role === "assistant" &&
                 m.parts.some(
@@ -3110,14 +3142,39 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                     p.state.attachments.some((a) => typeof a.mime === "string" && a.mime.startsWith("image/")),
                 ),
             )
-            if (lastAssistantWithImgs) {
-              const vision = yield* getModel(visionModel.providerID, visionModel.modelID, sessionID)
-              yield* slog.info("vision auto-swap", {
-                from: `${model.providerID}/${model.id}`,
-                to: `${vision.providerID}/${vision.id}`,
-                trigger: `${lastAssistantWithImgs.info.id}`,
-              })
-              model = vision
+            if (currentTurnImgs) {
+              // Honor the describer priority list for the swap target too —
+              // the single legacy setting was used even when the user had an
+              // ordered list configured.
+              const vision = yield* pickDescriber({ active: model, visionModels, visionModel }).pipe(
+                Effect.catch(() => Effect.succeed(undefined)),
+              )
+              // Overflow guard: swapping hands the ENTIRE conversation to the
+              // vision model. If the context is already too big for its
+              // window, skip the swap — describe-and-inject serves the image
+              // to the main model instead (tiny request, no overflow).
+              const curTokens = lastFinished
+                ? lastFinished.tokens.total ||
+                  lastFinished.tokens.input +
+                    lastFinished.tokens.output +
+                    lastFinished.tokens.cache.read +
+                    lastFinished.tokens.cache.write
+                : 0
+              const visWindow = vision?.limit.context ?? 0
+              if (vision && (visWindow === 0 || curTokens < visWindow * 0.7)) {
+                yield* slog.info("vision auto-swap", {
+                  from: `${model.providerID}/${model.id}`,
+                  to: `${vision.providerID}/${vision.id}`,
+                  trigger: `${currentTurnImgs.info.id}`,
+                })
+                model = vision
+              } else if (vision) {
+                yield* slog.info("vision auto-swap skipped: context exceeds vision model window", {
+                  tokens: curTokens,
+                  window: visWindow,
+                  vision: `${vision.providerID}/${vision.id}`,
+                })
+              }
             }
           }
           lastModelForPrune = model

@@ -113,19 +113,35 @@ export function WebAgentMode(props: Props) {
   // Keep the native BrowserView glued to the 4:3 frame. ResizeObserver only
   // fires on size changes, so also re-send on window resizes and layout
   // changes (sidebar/chat collapse) that shift the frame without resizing it.
+  const boundsRetryRef = useRef(0)
   const sendBounds = useCallback(() => {
-    const el = viewportRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    if (rect.width > 0 && rect.height > 0) {
-      window.mimo.webagentSetBounds({
-        x: Math.round(rect.left),
-        y: Math.round(rect.top),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-      })
+    if (boundsRetryRef.current) {
+      cancelAnimationFrame(boundsRetryRef.current)
+      boundsRetryRef.current = 0
     }
+    let tries = 0
+    const attempt = () => {
+      boundsRetryRef.current = 0
+      const el = viewportRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        window.mimo.webagentSetBounds({
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        })
+        return
+      }
+      // Layout not settled yet (frame just mounted, hero mid-dismiss, CSS
+      // still resolving): a silently-dropped zero-rect here was how the view
+      // could end up never positioned — retry until it has a real size.
+      if (tries++ < 60) boundsRetryRef.current = requestAnimationFrame(attempt)
+    }
+    attempt()
   }, [])
+  useEffect(() => () => cancelAnimationFrame(boundsRetryRef.current), [])
 
   // showHero in the deps is essential: the .webagent-frame element only exists
   // when the hero is NOT shown, so this must RE-RUN when the hero dismisses to
@@ -214,6 +230,10 @@ export function WebAgentMode(props: Props) {
     if (sid) {
       window.mimo.webagentAttachView(sid).catch(() => {})
       attachedRef.current = sid
+      // attach() applies the manager's last-stored bounds, which may predate
+      // the current layout (different session, resized window, hero state) —
+      // re-anchor to the live frame immediately.
+      sendBounds()
       window.mimo.webagentGetState(sid).then((st) => {
         setBrowserState(st)
         setUrlInput(st.url ?? "")
@@ -235,7 +255,7 @@ export function WebAgentMode(props: Props) {
         attachedRef.current = null
       }
     }
-  }, [activeSession?.sessionID])
+  }, [activeSession?.sessionID, sendBounds])
 
   useEffect(() => {
     if (prefill.text) {

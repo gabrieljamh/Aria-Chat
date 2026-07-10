@@ -820,8 +820,12 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       // setGlobalProvider REPLACES the provider entry, so always merge with
       // whatever already exists under this id — identity fields, saved API
       // key, and previously-added models all survive. (Adding a second model
-      // to the same id used to silently wipe the first.)
-      const existing = providers?.all.find((p) => p.id === providerID)
+      // to the same id used to silently wipe the first.) Merge against a
+      // FRESH fetch, not the possibly-stale `providers` prop: with parallel
+      // sessions editing config, a stale merge base can resurrect deleted
+      // models or drop concurrent edits.
+      const freshProviders = await window.mimo.getProviders().catch(() => null)
+      const existing = (freshProviders ?? providers)?.all.find((p) => p.id === providerID)
       const entry: ProviderConfigInput = {}
       const name = pname.trim() || existing?.name
       if (name) entry.name = name

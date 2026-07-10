@@ -163,7 +163,7 @@ export function App() {
     [agents],
   )
 
-  const { state, setBusy, setError, setCurrentSession, isSessionBusy, setBusyFor, setErrorFor } = useConversation(activeSession, activeDir, activeRef?.createdAt, (agent) => {
+  const { state, setBusy, setError, setCurrentSession, isSessionBusy, sessionBusyMap, setBusyFor, setErrorFor } = useConversation(activeSession, activeDir, activeRef?.createdAt, (agent) => {
     if (!agent || !isPrimaryAgent(agent)) return
     // Server-driven mode change (plan_enter/plan_exit, slash command) — record
     // it against the active session so it survives a switch, and mirror it into
@@ -280,40 +280,56 @@ export function App() {
   // Desktop notifications for: approval needed, question asked, idle after busy
   const prevPermCount = useRef(0)
   const prevQCount = useRef(0)
-  const prevBusy = useRef(state.busy)
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const busyRef = useRef(state.busy)
-  busyRef.current = state.busy
   const chatTitle = activeRef?.title ?? "Chat"
-  // Session the last observed busy state belonged to. A busy→idle transition
-  // caused by SWITCHING away from a busy session (its state resets to the new
-  // session's idle) is not "Aria finished" — firing the idle notification
-  // there was a false alarm while the old session kept working in background.
-  const prevBusySession = useRef<string | null>(activeSession)
+  // Idle-after-busy notifications, registry-driven: the per-session busy map
+  // covers EVERY session — background ones, and turns finishing while the
+  // user sits on a hero page (activeSession null) included. Session identity
+  // comes from the map key, so switching views can neither fake a completion
+  // (the old false-alarm bug) nor hide one (background finishes were silent).
+  const prevBusyMapRef = useRef<Record<string, boolean>>({})
+  const idleTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const busyMapRef = useRef(sessionBusyMap)
+  busyMapRef.current = sessionBusyMap
+  const sessionTitleFor = useCallback((sid: string) => {
+    const all = [...chatsRef.current, ...coworkRef.current, ...webAgentRef.current]
+    return all.find((r) => r.sessionID === sid)?.title ?? "Chat"
+  }, [])
   useEffect(() => {
-    const wasBusy = prevBusy.current
-    const wasSession = prevBusySession.current
-    prevBusy.current = state.busy
-    prevBusySession.current = activeSession
-    if (idleTimer.current) { clearTimeout(idleTimer.current); idleTimer.current = null }
-    if (wasBusy && !state.busy && wasSession === activeSession) {
-      const busyAtSchedule = busyRef.current
-      window.mimo.getSetting("notifIdle").then((enabled) => {
-        if (enabled === false) return
-        if (busyRef.current !== busyAtSchedule) return
-        window.mimo.getSetting("notifIdleDelay").then((delay) => {
-          if (busyRef.current !== busyAtSchedule) return
-          const ms = typeof delay === "number" ? delay * 1000 : 3000
-          const title = `Aria Chat \u2014 ${chatTitle}`
-          const body = "Aria has finished working on your request, come take a look!"
-          idleTimer.current = setTimeout(() => {
-            if (busyRef.current !== busyAtSchedule) return
-            window.mimo.notify(title, body)
-          }, ms)
-        })
-      })
+    const prev = prevBusyMapRef.current
+    prevBusyMapRef.current = sessionBusyMap
+    // A session that went busy again cancels its pending idle notification.
+    for (const sid of Object.keys(sessionBusyMap)) {
+      const t = idleTimersRef.current.get(sid)
+      if (t) {
+        clearTimeout(t)
+        idleTimersRef.current.delete(sid)
+      }
     }
-  }, [state.busy, chatTitle, activeSession])
+    const finished = Object.keys(prev).filter((sid) => prev[sid] && !sessionBusyMap[sid])
+    if (finished.length === 0) return
+    window.mimo.getSetting("notifIdle").then((enabled) => {
+      if (enabled === false) return
+      window.mimo.getSetting("notifIdleDelay").then((delay) => {
+        const ms = typeof delay === "number" ? delay * 1000 : 3000
+        for (const sid of finished) {
+          if (busyMapRef.current[sid]) continue // already running again
+          const old = idleTimersRef.current.get(sid)
+          if (old) clearTimeout(old)
+          idleTimersRef.current.set(
+            sid,
+            setTimeout(() => {
+              idleTimersRef.current.delete(sid)
+              if (busyMapRef.current[sid]) return
+              window.mimo.notify(
+                `Aria Chat - ${sessionTitleFor(sid)}`,
+                "Aria has finished working on your request, come take a look!",
+              )
+            }, ms),
+          )
+        }
+      })
+    })
+  }, [sessionBusyMap, sessionTitleFor])
   useEffect(() => {
     const len = state.permissions.length
     if (len > prevPermCount.current && len > 0) {
@@ -824,7 +840,13 @@ export function App() {
         return single?.providerID && single?.modelID ? [single] : []
       })()
       if (visionList.length) turnVisionModels = visionList
-      if (hasImageAtts || hasHistoryImagesRef.current) {
+      // Whole-turn redirect ONLY when the message being sent carries images.
+      // It previously also fired on hasHistoryImagesRef — once ANY image
+      // entered a conversation, every later turn ran on the vision model, and
+      // the growing main context eventually overflowed the (often smaller)
+      // vision model's window. History images are handled surgically
+      // server-side instead: per-iteration auto-swap + describe-and-inject.
+      if (hasImageAtts) {
         const on = await window.mimo.getSetting("visionRedirect").catch(() => null)
         if (on === true && visionList[0]) turnModel = visionList[0]
       } else if (atts.some((f) => f.mime?.startsWith("audio/"))) {
