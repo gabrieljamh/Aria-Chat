@@ -23,14 +23,25 @@ let trayBalloonShown = false
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
-  app.quit()
+  // Exit immediately. app.quit() schedules termination through the event loop,
+  // which on Windows can let the not-yet-ready process boot far enough to flash
+  // a window / splash before it dies — looks like a "restart" to the user and
+  // briefly binds the browser-server port. app.exit(0) terminates synchronously.
+  app.exit(0)
 } else {
-  app.on("second-instance", () => {
-    if (mainWindow) {
-      if (!mainWindow.isVisible()) mainWindow.show()
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
+  app.on("second-instance", (_e, argv) => {
+    // The trayed window may be hidden but is never destroyed on close, so
+    // mainWindow is still valid. Restore + focus it. If somehow null (e.g.
+    // macOS with no windows), recreate it.
+    if (!mainWindow) {
+      createWindow()
+      return
     }
+    if (!mainWindow.isVisible()) mainWindow.show()
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+    // Surface any URLs passed as command-line args (e.g. opening a mimo:// link).
+    void argv
   })
 }
 
