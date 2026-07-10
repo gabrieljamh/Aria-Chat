@@ -803,6 +803,40 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
   }
   for (const c of customModels) pushOpt(c.providerID, c.modelID, `${c.label || `${c.providerID} · ${c.modelID}`} (custom)`)
 
+  // Rebuild a CONFIG-shaped model entry from the server's /provider view.
+  // The server converts raw `modalities` into computed `capabilities` and
+  // never echoes modalities back — so a naive spread of the server view into
+  // entry.models silently STRIPPED modalities (and temperature/reasoning/
+  // tool_call) from every sibling model on each save. Vision models went
+  // "blind" after any unrelated provider edit.
+  const configModelFromServerView = (model: ProviderModel): { name?: string } & Record<string, unknown> => {
+    const entry: { name?: string } & Record<string, unknown> = { name: model.name }
+    const caps = model.capabilities
+    if (caps) {
+      if (typeof caps.temperature === "boolean") entry.temperature = caps.temperature
+      if (typeof caps.reasoning === "boolean") entry.reasoning = caps.reasoning
+      if (typeof caps.toolcall === "boolean") entry.tool_call = caps.toolcall
+      if (typeof caps.attachment === "boolean") entry.attachment = caps.attachment
+      const input = Object.entries(caps.input ?? {}).filter(([, v]) => v === true).map(([k]) => k)
+      const output = Object.entries(caps.output ?? {}).filter(([, v]) => v === true).map(([k]) => k)
+      if (input.length || output.length) {
+        entry.modalities = { input: input.length ? input : ["text"], output: output.length ? output : ["text"] }
+      }
+    }
+    const limit: Record<string, number> = {}
+    if (model.limit?.context) limit.context = model.limit.context
+    if (model.limit?.input) limit.input = model.limit.input
+    if (model.limit?.output) limit.output = model.limit.output
+    if (Object.keys(limit).length) entry.limit = limit
+    const cost: Record<string, number> = {}
+    if (model.cost?.input) cost.input = model.cost.input
+    if (model.cost?.output) cost.output = model.cost.output
+    if (model.cost?.cache?.read) cost.cache_read = model.cost.cache.read
+    if (model.cost?.cache?.write) cost.cache_write = model.cost.cache.write
+    if (Object.keys(cost).length) entry.cost = cost
+    return entry
+  }
+
   const saveProvider = async () => {
     const providerID = pid.trim()
     const mId = modelId.trim()
@@ -844,8 +878,7 @@ export function SettingsModal({ initialPage, providers, model, directory, onMode
       ]
       const mergedModels: NonNullable<ProviderConfigInput["models"]> = {}
       for (const [key, model] of Object.entries(existing?.models ?? {})) {
-        const { status: _status, ...rest } = model as unknown as { status?: string } & Record<string, unknown>
-        mergedModels[key] = { ...rest, name: (model as { name?: string }).name }
+        mergedModels[key] = configModelFromServerView(model)
       }
       mergedModels[mId] = {
         name: pname.trim() ? `${pname.trim()} ${mId}` : mId,
@@ -1029,11 +1062,12 @@ const saveEditModel = async () => {
       if (editCacheWrite.trim()) cost.cache_write = parseFloat(editCacheWrite.trim())
       if (Object.keys(cost).length) modelEntry.cost = cost
 
-      // Merge with existing models, preserving other models
+      // Merge with existing models, preserving other models — via the
+      // config-shape reconstruction (the raw server view has no `modalities`
+      // field, so spreading it stripped sibling models' modalities on save).
       const mergedModels: Record<string, { name?: string } & Record<string, unknown>> = {}
       for (const [key, model] of Object.entries(existingModels)) {
-        const { status, ...rest } = model as unknown as { status?: string } & Record<string, unknown>
-        mergedModels[key] = { ...rest, name: model.name }
+        mergedModels[key] = configModelFromServerView(model)
       }
       mergedModels[modelID] = modelEntry as { name?: string } & Record<string, unknown>
       entry.models = mergedModels
