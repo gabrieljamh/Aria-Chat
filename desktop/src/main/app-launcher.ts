@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process"
 import { basename } from "node:path"
 import { existsSync } from "node:fs"
+import { shell } from "electron"
 import { getStore } from "./store"
 import type { ExecuteApp } from "@shared/types"
 
@@ -40,6 +41,26 @@ function parseArgs(input?: string): string[] {
   return out
 }
 
+/** True for protocol URIs handled by the OS shell (steam://, mailto:, tel:, etc.). */
+export function isProtocolUri(s: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(s) && !/^[a-z]:[\\/]/i.test(s)
+}
+
+/**
+ * Launch a registered protocol-URI app via the OS shell. Steam games registered
+ * as `steam://run/<appid>` shortcuts are the canonical case: there's no .exe to
+ * spawn, so `shell.openExternal` delegates to the OS registered handler.
+ */
+export async function launchProtocol(appEntry: ExecuteApp): Promise<{ ok: boolean; error?: string }> {
+  if (!appEntry?.path || !isProtocolUri(appEntry.path)) return { ok: false, error: "Not a protocol URI" }
+  try {
+    await shell.openExternal(appEntry.path)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 /**
  * Launch a registered app detached (so it outlives the turn / the scheduler
  * tick). Cross-platform: macOS `.app` bundles go through `open -a`; everything
@@ -48,6 +69,9 @@ function parseArgs(input?: string): string[] {
  */
 export function launchApp(appEntry: ExecuteApp, extraArgs?: string): { ok: boolean; pid?: number; error?: string } {
   if (!appEntry?.path) return { ok: false, error: "App has no path configured" }
+  if (isProtocolUri(appEntry.path)) {
+    return { ok: false, error: "Use launchProtocol() for protocol URIs" }
+  }
   if (!existsSync(appEntry.path)) return { ok: false, error: `Path does not exist: ${appEntry.path}` }
 
   const args = [...parseArgs(appEntry.args), ...parseArgs(extraArgs)]

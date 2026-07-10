@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto"
 import { browserManager } from "./browser-manager"
 import { DOM_EXTRACTION_SCRIPT } from "./browser-inject"
 import { basename } from "node:path"
-import { getRegisteredApps, resolveApp, launchApp } from "./app-launcher"
+import { getRegisteredApps, resolveApp, launchApp, isProtocolUri, launchProtocol } from "./app-launcher"
 
 // Resolve a DOM element (tagged by browser_getdom as data-webagent-id) to the
 // CSS-pixel center of its bounding box — the same coordinate space clicks and
@@ -162,7 +162,9 @@ async function handleRunApp(res: ServerResponse, body: any) {
       return
     }
   }
-  const r = launchApp(app, body.extraArgs)
+  const r = isProtocolUri(app.path)
+    ? await launchProtocol(app)
+    : launchApp(app, body.extraArgs)
   sendJson(res, 200, { ...r, app: { id: app.id, name: app.name } })
 }
 
