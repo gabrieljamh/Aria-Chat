@@ -398,6 +398,49 @@ export function Composer(props: Props) {
   // base64 data URL in renderer memory before anything could refuse it.
   const MAX_ATTACH_BYTES = 25 * 1024 * 1024
 
+  // Downscale/re-encode large images before attaching. Full-resolution
+  // screenshots ride the request as megabytes of base64 — slow through local
+  // bridges, wasteful for the model (vision encoders downscale anyway), and
+  // heavy in stored history. ~1600px JPEG is plenty for OCR/UI reading.
+  const IMG_COMPRESS_THRESHOLD = 400 * 1024
+  const IMG_MAX_DIM = 1600
+  const maybeCompressImage = (dataUrl: string, mime: string, sizeHint: number): Promise<{ url: string; mime: string }> =>
+    new Promise((resolve) => {
+      // GIFs (animation) and small images pass through untouched.
+      if (mime === "image/gif" || sizeHint < IMG_COMPRESS_THRESHOLD) {
+        resolve({ url: dataUrl, mime })
+        return
+      }
+      const img = new Image()
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, IMG_MAX_DIM / Math.max(img.width, img.height))
+          const w = Math.max(1, Math.round(img.width * scale))
+          const h = Math.max(1, Math.round(img.height * scale))
+          const canvas = document.createElement("canvas")
+          canvas.width = w
+          canvas.height = h
+          const cx = canvas.getContext("2d")
+          if (!cx) {
+            resolve({ url: dataUrl, mime })
+            return
+          }
+          // White backing: JPEG has no alpha; transparent PNGs would go black.
+          cx.fillStyle = "#ffffff"
+          cx.fillRect(0, 0, w, h)
+          cx.drawImage(img, 0, 0, w, h)
+          const out = canvas.toDataURL("image/jpeg", 0.85)
+          // Only keep the re-encode when it actually helps.
+          if (out.length < dataUrl.length) resolve({ url: out, mime: "image/jpeg" })
+          else resolve({ url: dataUrl, mime })
+        } catch {
+          resolve({ url: dataUrl, mime })
+        }
+      }
+      img.onerror = () => resolve({ url: dataUrl, mime })
+      img.src = dataUrl
+    })
+
   const fileToAttachment = (file: File) =>
     new Promise<FileAttachment>((resolve, reject) => {
       if (file.size > MAX_ATTACH_BYTES) {
@@ -406,7 +449,17 @@ export function Composer(props: Props) {
       }
       const r = new FileReader()
       const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
-      r.onload = () => resolve({ filename: file.name, mime: file.type || EXT_MIME[ext] || "application/octet-stream", url: r.result as string })
+      r.onload = () => {
+        const mime = file.type || EXT_MIME[ext] || "application/octet-stream"
+        const url = r.result as string
+        if (mime.startsWith("image/")) {
+          maybeCompressImage(url, mime, file.size).then(({ url: outUrl, mime: outMime }) =>
+            resolve({ filename: file.name, mime: outMime, url: outUrl }),
+          )
+          return
+        }
+        resolve({ filename: file.name, mime, url })
+      }
       r.onerror = () => reject(new Error("read failed"))
       r.readAsDataURL(file)
     })
