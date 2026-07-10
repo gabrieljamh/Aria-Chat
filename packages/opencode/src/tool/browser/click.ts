@@ -17,7 +17,7 @@ export const BrowserClick = Tool.define(
 
     return {
       description:
-        "Click on the page. Two ways to target, pick whichever fits: (1) elementId from browser_getdom — best when the page has meaningful DOM; or (2) x,y coordinates read from a browser_screenshot — best for canvas/visual pages, where the screenshot's pixels map 1:1 to these coordinates. Provide elementId OR both x and y. Coordinates are viewport-relative, so take a fresh browser_screenshot right before using them (don't reuse stale coordinates after scrolling/navigation). After a click that may navigate, re-run browser_getdom or browser_screenshot to refresh.",
+        "Click on the page. Two ways to target, pick whichever fits: (1) elementId from browser_getdom — best when the page has meaningful DOM; or (2) x,y coordinates read from a browser_screenshot — best for canvas/visual pages, where the screenshot's pixels map 1:1 to these coordinates. Provide elementId OR both x and y. Coordinates are viewport-relative, so take a fresh browser_screenshot right before using them (don't reuse stale coordinates after scrolling/navigation). After a click that may navigate, re-run browser_getdom or browser_screenshot to refresh. A red crosshair marker is painted at the click location and persists until the next browser_screenshot — so the next screenshot shows where the click landed, letting you verify coordinate accuracy and self-diagnose misfired clicks.",
       parameters: paramSchema,
       execute: (params: z.infer<typeof paramSchema>, ctx) =>
         Effect.gen(function* () {

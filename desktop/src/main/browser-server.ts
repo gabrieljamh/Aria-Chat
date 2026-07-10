@@ -25,6 +25,52 @@ async function elementCenter(view: BrowserView, elementId: string): Promise<{ x:
   )
 }
 
+// Click-marker overlay: paints a fixed-position crosshair at the page-CSS coords
+// of the most recent browser_click / browser_drag. The marker persists in the
+// page DOM so it shows up in the NEXT browser_screenshot — letting the model
+// see exactly where its (x,y) landed and self-diagnose misfired clicks. The
+// screenshot handler clears ALL markers AFTER capturing them, so each screenshot
+// shows the clicks since the last screenshot and the next one starts clean.
+let markerSeq = 0
+async function injectClickMarker(view: BrowserView, pageCssX: number, pageCssY: number, label?: string) {
+  const id = `aria-click-marker-${markerSeq++}`
+  await view.webContents.executeJavaScript(
+    `(() => {
+      const m = document.createElement('div');
+      m.id = ${JSON.stringify(id)};
+      m.className = 'aria-click-marker';
+      m.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none;';
+      const markerX = String(${pageCssX});
+      const markerY = String(${pageCssY});
+      m.style.left = markerX + 'px';
+      m.style.top = markerY + 'px';
+      const outer = document.createElement('div');
+      outer.style.cssText = 'position:absolute;transform:translate(-50%,-50%);width:40px;height:40px;border-radius:50%;background:rgba(232,17,35,0.25);border:2px solid #e81123;box-shadow:0 0 0 2px rgba(255,255,255,0.8),0 0 12px rgba(232,17,35,0.6);';
+      m.appendChild(outer);
+      const crossH = document.createElement('div');
+      crossH.style.cssText = 'position:absolute;transform:translate(-50%,-50%);width:24px;height:2px;background:#e81123;';
+      m.appendChild(crossH);
+      const crossV = document.createElement('div');
+      crossV.style.cssText = 'position:absolute;transform:translate(-50%,-50%);width:2px;height:24px;background:#e81123;';
+      m.appendChild(crossV);
+      const labelText = ${JSON.stringify(label ?? "")};
+      if (labelText) {
+        const t = document.createElement('div');
+        t.style.cssText = 'position:absolute;transform:translate(-50%,-50%);top:30px;font:11px/1.4 -apple-system,Segoe UI,sans-serif;color:#fff;background:rgba(232,17,35,0.9);padding:2px 6px;border-radius:3px;white-space:nowrap;';
+        t.textContent = labelText;
+        m.appendChild(t);
+      }
+      document.documentElement.appendChild(m);
+    })()`,
+  ).catch(() => {})
+}
+
+async function clearClickMarkers(view: BrowserView) {
+  await view.webContents
+    .executeJavaScript(`(() => { document.querySelectorAll('.aria-click-marker').forEach((el) => el.remove()); return null; })()`)
+    .catch(() => {})
+}
+
 export function startBrowserServer(): Promise<{ url: string; port: number; secret: string }> {
   return new Promise((resolve, reject) => {
     const secret = randomBytes(24).toString("hex")
@@ -208,6 +254,11 @@ async function handleScreenshot(res: ServerResponse, sessionId: string) {
         : image
     const dataUrl = normalized.toDataURL()
     const size = normalized.getSize()
+    // Clear click markers AFTER capturing — they were painted by prior
+    // browser_click / browser_drag calls so the model could see where its
+    // coordinates landed. Clearing here means the NEXT screenshot starts clean
+    // (no stale markers), but THIS screenshot shows the markers for diagnosis.
+    await clearClickMarkers(view)
     sendJson(res, 200, { dataUrl, width: size.width, height: size.height, dpr, zoom })
   } catch (e) {
     sendJson(res, 500, { error: e instanceof Error ? e.message : String(e) })
@@ -266,6 +317,11 @@ async function handleClick(res: ServerResponse, sessionId: string, body: any) {
   }
 
   browserManager.sendClick(view, x, y, body.button)
+  // Paint a persistent marker at the click location so the next screenshot shows
+  // exactly where the (x,y) landed. Input events use view-DIP; the marker lives
+  // in page-CSS space, so divide by zoom to convert back.
+  const zoom = view.webContents.getZoomFactor() || 1
+  await injectClickMarker(view, (x as number) / zoom, (y as number) / zoom, `click ${body.button ?? "left"}`)
   sendJson(res, 200, { ok: true, navigated: false })
 }
 
@@ -282,6 +338,7 @@ async function handleType(res: ServerResponse, sessionId: string, body: any) {
       if (coords) {
         const zoom = view.webContents.getZoomFactor() || 1
         browserManager.sendClick(view, coords.x * zoom, coords.y * zoom)
+        await injectClickMarker(view, coords.x, coords.y, "type-focus")
         await new Promise((r) => setTimeout(r, 80))
       }
     } catch {}
@@ -358,6 +415,10 @@ async function handleDrag(res: ServerResponse, sessionId: string, body: any) {
   }
 
   await browserManager.sendDrag(view, fromX, fromY, toX, toY, body.duration ?? 500)
+  // Mark both drag endpoints so the next screenshot shows the trajectory. Drag
+  // coords are view-DIP; convert to page-CSS for the marker.
+  await injectClickMarker(view, (fromX as number) / zoom, (fromY as number) / zoom, "drag start")
+  await injectClickMarker(view, (toX as number) / zoom, (toY as number) / zoom, "drag end")
   sendJson(res, 200, { ok: true })
 }
 
