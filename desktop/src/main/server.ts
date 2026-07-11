@@ -7,6 +7,7 @@ import type { ServerStatus } from "@shared/types"
 import { sanitizeGlobalConfig } from "./ipc"
 import { getStore } from "./store"
 import { getBrowserServerUrl } from "./index"
+import { dlog } from "./logger"
 
 /**
  * Manages the MiMo Code local server: either attaches to an already-running
@@ -135,12 +136,14 @@ export class ServerManager extends EventEmitter {
   private async restart(code: number | null, signal: NodeJS.Signals | null) {
     const detail = `code ${code}${signal ? `, signal ${signal}` : ""}`
     if (Date.now() - this.lastStartAt < RESTART_COOLDOWN_MS) {
+      dlog.error("server", "crash loop detected — giving up on automatic restarts", { detail })
       this.setStatus({
         state: "error",
         message: `MiMo Code server keeps exiting (${detail}). Giving up after an automatic restart.`,
       })
       return
     }
+    dlog.warn("server", "attempting automatic restart", { detail })
     this.handle = null
     this.proc = null
     this.intentionalStop = false
@@ -149,7 +152,40 @@ export class ServerManager extends EventEmitter {
       await this.bringUp(this.lastOpts.port ?? 0)
       this.emit("respawn")
     } catch (err) {
+      dlog.error("server", "automatic restart failed", { error: String((err as Error)?.message ?? err) })
       this.setStatus({ state: "error", message: `Automatic restart failed: ${String((err as Error)?.message ?? err)}` })
+    }
+  }
+
+  /**
+   * On-demand recovery: called when a request hits a connection failure
+   * (ECONNREFUSED etc.) while we believe we spawned a server. Covers the gap
+   * the automatic restart leaves behind — after a crash loop it gives up and
+   * the user is stranded with endless "fetch failed" until they restart the
+   * whole app. A revive is only attempted from a settled bad state, never
+   * while starting/stopping, and is rate-limited by the same cooldown.
+   */
+  private reviveInFlight = false
+  async revive(): Promise<boolean> {
+    if (this.reviveInFlight || this.intentionalStop) return false
+    if (this.status.state === "starting") return false
+    if (this.proc && this.proc.exitCode === null) return false // child still alive
+    if (this.handle && !this.handle.spawned) return false // attached server: not ours to spawn
+    this.reviveInFlight = true
+    dlog.warn("server", "revive requested after connection failure")
+    try {
+      this.handle = null
+      this.proc = null
+      this.setStatus({ state: "starting" })
+      await this.bringUp(this.lastOpts.port ?? 0)
+      this.emit("respawn")
+      return true
+    } catch (err) {
+      dlog.error("server", "revive failed", { error: String((err as Error)?.message ?? err) })
+      this.setStatus({ state: "error", message: `Server revive failed: ${String((err as Error)?.message ?? err)}` })
+      return false
+    } finally {
+      this.reviveInFlight = false
     }
   }
 
@@ -447,6 +483,7 @@ export class ServerManager extends EventEmitter {
     })
     this.proc = proc
 
+    dlog.info("server", "spawning", { command, args, cwd })
     return new Promise<string>((resolvePromise, reject) => {
       let buffer = ""
       let settled = false
@@ -464,6 +501,10 @@ export class ServerManager extends EventEmitter {
 
       const onData = (chunk: Buffer) => {
         buffer += chunk.toString()
+        // Rolling tail: the server logs for its whole lifetime through this
+        // handler — unbounded growth is a slow leak, and for crash forensics
+        // only the tail matters anyway.
+        if (buffer.length > 16_384) buffer = buffer.slice(-16_384)
         if (settled) return
         // Match only on COMPLETE lines (up to the last newline). A pipe can split
         // a chunk mid-line, and matching the partial buffer captured a truncated
@@ -476,6 +517,7 @@ export class ServerManager extends EventEmitter {
         if (match) {
           settled = true
           clearTimeout(timeout)
+          dlog.info("server", "listening", { url: match[1] })
           resolvePromise(match[1].replace(/\/$/, ""))
         }
       }
@@ -485,6 +527,14 @@ export class ServerManager extends EventEmitter {
 
       proc.on("exit", (code, signal) => {
         this.handle = null
+        // Always record WHY the server went away — the tail of its output is
+        // the single most useful artifact when a user reports "fetch failed".
+        dlog[this.intentionalStop ? "info" : "error"]("server", "server exited", {
+          code,
+          signal,
+          intentional: this.intentionalStop,
+          tail: buffer.slice(-3000),
+        })
         if (!settled) {
           // Died before it ever announced a listening URL.
           settled = true

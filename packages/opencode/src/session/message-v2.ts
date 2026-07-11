@@ -405,6 +405,10 @@ export const User = Base.extend({
   system: z.string().optional(),
   tools: z.record(z.string(), z.boolean()).optional(),
   provenance: Provenance.optional(),
+  // True when the client redirected this whole turn to a vision model because
+  // the message carried image attachments (desktop "visionRedirect" setting).
+  // Lets the UI badge the resulting assistant messages with "Vision by X".
+  visionRedirect: z.boolean().optional(),
 }).meta({
   ref: "UserMessage",
 })
@@ -479,6 +483,24 @@ export const Assistant = Base.extend({
   structured: z.any().optional(),
   variant: z.string().optional(),
   finish: z.string().optional(),
+  // "providerID/modelID" of the vision model that actually saw this turn's
+  // images when the active model couldn't: set for client whole-turn
+  // redirects, mid-turn auto-swaps, and describe-and-inject fallbacks.
+  // Absent for normal turns. Drives the "Vision by X" badge in the UI.
+  visionBy: z.string().optional(),
+  // Full describer outputs from the describe-and-inject fallback — what the
+  // vision model actually reported seeing for each image. Lets users debug
+  // vision quality from the UI (collapsible "Vision output" block).
+  visionOutputs: z
+    .array(
+      z.object({
+        filename: z.string().optional(),
+        // "attachment" (user-attached image) or "screenshot" (tool result).
+        source: z.string().optional(),
+        description: z.string(),
+      }),
+    )
+    .optional(),
 }).meta({
   ref: "AssistantMessage",
 })

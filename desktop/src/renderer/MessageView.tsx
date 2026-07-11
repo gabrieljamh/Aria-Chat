@@ -5,7 +5,7 @@ import { WriteView } from "./WriteView"
 import { ReadView } from "./ReadView"
 import type { MessageWithParts, Part } from "@shared/types"
 import type { ConvMessage, ActorState } from "./useConversation"
-import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork, IconChevronDown, IconChevronRight, IconCopy } from "./Icons"
+import { IconCheck, IconFile, IconRefresh, IconEdit, IconTrash, IconFork, IconChevronDown, IconChevronRight, IconCopy, IconEye } from "./Icons"
 import { Markdown } from "./Markdown"
 
 interface ContextMenuState {
@@ -102,6 +102,37 @@ function CollapsibleTranscript({ name, text }: { name: string; text: string }) {
       </div>
       <div className="reasoning-content" style={{ maxHeight: open ? "none" : 0, opacity: open ? 1 : 0 }}>
         <Markdown>{text}</Markdown>
+      </div>
+    </div>
+  )
+}
+
+// Collapsible "Vision output" debug block: the full describer output from the
+// describe-and-inject fallback (what the vision model actually reported
+// seeing), persisted server-side as info.visionOutputs. Lets users verify the
+// vision pipeline instead of guessing from the main model's behavior.
+function VisionOutputBlock({ visionBy, outputs }: {
+  visionBy: string | null
+  outputs: { filename?: string; source?: string; description: string }[]
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="reasoning vision-output-block">
+      <div className="reasoning-header" onClick={() => setOpen(!open)}>
+        {open ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
+        <IconEye size={12} />
+        <span>Vision output{visionBy ? ` · ${visionBy}` : ""} ({outputs.length})</span>
+      </div>
+      <div className="reasoning-content" style={{ maxHeight: open ? "none" : 0, opacity: open ? 1 : 0 }}>
+        {outputs.map((o, i) => (
+          <div key={i} className="vision-output-item">
+            <div className="vision-output-name">
+              {o.source === "screenshot" ? "Screenshot" : "Attachment"}
+              {o.filename ? ` · ${o.filename}` : ""}
+            </div>
+            <Markdown>{o.description}</Markdown>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -403,6 +434,15 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
   const { onDelete, onRegen, onContinueFrom } = actions
   const id = msg.info.id
   const isUser = msg.info.role === "user"
+  // "Vision by X" provenance: set server-side when this turn's images were
+  // served by a vision helper (whole-turn redirect, mid-turn auto-swap, or
+  // describe-and-inject fallback) instead of the active model.
+  const visionBy = typeof msg.info.visionBy === "string" ? msg.info.visionBy : null
+  const visionBadge = visionBy ? (
+    <span className="msg-vision-badge" title={`Vision by ${visionBy}`}>
+      <IconEye size={12} />
+    </span>
+  ) : null
   const [text, setText] = useState("")
   const [copied, setCopied] = useState(false)
   const taRef = React.useRef<HTMLTextAreaElement>(null)
@@ -474,13 +514,17 @@ function MsgFooter({ msg, editMode, onStartEdit, onSaveEdit, onCancelEdit, actio
         )
       ) : (
         busy ? (
-          <span className="msg-role-badge">Aria</span>
+          <>
+            {visionBadge}
+            <span className="msg-role-badge">Aria</span>
+          </>
         ) : (
           <>
             <button className="msg-act" title="Regenerate" onClick={() => onRegen?.(id)}><IconRefresh size={13} /> Regen</button>
             <button className="msg-act" title="Return to this message" onClick={() => onContinueFrom?.(id)}><IconFork size={13} /> Return</button>
             <button className="msg-act" title="Delete message" onClick={() => onDelete?.(id)}><IconTrash size={13} /> Delete</button>
             <button className="msg-act" title="Copy message" onClick={copyMessage}>{copied ? <IconCheck size={13} /> : <IconCopy size={13} />} {copied ? "Copied" : "Copy"}</button>
+            {visionBadge}
             <span className="msg-role-badge">Aria</span>
           </>
         )
@@ -624,6 +668,12 @@ export const MessageView = React.memo(function MessageView({ message, showDots, 
         ) : (
           <>
             {message.parts.map((p) => <PartView key={p.id} part={p} actorVersion={_actorVersion} actors={_actors} />)}
+            {Array.isArray(message.info.visionOutputs) && (message.info.visionOutputs as any[]).length > 0 && (
+              <VisionOutputBlock
+                visionBy={typeof message.info.visionBy === "string" ? message.info.visionBy : null}
+                outputs={message.info.visionOutputs as { filename?: string; source?: string; description: string }[]}
+              />
+            )}
             {extractErrorMessage(message.info) && (
               <div className="error-message">
                 {extractErrorMessage(message.info)}

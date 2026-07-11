@@ -55,9 +55,30 @@ function showMainWindow() {
   mainWindow.focus()
 }
 
+// Tray uses the minimalist white UI logo (rendered from aria-logo.svg at
+// 16/24/32px, transparent background) instead of the colored exe ICO — tray
+// icons should be flat monochrome glyphs, not full app icons. DIP-aware:
+// multiple representations let Windows/Linux pick the right size per DPI.
+function resolveTrayIcon() {
+  const dir = app.isPackaged ? join(__dirname, "../shared/img/tray") : join(__dirname, "../../src/shared/img/tray")
+  const icon = nativeImage.createEmpty()
+  for (const [size, factor] of [
+    [16, 1],
+    [24, 1.5],
+    [32, 2],
+  ] as const) {
+    const img = nativeImage.createFromPath(join(dir, `aria-tray-${size}.png`))
+    if (!img.isEmpty()) icon.addRepresentation({ scaleFactor: factor, buffer: img.toPNG() })
+  }
+  if (icon.isEmpty()) return resolveIcon() // asset missing — fall back to the app icon
+  // macOS: template images adapt to menu-bar theme (alpha channel only).
+  if (process.platform === "darwin") icon.setTemplateImage(true)
+  return icon
+}
+
 function createTray() {
   if (tray) return
-  tray = new Tray(resolveIcon())
+  tray = new Tray(resolveTrayIcon())
   tray.setToolTip("Aria — running in background")
   tray.setContextMenu(
     Menu.buildFromTemplate([

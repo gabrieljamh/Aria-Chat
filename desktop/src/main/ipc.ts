@@ -24,6 +24,7 @@ import { Scheduler, loadRules, saveRules } from "./scheduler"
 import { allowPreviewRoot } from "./preview"
 import { browserManager } from "./browser-manager"
 import { resolveApp, launchApp } from "./app-launcher"
+import { dlog, isConnectionFailure } from "./logger"
 import type { AuthInfo, BashInteractiveReply, BashInteractiveRequest, CommandInput, ConfigPatch, McpConfig, PermissionReply, PromptInput, ServerStatus, SkillInfo, SessionInfoFull, ProjectInfo, SchedulerRule } from "@shared/types"
 
 // Sanitize config: remove undefined values from cost/limit objects that cause validation errors
@@ -244,13 +245,24 @@ export function registerIpc(getWindow: () => BrowserWindow | null) {
     await bootPromise
     return ensureClient().getSubagentMessages(sessionID, agentID, directory)
   })
+  // Send paths get connection-failure recovery: if the spawned server died
+  // (crash loop gave up, AV killed the process, ...), every send fails with
+  // "fetch failed" forever. Kick a background revive so the NEXT send works,
+  // while still surfacing the (now cause-enriched) error for this one.
+  const reviveOnConnFailure = (err: unknown) => {
+    if (isConnectionFailure(err)) {
+      dlog.warn("ipc", "send failed with connection failure — scheduling server revive")
+      void server.revive()
+    }
+    throw err
+  }
   ipcMain.handle("prompt", async (_e, input: PromptInput) => {
     await bootPromise
-    return ensureClient().prompt(input)
+    return ensureClient().prompt(input).catch(reviveOnConnFailure)
   })
   ipcMain.handle("send-command", async (_e, input: CommandInput) => {
     await bootPromise
-    return ensureClient().sendCommand(input)
+    return ensureClient().sendCommand(input).catch(reviveOnConnFailure)
   })
   ipcMain.handle("abort", async (_e, sessionID: string, directory?: string) => {
     await bootPromise
@@ -904,6 +916,14 @@ ipcMain.handle("get-todos", async (_e, sessionID: string, directory?: string) =>
       startInTray: openAtLogin && getStore().get("startInTray") === true,
     }
   }
+  // Reveal the desktop debug log (failed requests + error bodies, server
+  // lifecycle) so users can attach it to bug reports.
+  ipcMain.handle("open-debug-log", () => {
+    const p = dlog.path()
+    if (p && fs.existsSync(p)) shell.showItemInFolder(p)
+    return p
+  })
+
   // Manual "Check now" from Settings. Returns a short status string.
   ipcMain.handle("update-check-now", async () => {
     const { checkReleaseUpdate, spawnDevUpdater } = await import("./update")

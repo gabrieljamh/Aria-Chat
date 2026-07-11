@@ -507,6 +507,10 @@ export interface PromptInput {
   // Ordered priority list of describer models for the image-describe fallback
   // (first available/vision-capable wins). Set from the Settings vision list.
   visionModels?: ModelRef[]
+  // True when sendPrompt redirected this whole turn to a vision model because
+  // the message carried images. Persisted server-side so the UI can badge the
+  // turn's assistant messages "Vision by X".
+  visionRedirected?: boolean
   agent?: string
   directory?: string
   files?: FileAttachment[]
@@ -658,6 +662,8 @@ export interface MimoApi {
   setStartupSettings(patch: { openAtLogin?: boolean; startInTray?: boolean }): Promise<StartupSettings>
   /** Run an update check now; resolves to a short status string. */
   updateCheckNow(): Promise<string>
+  /** Reveal the desktop debug log in the file manager; resolves to its path. */
+  openDebugLog(): Promise<string | null>
   gitPush(opts: { directory: string; remote?: string; branch?: string; force?: boolean }): Promise<string>
 
   // MCP connectors

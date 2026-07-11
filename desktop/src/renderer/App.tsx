@@ -855,9 +855,16 @@ export function App() {
       // the growing main context eventually overflowed the (often smaller)
       // vision model's window. History images are handled surgically
       // server-side instead: per-iteration auto-swap + describe-and-inject.
+      let visionRedirected = false
       if (hasImageAtts) {
         const on = await window.mimo.getSetting("visionRedirect").catch(() => null)
-        if (on === true && visionList[0]) turnModel = visionList[0]
+        if (on === true && visionList[0]) {
+          turnModel = visionList[0]
+          // Only counts as a redirect when the turn actually changed model —
+          // if the user was already ON the vision model, no badge is warranted.
+          visionRedirected =
+            !model || model.providerID !== visionList[0].providerID || model.modelID !== visionList[0].modelID
+        }
       } else if (atts.some((f) => f.mime?.startsWith("audio/"))) {
         const on = await window.mimo.getSetting("audioRedirect").catch(() => null)
         const am = (await window.mimo.getSetting("audioModel").catch(() => null)) as ModelRef | null
@@ -913,6 +920,7 @@ export function App() {
           model: turnModel ?? undefined,
           visionModel: turnVisionModel,
           visionModels: turnVisionModels,
+          visionRedirected: visionRedirected || undefined,
           // Never let the webagent-only agent leak into a chat/cowork turn.
           agent: turnAgent,
           directory: finalRef.directory,

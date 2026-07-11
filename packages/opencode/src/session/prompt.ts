@@ -707,9 +707,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       agent: Agent.Info
     }) {
       // Confidently-vision models read images directly — nothing to inject.
-      if (ProviderTransform.supportsImageInput(input.model)) return input.messages
+      if (ProviderTransform.supportsImageInput(input.model)) return { messages: input.messages, describedBy: undefined, outputs: undefined }
       const userMsg = input.messages.findLast((m) => m.info.role === "user")
-      if (!userMsg) return input.messages
+      if (!userMsg) return { messages: input.messages, describedBy: undefined, outputs: undefined }
       const images = userMsg.parts.filter(
         (p): p is MessageV2.FilePart =>
           p.type === "file" &&
@@ -750,7 +750,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         }
       }
 
-      if (images.length === 0 && toolImages.length === 0) return input.messages
+      if (images.length === 0 && toolImages.length === 0) return { messages: input.messages, describedBy: undefined, outputs: undefined }
 
       yield* elog.info("vision-describe: active model can't read images; describing", {
         model: `${input.model.providerID}/${input.model.id}`,
@@ -766,12 +766,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       yield* elog.info("vision-describe: describer resolved", {
         describer: describer ? `${describer.providerID}/${describer.id}` : "none",
       })
-      if (!describer) return input.messages
+      if (!describer) return { messages: input.messages, describedBy: undefined, outputs: undefined }
 
       // Described images are REPLACED by their description text (not sent as
       // raw image_url) — a text-only OpenAI-compatible endpoint typically 400s
       // on an image it can't read, so we hand it the description instead.
       const replacements = new Map<string, MessageV2.TextPart>()
+      // Full describer outputs, surfaced on the assistant message so users can
+      // debug what the vision model actually saw ("Vision output" block).
+      const outputs: { filename?: string; source?: string; description: string }[] = []
 
       // Minimal, clean system: reuse the hidden `title` agent's plumbing but
       // swap its prompt for the describe prompt (skips memory instructions).
@@ -840,6 +843,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       for (const part of images) {
         const desc = yield* describeDataUrl(part.url)
         if (desc) {
+          outputs.push({ filename: part.filename, source: "attachment", description: desc })
           replacements.set(part.id, {
             id: PartID.ascending(),
             messageID: userMsg.info.id,
@@ -858,6 +862,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       for (const t of toolImages) {
         const desc = yield* describeDataUrl(t.att.url)
         if (!desc) continue
+        outputs.push({ filename: t.att.filename, source: "screenshot", description: desc })
         const patch = toolPatches.get(t.partID) ?? { drop: new Set<string>(), blocks: [] }
         patch.drop.add(t.att.url)
         patch.blocks.push(
@@ -869,7 +874,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       // Swap each described image part out for its description — NON-destructively:
       // copy the affected messages so the stored/original parts (and the real
       // images) are never mutated. Only this request's working copy changes.
-      if (replacements.size === 0 && toolPatches.size === 0) return input.messages
+      if (replacements.size === 0 && toolPatches.size === 0) return { messages: input.messages, describedBy: undefined, outputs: undefined }
       const out = input.messages.map((m) => {
         if (m.info.role === "user" && m === userMsg && replacements.size > 0) {
           return {
@@ -899,7 +904,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         }
         return m
       })
-      return out
+      // Report who described (badge) and the full outputs (debug block).
+      return { messages: out, describedBy: `${describer.providerID}/${describer.id}`, outputs }
     })
 
     const resolveTools = Effect.fn("SessionPrompt.resolveTools")(function* (input: {
@@ -1759,6 +1765,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         system: input.system,
         format: input.format,
         provenance: input.provenance,
+        visionRedirect: input.visionRedirected ? true : undefined,
       }
 
       yield* Effect.addFinalizer(() => instruction.clear(info.id))
@@ -3116,6 +3123,13 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           }
 
           let model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          // "Vision by X" provenance for this iteration's assistant message.
+          // Seeded from the client whole-turn redirect (the user message's model
+          // IS the vision model then); overridden by mid-turn auto-swap or the
+          // describe-and-inject fallback below. Reset every iteration.
+          let iterVisionBy: string | undefined = lastUser.visionRedirect
+            ? `${lastUser.model.providerID}/${lastUser.model.modelID}`
+            : undefined
           // Vision auto-swap: if the user configured a vision model override and
           // the active model can't read images, swap to the vision model for this
           // iteration whenever the conversation history contains an image-bearing
@@ -3171,6 +3185,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   trigger: `${currentTurnImgs.info.id}`,
                 })
                 model = vision
+                iterVisionBy = `${vision.providerID}/${vision.id}`
               } else if (vision) {
                 yield* slog.info("vision auto-swap skipped: context exceeds vision model window", {
                   tokens: curTokens,
@@ -3407,9 +3422,25 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           msgs = yield* insertReminders({ messages: msgs, agent, session })
           // Auto-describe attached images for non-vision models (best-effort;
           // failures leave msgs untouched so a describe hiccup can't break the turn).
-          msgs = yield* ensureImageDescriptions({ messages: msgs, model, visionModels, visionModel, sessionID, agent }).pipe(
-            Effect.catchCause(() => Effect.succeed(msgs)),
+          const described = yield* ensureImageDescriptions({
+            messages: msgs,
+            model,
+            visionModels,
+            visionModel,
+            sessionID,
+            agent,
+          }).pipe(
+            Effect.catchCause(() =>
+              Effect.succeed({
+                messages: msgs,
+                describedBy: undefined as string | undefined,
+                outputs: undefined as { filename?: string; source?: string; description: string }[] | undefined,
+              }),
+            ),
           )
+          msgs = described.messages
+          if (described.describedBy) iterVisionBy = described.describedBy
+          const iterVisionOutputs = described.outputs?.length ? described.outputs : undefined
 
           const msg: MessageV2.Assistant = {
             id: MessageID.ascending(),
@@ -3424,6 +3455,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             modelID: model.id,
             providerID: model.providerID,
+            visionBy: iterVisionBy,
+            visionOutputs: iterVisionOutputs,
             time: { created: Date.now() },
             sessionID,
           }
@@ -4341,6 +4374,10 @@ export const PromptInput = z.object({
   visionModels: z
     .array(z.object({ providerID: ProviderID.zod, modelID: ModelID.zod }))
     .optional(),
+  // Set by the client when it redirected this whole turn to a vision model
+  // because the message carried image attachments. Persisted on the user
+  // message so the UI can badge the turn's assistant messages "Vision by X".
+  visionRedirected: z.boolean().optional(),
   modelRef: z
     .string()
     .optional()

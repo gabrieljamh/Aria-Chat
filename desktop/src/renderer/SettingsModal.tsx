@@ -1553,6 +1553,18 @@ const saveEditModel = async () => {
 
               <div className="settings-divider" />
 
+              <div className="settings-row">
+                <div className="settings-row-text">
+                  <div className="settings-row-title">Debug log</div>
+                  <div className="settings-row-desc">
+                    Detailed desktop log: failed requests with their error bodies, server lifecycle, crashes. Attach it to bug reports.
+                  </div>
+                </div>
+                <button type="button" onClick={() => window.mimo.openDebugLog().catch(() => {})}>Open log</button>
+              </div>
+
+              <div className="settings-divider" />
+
               <div className="settings-row" onClick={toggleAiGreetings} role="button">
                 <div className="settings-row-text">
                   <div className="settings-row-title">AI-generated greetings</div>

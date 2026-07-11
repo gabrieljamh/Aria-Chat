@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { dlog, describeError, isConnectionFailure } from "./logger"
 import type {
   AgentInfo,
   AuthInfo,
@@ -74,17 +75,36 @@ export class MimoClient extends EventEmitter {
   }
 
   private async json<T>(path: string, init?: RequestInit, query?: Record<string, string | undefined>): Promise<T> {
-    const res = await fetch(this.url(path, query), {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(this.authHeader ? { authorization: this.authHeader } : {}),
-        ...(init?.headers ?? {}),
-      },
-    })
+    const method = init?.method ?? "GET"
+    let res: Response
+    try {
+      res = await fetch(this.url(path, query), {
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          ...(this.authHeader ? { authorization: this.authHeader } : {}),
+          ...(init?.headers ?? {}),
+        },
+      })
+    } catch (err) {
+      // undici hides the actionable part ("connect ECONNREFUSED 127.0.0.1:4096")
+      // inside err.cause while err.message is just "fetch failed" — and Electron
+      // IPC strips everything but the message. Enrich the message so the
+      // renderer (and the user's error card) actually says what went wrong.
+      const detail = describeError(err)
+      dlog.error("client", `${method} ${path} fetch failed`, { base: this.baseUrl, detail })
+      const enriched = new Error(
+        `${method} ${path} -> fetch failed (${detail})` +
+          (isConnectionFailure(err) ? " — the local Aria server is unreachable; it may have crashed or been blocked. Try restarting Aria (see aria-main.log)." : ""),
+      )
+      // Preserve the ORIGINAL cause chain so errCode/isInFlightDrop still work.
+      ;(enriched as { cause?: unknown }).cause = (err as { cause?: unknown })?.cause ?? err
+      throw enriched
+    }
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      throw new Error(`${init?.method ?? "GET"} ${path} -> ${res.status} ${res.statusText} ${body}`)
+      dlog.error("client", `${method} ${path} -> ${res.status} ${res.statusText}`, { body: body.slice(0, 2000) })
+      throw new Error(`${method} ${path} -> ${res.status} ${res.statusText} ${body}`)
     }
     if (res.status === 204) return undefined as T
     const text = await res.text()
@@ -150,6 +170,7 @@ export class MimoClient extends EventEmitter {
     if (input.model) body.model = input.model
     if (input.visionModel) body.visionModel = input.visionModel
     if (input.visionModels?.length) body.visionModels = input.visionModels
+    if (input.visionRedirected) body.visionRedirected = true
     if (input.agent) body.agent = input.agent
     try {
       await this.json(
@@ -489,6 +510,10 @@ export class MimoClient extends EventEmitter {
       }
     } catch (err) {
       if (this.stopped) return
+      // Log WHY the event stream dropped — a repeated ECONNREFUSED here is the
+      // smoking gun for "the local server died" (renderer only sees the
+      // disconnected badge, users report the follow-up 'fetch failed' instead).
+      dlog.warn("client", "SSE disconnected", { detail: describeError(err) })
       this.emit("sse-state", "disconnected")
     }
 

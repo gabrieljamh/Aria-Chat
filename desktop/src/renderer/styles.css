@@ -1148,6 +1148,44 @@ button {
   color: var(--accent);
 }
 
+/* "Vision output" collapsible debug block — full describer output from the
+   describe-and-inject fallback, shown under the assistant message. */
+.vision-output-block .reasoning-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.vision-output-item {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-soft, rgba(128, 128, 128, 0.15));
+}
+.vision-output-item:last-child {
+  border-bottom: none;
+}
+.vision-output-name {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+/* "Vision by X" provenance badge — eye icon next to the ARIA role badge on
+   messages whose images were served by a vision helper model (whole-turn
+   redirect, mid-turn auto-swap, or describe-and-inject fallback). */
+.msg-vision-badge {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 3px;
+  padding: 2px 4px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  cursor: help;
+}
+
 .msg-act {
   display: inline-flex;
   align-items: center;

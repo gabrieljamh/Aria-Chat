@@ -133,6 +133,7 @@ const api: MimoApi = {
   setSetting: (key, value) => ipcRenderer.invoke("set-setting", key, value) as Promise<void>,
   getStartupSettings: () => ipcRenderer.invoke("get-startup-settings") as Promise<import("@shared/types").StartupSettings>,
   updateCheckNow: () => ipcRenderer.invoke("update-check-now") as Promise<string>,
+  openDebugLog: () => ipcRenderer.invoke("open-debug-log") as Promise<string | null>,
   setStartupSettings: (patch) => ipcRenderer.invoke("set-startup-settings", patch) as Promise<import("@shared/types").StartupSettings>,
   gitPush: (opts: { directory: string; remote?: string; branch?: string; force?: boolean }) =>
     ipcRenderer.invoke("git-push", opts) as Promise<string>,
