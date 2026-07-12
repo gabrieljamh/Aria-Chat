@@ -1560,7 +1560,7 @@ const saveEditModel = async () => {
                     Detailed desktop log: failed requests with their error bodies, server lifecycle, crashes. Attach it to bug reports.
                   </div>
                 </div>
-                <button type="button" onClick={() => window.mimo.openDebugLog().catch(() => {})}>Open log</button>
+                <button type="button" className="settings-row-btn" onClick={() => window.mimo.openDebugLog().catch(() => {})}>Open log</button>
               </div>
 
               <div className="settings-divider" />

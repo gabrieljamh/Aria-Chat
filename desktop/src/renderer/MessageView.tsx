@@ -203,6 +203,11 @@ function ActorToolView({ part, actorVersion, actors }: { part: Extract<Part, { t
     const liveActor = actorId ? actors[actorId] : undefined
     const liveStatus = liveActor?.status ?? undefined
     const liveTurnCount = liveActor?.turnCount ?? 0
+    // Failed spawns carry the real cause on the tool part's error state
+    // ("Tool execution failed: <cause>"). Surface it instead of the useless
+    // "Subagent ID not available" so provider 400s / overflows are diagnosable
+    // straight from the chat.
+    const errorText = status === "error" ? String((part.state as { error?: unknown }).error ?? "") : ""
 
     const isRunning = status === "running" || status === "pending" || liveStatus === "running" || liveStatus === "pending"
     const typeLabel = (subagentType ?? "general").charAt(0).toUpperCase() + (subagentType ?? "general").slice(1)
@@ -285,13 +290,19 @@ function ActorToolView({ part, actorVersion, actors }: { part: Extract<Part, { t
             <span className="actor-pulse" /> {liveActor?.stuck ? `Stuck: ${liveActor.stuck.description}` : "Subagent is working…"}
           </div>
         )}
+        {!open && errorText && (
+          <div className="actor-error-hint" title={errorText}>
+            {errorText.split("\n")[0].slice(0, 160)}
+          </div>
+        )}
         {open && (
           <div className="actor-log">
+            {errorText && <pre className="actor-log-error">{errorText.slice(0, 8000)}</pre>}
             {loading && <div className="actor-log-loading">Loading subagent log…</div>}
-            {!loading && messages.length === 0 && !isRunning && actorId && sessionId && (
+            {!loading && messages.length === 0 && !isRunning && actorId && sessionId && !errorText && (
               <div className="actor-log-empty">No messages recorded for this subagent.</div>
             )}
-            {!loading && messages.length === 0 && (!actorId || !sessionId) && (
+            {!loading && messages.length === 0 && (!actorId || !sessionId) && !errorText && (
               <div className="actor-log-empty">Subagent ID not available.</div>
             )}
             {!loading && messages.map((msg) => <SubagentMessageRow key={msg.info.id} msg={msg} />)}
