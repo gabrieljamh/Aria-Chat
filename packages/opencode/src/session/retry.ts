@@ -22,14 +22,14 @@ export function isRateLimitMessage(message: string): boolean {
   )
 }
 
-export const RETRY_INITIAL_DELAY = 2000
+export const RETRY_INITIAL_DELAY = 1000
 export const RETRY_BACKOFF_FACTOR = 2
-export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
+export const RETRY_MAX_DELAY_NO_HEADERS = 10_000 // 10 seconds
 export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
-// Give up after this many attempts (~5 minutes with the 30s cap). Retrying
-// 429/5xx forever meant a turn against a persistently-overloaded provider
-// hammered it indefinitely in the background — invisible unless the user
-// noticed the requests and aborted by hand.
+// Give up after this many attempts (~75s with the 10s cap: 1+2+4+8+10×6).
+// Retrying 429/5xx forever meant a turn against a persistently-overloaded
+// provider hammered it indefinitely in the background — invisible unless the
+// user noticed the requests and aborted by hand.
 export const RETRY_MAX_ATTEMPTS = 10
 
 const NETWORK_ERROR_CODES = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT"])
