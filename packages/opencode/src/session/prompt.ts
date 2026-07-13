@@ -563,88 +563,22 @@ export const layer = Layer.effect(
         sessionID: userMessage.info.sessionID,
         type: "text",
         text: `<system-reminder>
-Plan mode is active. The user wants you to research and design, NOT to execute yet. This supersedes any other instructions you have received.
+Plan mode is active: research and design, do NOT execute yet. This supersedes any other instructions.
 
-## What you SHOULD do (recommended)
-- Prefer the dedicated read-only tools for everything they cover — \`read\` (view files), \`grep\` (search contents), \`glob\` (find files), and the \`lsp\` tools (definitions, references, diagnostics). These are the right way to explore the code.
-- Spawn \`explore\`/\`general\` subagents for parallel research.
-- Only when those tools genuinely can't get what you need, you MAY use \`bash\` for the gap — but ONLY for commands you are certain are a pure read with NO side effects (e.g. \`git status\`/\`log\`/\`diff\`, listing dependencies). Do NOT reach for \`bash\` to do what \`read\`/\`grep\`/\`glob\` already do.
+ALLOWED: read-only exploration with \`read\`, \`grep\`, \`glob\`, and the \`lsp\` tools. Use \`bash\` ONLY for commands you have verified are pure reads with no side effects (e.g. \`git status\`/\`log\`/\`diff\`). The plan file below is the ONLY writable file.
 
-## What you MUST NOT do
-- Do NOT edit or create any file other than the plan file below. Writes to non-plan files are blocked outright and will fail — do not attempt them and do not ask the user to approve them.
-- Do NOT run \`test\`, \`lint\`, \`typecheck\`, \`build\`, or similar project commands. These are NOT safe by default: \`lint\` is often configured with \`--fix\`, \`test\` may write snapshots or touch a database, \`build\` writes artifacts, and scripts behind them can do anything. The ONLY exception is if you have explicitly verified — by reading the exact command/config — that this specific invocation has no side effects (no \`--fix\`/\`--write\`, no file/state/db mutation). If you cannot verify that, treat it as forbidden and note it in the plan instead.
-- Do NOT run any other side-effecting \`bash\`: no commits, no \`git push\`, no installing/removing packages, no writing/moving/deleting files, no changing configs, no \`change_directory\`, no \`workflow\`.
-- If you find yourself wanting to mutate something to make progress, that's a signal to write it into the plan instead and continue researching read-only.
+FORBIDDEN: editing or creating ANY file except the plan file (non-plan writes are blocked and will fail — do not attempt them or ask to); running \`test\`/\`lint\`/\`typecheck\`/\`build\` or any side-effecting \`bash\` (commits, \`git push\`, installs, writing/moving/deleting files, config changes, \`change_directory\`, \`workflow\`). If you want to mutate something to make progress, write it into the plan instead.
 
-Use good judgment: take the read-only action yourself rather than pushing avoidable confirmation prompts onto the user. Only the plan file is writable.
+SUBAGENTS — default to NOT spawning any. Research the code DIRECTLY with \`read\`/\`grep\`/\`glob\`/\`lsp\`; this is much faster. Spawn \`explore\`/\`general\` subagents ONLY when the codebase is large or the scope is genuinely uncertain (several unfamiliar areas involved). Each subagent is a full extra model turn, so add them only when they clearly pay off, and never more than 3.
 
-## Plan File Info:
-${exists ? `A plan file already exists at ${plan}. You can read it and make incremental edits using the edit tool.` : `No plan file exists yet. You should create your plan at ${plan} using the write tool.`}
-You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
-IMPORTANT — write the plan in SECTIONS, never in one giant call: use a single \`write\` for the first section, then \`edit\` calls to append each remaining section. A large plan sent as one \`write\` can exceed your model's single-response output limit and be truncated, which aborts the turn. Keep each write/edit to roughly a section at a time.
+## Plan file
+${exists ? `A plan file already exists at ${plan}. Read it and make incremental \`edit\`s.` : `No plan file exists yet. Create it at ${plan} with \`write\`.`}
+Build the plan in SECTIONS, never one giant call: one \`write\` for the first section, then \`edit\`s to append each remaining section. A single huge \`write\` can exceed your model's output limit and be truncated, aborting the turn.
 
-## Plan Workflow
-
-### Phase 1: Initial Understanding
-Goal: Gain a comprehensive understanding of the user's request by reading through code and asking them questions. Critical: In this phase you should only use the explore subagent type.
-
-1. Focus on understanding the user's request and the code associated with their request
-
-2. **Launch up to 3 explore agents IN PARALLEL** (single message, multiple tool calls) to efficiently explore the codebase.
- - Use 1 agent when the task is isolated to known files, the user provided specific file paths, or you're making a small targeted change.
- - Use multiple agents when: the scope is uncertain, multiple areas of the codebase are involved, or you need to understand existing patterns before planning.
- - Quality over quantity - 3 agents maximum, but you should try to use the minimum number of agents necessary (usually just 1)
- - If using multiple agents: Provide each agent with a specific search focus or area to explore. Example: One agent searches for existing implementations, another explores related components, a third investigates testing patterns
-
-3. After exploring the code, use the question tool to clarify ambiguities in the user request up front.
-
-### Phase 2: Design
-Goal: Design an implementation approach.
-
-Launch general agent(s) to design the implementation based on the user's intent and your exploration results from Phase 1.
-
-You can launch up to 1 agent(s) in parallel.
-
-**Guidelines:**
-- **Default**: Launch at least 1 Plan agent for most tasks - it helps validate your understanding and consider alternatives
-- **Skip agents**: Only for truly trivial tasks (typo fixes, single-line changes, simple renames)
-
-Examples of when to use multiple agents:
-- The task touches multiple parts of the codebase
-- It's a large refactor or architectural change
-- There are many edge cases to consider
-- You'd benefit from exploring different approaches
-
-Example perspectives by task type:
-- New feature: simplicity vs performance vs maintainability
-- Bug fix: root cause vs workaround vs prevention
-- Refactoring: minimal change vs clean architecture
-
-In the agent prompt:
-- Provide comprehensive background context from Phase 1 exploration including filenames and code path traces
-- Describe requirements and constraints
-- Request a detailed implementation plan
-
-### Phase 3: Review
-Goal: Review the plan(s) from Phase 2 and ensure alignment with the user's intentions.
-1. Read the critical files identified by agents to deepen your understanding
-2. Ensure that the plans align with the user's original request
-3. Use question tool to clarify any remaining questions with the user
-
-### Phase 4: Final Plan
-Goal: Write your final plan to the plan file (the only file you can edit).
-- Include only your recommended approach, not all alternatives
-- Ensure that the plan file is concise enough to scan quickly, but detailed enough to execute effectively
-- Include the paths of critical files to be modified
-- Include a verification section describing how to test the changes end-to-end (run the code, use MCP tools, run tests)
-
-### Phase 5: Call plan_exit tool
-At the very end of your turn, once you have asked the user questions and are happy with your final plan file - you should always call plan_exit to indicate to the user that you are done planning.
-This is critical - your turn should only end with either asking the user a question or calling plan_exit. Do not stop unless it's for these 2 reasons.
-
-**Important:** Use question tool to clarify requirements/approach, use plan_exit to request plan approval. Do NOT use question tool to ask "Is this plan okay?" - that's what plan_exit does.
-
-NOTE: At any point in time through this workflow you should feel free to ask the user questions or clarifications. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins.
+## Flow
+1. Understand the request and explore the relevant code (directly; use subagents only if the scope truly warrants it). Use the \`question\` tool up front for genuine ambiguities — don't assume intent.
+2. Decide the approach and write the plan. Keep it concise but executable: your recommended approach only (not all alternatives), the paths of files to change, and a short verification section (how to test the change end-to-end).
+3. End your turn by EITHER asking the user a \`question\` OR calling \`plan_exit\` — nothing else. Use \`question\` for requirements/approach; use \`plan_exit\` to request approval (do NOT ask "is this plan okay?" via \`question\` — that is what \`plan_exit\` is for).
 </system-reminder>`,
         synthetic: true,
       })
