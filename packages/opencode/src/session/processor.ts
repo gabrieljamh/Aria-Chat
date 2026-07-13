@@ -425,8 +425,23 @@ export const layer: Layer.Layer<
             }
             return
 
-          case "tool-input-delta":
+          case "tool-input-delta": {
+            // Stream the tool-call arguments as they generate (like text/reasoning
+            // deltas) so a long write — e.g. a big plan file — shows progress
+            // instead of a silent "pending" card until the whole call lands.
+            const tc = ctx.toolcalls[(value as { id: string }).id]
+            const d = (value as { delta?: string; text?: string }).delta ?? (value as { text?: string }).text ?? ""
+            if (tc && d) {
+              yield* session.updatePartDelta({
+                sessionID: tc.sessionID,
+                messageID: tc.messageID,
+                partID: tc.partID,
+                field: "raw",
+                delta: d,
+              })
+            }
             return
+          }
 
           case "tool-input-end":
             return

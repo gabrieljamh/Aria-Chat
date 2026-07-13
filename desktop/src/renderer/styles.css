@@ -5147,6 +5147,23 @@ button {
 .webagent-url-input::placeholder {
   color: var(--text-faint);
 }
+/* Live tail of a streaming tool-call's arguments (e.g. a big plan write). */
+.tool-streaming {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  opacity: 0.85;
+}
+
 /* Settings → Vision models priority */
 .vision-priority-row {
   display: flex;

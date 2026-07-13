@@ -337,6 +337,14 @@ function ToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
   const writeContent = (typeof input?.content === "string" && (typeof input?.filePath === "string" || typeof input?.file_path === "string")) ? input.content : undefined
   const isWrite = !isEditDiff && !isApplyPatch && !!writeContent
   const isRead = part.tool === "read" && typeof part.state.output === "string"
+  // While the tool-call arguments are still streaming (input not yet parsed),
+  // show a live tail of the raw so a long write (e.g. a big plan) visibly
+  // progresses instead of sitting as a silent "pending" card.
+  const inputEmpty = !input || Object.keys(input as object).length === 0
+  const streamingRaw =
+    (status === "pending" || status === "running") && inputEmpty
+      ? ((part as unknown as { raw?: string }).raw ?? "")
+      : ""
   const detail =
     status === "error"
       ? part.state.error
@@ -347,6 +355,11 @@ function ToolView({ part }: { part: Extract<Part, { type: "tool" }> }) {
         <span className="tool-name">{title}</span>
         <span className={`tool-status ${status}`}>{status}</span>
       </div>
+      {streamingRaw && (
+        <pre className="tool-streaming" title="Receiving tool input…">
+          {streamingRaw.length > 4000 ? "…" + streamingRaw.slice(-4000) : streamingRaw}
+        </pre>
+      )}
       {open && isEditDiff && <DiffView diff={diff} filePath={input?.filePath as string | undefined} />}
       {open && isApplyPatch && files.map((f, i) => f.patch ? <DiffView key={i} diff={f.patch} filePath={f.filePath || f.relativePath} /> : null)}
       {open && isWrite && writeContent && <WriteView content={writeContent} filePath={title} />}
