@@ -113,20 +113,14 @@ export async function SubagentProgressCheckerPlugin(_pluginInput: PluginInput): 
         const sessionID = input.sessionID as SessionID
         const filePath = progressPath(sessionID, taskId)
 
-        let body: string | undefined
-        try {
-          body = await Bun.file(filePath).text()
-        } catch {
-          body = undefined
-        }
-
-        if (body === undefined) {
+        if (!(await Bun.file(filePath).exists())) {
           output.continue = true
           output.reason = buildFeedback({ kind: "missing", taskId, filePath })
           return
         }
 
-        const missing = REQUIRED_SECTIONS.filter((s) => !body!.includes(s))
+        const body = await Bun.file(filePath).text()
+        const missing = REQUIRED_SECTIONS.filter((s) => !body.includes(s))
         if (missing.length > 0) {
           output.continue = true
           output.reason = buildFeedback({ kind: "incomplete", taskId, filePath, missing })

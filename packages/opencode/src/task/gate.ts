@@ -79,19 +79,13 @@ const buildReentryText = (
  */
 export const decide = Effect.fn("TaskGate.decide")(function* (input: DecideInput) {
   const reg = yield* TaskRegistry.Service
-  const tasks = yield* reg
+  const actionable = yield* reg
     .list({
       session_id: input.session_id,
       owner: input.owner,
-      include_terminal: false,
+      statuses: ["open", "in_progress"],
     })
     .pipe(Effect.orElseSucceed(() => []))
-
-  // include_terminal:false keeps `blocked` (it's non-terminal). Drop it here:
-  // a blocked task is one the actor genuinely can't proceed on, so nudging
-  // "complete or abandon" would loop unanswerable. Mirrors the original
-  // actor/spawn.ts gate filter that this helper preserves.
-  const actionable = tasks.filter((t) => t.status === "open" || t.status === "in_progress")
 
   if (actionable.length === 0) {
     return { needReentry: false, capExceeded: false, incompleteTasks: [] } satisfies Decision

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect"
-import { Database, and, eq, isNull, or, gt, type SQL } from "@/storage"
+import { Database, and, eq, isNull, or, gt, inArray, type SQL } from "@/storage"
 import { Bus } from "../bus"
 import { Config } from "../config"
 import type { SessionID } from "../session/schema"
@@ -10,9 +10,8 @@ import { RecoverableError } from "@/tool/recoverable"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-// Shared recovery message for every mutate-by-id miss, so the agent learns one
-// pattern. Wrapped in RecoverableError at each call site so the TUI mutes it
-// (agent-recoverable) while the guidance still reaches the model.
+const TERMINAL_STATUSES = ["done", "abandoned"] as const
+
 const notFoundMessage = (id: string) =>
   `Task ${id} not found. Use \`task list\` to see valid task IDs, or \`task create\` to add one.`
 
@@ -67,6 +66,7 @@ export interface Interface {
   readonly list: (input: {
     session_id?: SessionID
     status?: Task["status"]
+    statuses?: readonly Task["status"][]
     owner?: string
     include_terminal?: boolean
     include_archived?: boolean
@@ -93,32 +93,19 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
     const bus = yield* Bus.Service
     const config = yield* Config.Service
 
-    const cleanupAfter = Effect.fn("TaskRegistry.cleanupAfter")(function* (now: number) {
+    const cleanupAfterDays = Effect.fn("TaskRegistry.cleanupAfterDays")(function* () {
       const cfg = yield* config.get()
-      const days = cfg.checkpoint?.task_archive_days ?? cfg.checkpoint?.task_cleanup_days ?? 7
-      return now + days * DAY_MS
+      return cfg.checkpoint?.task_archive_days ?? cfg.checkpoint?.task_cleanup_days ?? 7
     })
-
-    const insertEvent = (
-      session_id: SessionID,
-      task_id: string,
-      kind: TaskEvent["kind"],
-      summary: string | undefined,
-      now: number,
-    ) => {
-      Database.use((db) =>
-        db
-          .insert(TaskEventTable)
-          .values({ session_id, task_id, at: now, kind, summary: summary ?? null })
-          .run(),
-      )
-    }
 
     const publishCreated = (task: Task) =>
       Effect.runFork(bus.publish(TaskCreated, { sessionID: task.session_id, task }))
 
     const publishUpdated = (task: Task, kind: UpdatedKind) =>
       Effect.runFork(bus.publish(TaskUpdated, { sessionID: task.session_id, task, kind }))
+
+    const taskWhere = (session_id: SessionID, id: string) =>
+      and(eq(TaskTable.session_id, session_id), eq(TaskTable.id, id))
 
     const create = Effect.fn("TaskRegistry.create")(function* (input: {
       session_id: SessionID
@@ -127,8 +114,8 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       owner?: string
     }) {
       const now = Date.now()
-      const siblings = Database.use((db) =>
-        db
+      const id = Database.use((db) => {
+        const siblings = db
           .select({ id: TaskTable.id })
           .from(TaskTable)
           .where(
@@ -137,14 +124,29 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
               input.parent_id ? eq(TaskTable.parent_task_id, input.parent_id) : isNull(TaskTable.parent_task_id),
             ),
           )
-          .all(),
-      )
-      const id = nextChildId(
-        input.parent_id,
-        siblings.map((s) => s.id),
-      )
-
-      const row: TaskRow = {
+          .all()
+        const next = nextChildId(input.parent_id, siblings.map((s) => s.id))
+        const row: TaskRow = {
+          id: next,
+          session_id: input.session_id,
+          parent_task_id: input.parent_id ?? null,
+          status: "open",
+          summary: input.summary,
+          owner: input.owner ?? null,
+          created_at: now,
+          last_event_at: now,
+          ended_at: null,
+          cleanup_after: null,
+        }
+        db.transaction(() => {
+          db.insert(TaskTable).values(row).run()
+          db.insert(TaskEventTable)
+            .values({ session_id: input.session_id, task_id: next, at: now, kind: "created", summary: null })
+            .run()
+        })
+        return next
+      })
+      const task = fromTaskRow({
         id,
         session_id: input.session_id,
         parent_task_id: input.parent_id ?? null,
@@ -155,10 +157,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
         last_event_at: now,
         ended_at: null,
         cleanup_after: null,
-      }
-      Database.use((db) => db.insert(TaskTable).values(row).run())
-      insertEvent(input.session_id, id, "created", undefined, now)
-      const task = fromTaskRow(row)
+      })
       publishCreated(task)
       return task
     })
@@ -166,6 +165,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
     const list = Effect.fn("TaskRegistry.list")(function* (input: {
       session_id?: SessionID
       status?: Task["status"]
+      statuses?: readonly Task["status"][]
       owner?: string
       include_terminal?: boolean
       include_archived?: boolean
@@ -174,8 +174,9 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       const conds: SQL[] = []
       if (input.session_id) conds.push(eq(TaskTable.session_id, input.session_id))
       if (input.status) conds.push(eq(TaskTable.status, input.status))
+      if (input.statuses && input.statuses.length > 0) conds.push(inArray(TaskTable.status, input.statuses as Task["status"][]))
       if (input.owner) conds.push(eq(TaskTable.owner, input.owner))
-      if (!input.include_terminal) {
+      if (!input.include_terminal && !input.status && !input.statuses) {
         const nonTerminal = or(
           eq(TaskTable.status, "open"),
           eq(TaskTable.status, "in_progress"),
@@ -217,7 +218,40 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       return rows.map(fromEventRow)
     })
 
-    // block/unblock/done/abandon/rename
+    type MutateResult =
+      | { kind: "ok"; task: Task }
+      | { kind: "not_found" }
+      | { kind: "terminal"; task: Task }
+    const mutate = (
+      session_id: SessionID,
+      id: string,
+      set: Partial<TaskRow>,
+      eventKind: TaskEvent["kind"],
+      eventSummary: string | undefined,
+      now: number,
+      guardTerminal?: boolean,
+    ): MutateResult =>
+      Database.use((db) =>
+        db.transaction(() => {
+          if (guardTerminal) {
+            const current = db.select().from(TaskTable).where(taskWhere(session_id, id)).get() as TaskRow | undefined
+            if (!current) return { kind: "not_found" }
+            if (TERMINAL_STATUSES.includes(current.status as (typeof TERMINAL_STATUSES)[number]))
+              return { kind: "terminal", task: fromTaskRow(current) }
+          }
+          const row = db
+            .update(TaskTable)
+            .set(set)
+            .where(taskWhere(session_id, id))
+            .returning()
+            .get() as TaskRow | undefined
+          if (!row) return { kind: "not_found" }
+          db.insert(TaskEventTable)
+            .values({ session_id, task_id: id, at: now, kind: eventKind, summary: eventSummary ?? null })
+            .run()
+          return { kind: "ok" as const, task: fromTaskRow(row) }
+        }),
+      )
 
     const block = Effect.fn("TaskRegistry.block")(function* (input: {
       session_id: SessionID
@@ -225,18 +259,14 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       event_summary?: string
     }) {
       const now = Date.now()
-      Database.use((db) =>
-        db
-          .update(TaskTable)
-          .set({ status: "blocked", last_event_at: now })
-          .where(and(eq(TaskTable.session_id, input.session_id), eq(TaskTable.id, input.id)))
-          .run(),
-      )
-      insertEvent(input.session_id, input.id, "blocked", input.event_summary, now)
-      const updated = yield* get({ session_id: input.session_id, id: input.id })
-      if (!updated) return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
-      publishUpdated(updated, "blocked")
-      return updated
+      const result = mutate(input.session_id, input.id, { status: "blocked", last_event_at: now }, "blocked", input.event_summary, now, true)
+      if (result.kind === "not_found") return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
+      if (result.kind === "terminal") {
+        yield* Effect.logWarning(`refusing to block terminal task ${input.id} (status=${result.task.status})`)
+        return result.task
+      }
+      publishUpdated(result.task, "blocked")
+      return result.task
     })
 
     const unblock = Effect.fn("TaskRegistry.unblock")(function* (input: {
@@ -245,18 +275,14 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       event_summary?: string
     }) {
       const now = Date.now()
-      Database.use((db) =>
-        db
-          .update(TaskTable)
-          .set({ status: "open", last_event_at: now })
-          .where(and(eq(TaskTable.session_id, input.session_id), eq(TaskTable.id, input.id)))
-          .run(),
-      )
-      insertEvent(input.session_id, input.id, "unblocked", input.event_summary, now)
-      const updated = yield* get({ session_id: input.session_id, id: input.id })
-      if (!updated) return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
-      publishUpdated(updated, "unblocked")
-      return updated
+      const result = mutate(input.session_id, input.id, { status: "open", last_event_at: now }, "unblocked", input.event_summary, now, true)
+      if (result.kind === "not_found") return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
+      if (result.kind === "terminal") {
+        yield* Effect.logWarning(`refusing to unblock terminal task ${input.id} (status=${result.task.status})`)
+        return result.task
+      }
+      publishUpdated(result.task, "unblocked")
+      return result.task
     })
 
     const start = Effect.fn("TaskRegistry.start")(function* (input: {
@@ -269,37 +295,27 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       const existing = yield* get({ session_id: input.session_id, id: input.id })
       if (!existing) return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
 
-      // Terminal states are final. Auto-start makes start() a structural side-effect of
-      // every actor spawn, so a stale/reused task_id (ReAct re-entry, verification rerun,
-      // operator typo colliding with an old TID) must NOT silently resurrect a
-      // done/abandoned task. done()/abandon() stamp ended_at + cleanup_after; start()
-      // does not clear them, so resurrection would leave a self-contradictory row
-      // (status=in_progress yet carrying ended_at/cleanup_after) that list() drops from
-      // the active set the moment the old archive window elapses. No-op and warn instead.
       if (existing.status === "done" || existing.status === "abandoned") {
         yield* Effect.logWarning(`refusing to start terminal task ${input.id} (status=${existing.status})`)
         return existing
       }
 
-      // Idempotent re-start by the same owner is a no-op: re-emitting `started` would
-      // spam the task_event log and the SSE/TUI stream for zero state change. A
-      // *different* owner is a genuine handoff (replacement actor picking up the task)
-      // and falls through to update owner + re-emit.
       const owner = input.owner ?? existing.owner
       if (existing.status === "in_progress" && owner === existing.owner) return existing
 
-      Database.use((db) =>
-        db
-          .update(TaskTable)
-          .set({ status: "in_progress", owner: owner ?? null, last_event_at: now })
-          .where(and(eq(TaskTable.session_id, input.session_id), eq(TaskTable.id, input.id)))
-          .run(),
+      const result = mutate(
+        input.session_id,
+        input.id,
+        { status: "in_progress", owner: owner ?? null, last_event_at: now },
+        "started",
+        input.event_summary,
+        now,
+        true,
       )
-      insertEvent(input.session_id, input.id, "started", input.event_summary, now)
-      const updated = yield* get({ session_id: input.session_id, id: input.id })
-      if (!updated) return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
-      publishUpdated(updated, "started")
-      return updated
+      if (result.kind === "not_found") return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
+      if (result.kind === "terminal") return result.task
+      publishUpdated(result.task, "started")
+      return result.task
     })
 
     const done = Effect.fn("TaskRegistry.done")(function* (input: {
@@ -308,24 +324,23 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       event_summary?: string
     }) {
       const now = Date.now()
-      const cleanup = yield* cleanupAfter(now)
-      Database.use((db) =>
-        db
-          .update(TaskTable)
-          .set({
-            status: "done",
-            ended_at: now,
-            cleanup_after: cleanup,
-            last_event_at: now,
-          })
-          .where(and(eq(TaskTable.session_id, input.session_id), eq(TaskTable.id, input.id)))
-          .run(),
+      const days = yield* cleanupAfterDays()
+      const result = mutate(
+        input.session_id,
+        input.id,
+        { status: "done", ended_at: now, cleanup_after: now + days * DAY_MS, last_event_at: now },
+        "done",
+        input.event_summary,
+        now,
+        true,
       )
-      insertEvent(input.session_id, input.id, "done", input.event_summary, now)
-      const updated = yield* get({ session_id: input.session_id, id: input.id })
-      if (!updated) return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
-      publishUpdated(updated, "done")
-      return updated
+      if (result.kind === "not_found") return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
+      if (result.kind === "terminal") {
+        yield* Effect.logWarning(`task ${input.id} already terminal (status=${result.task.status}), returning as-is`)
+        return result.task
+      }
+      publishUpdated(result.task, "done")
+      return result.task
     })
 
     const abandon = Effect.fn("TaskRegistry.abandon")(function* (input: {
@@ -334,24 +349,23 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       event_summary?: string
     }) {
       const now = Date.now()
-      const cleanup = yield* cleanupAfter(now)
-      Database.use((db) =>
-        db
-          .update(TaskTable)
-          .set({
-            status: "abandoned",
-            ended_at: now,
-            cleanup_after: cleanup,
-            last_event_at: now,
-          })
-          .where(and(eq(TaskTable.session_id, input.session_id), eq(TaskTable.id, input.id)))
-          .run(),
+      const days = yield* cleanupAfterDays()
+      const result = mutate(
+        input.session_id,
+        input.id,
+        { status: "abandoned", ended_at: now, cleanup_after: now + days * DAY_MS, last_event_at: now },
+        "abandoned",
+        input.event_summary,
+        now,
+        true,
       )
-      insertEvent(input.session_id, input.id, "abandoned", input.event_summary, now)
-      const updated = yield* get({ session_id: input.session_id, id: input.id })
-      if (!updated) return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
-      publishUpdated(updated, "abandoned")
-      return updated
+      if (result.kind === "not_found") return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
+      if (result.kind === "terminal") {
+        yield* Effect.logWarning(`task ${input.id} already terminal (status=${result.task.status}), returning as-is`)
+        return result.task
+      }
+      publishUpdated(result.task, "abandoned")
+      return result.task
     })
 
     const rename = Effect.fn("TaskRegistry.rename")(function* (input: {
@@ -360,18 +374,14 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       summary: string
     }) {
       const now = Date.now()
-      Database.use((db) =>
-        db
-          .update(TaskTable)
-          .set({ summary: input.summary, last_event_at: now })
-          .where(and(eq(TaskTable.session_id, input.session_id), eq(TaskTable.id, input.id)))
-          .run(),
-      )
-      insertEvent(input.session_id, input.id, "renamed", input.summary, now)
-      const updated = yield* get({ session_id: input.session_id, id: input.id })
-      if (!updated) return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
-      publishUpdated(updated, "renamed")
-      return updated
+      const result = mutate(input.session_id, input.id, { summary: input.summary, last_event_at: now }, "renamed", input.summary, now, true)
+      if (result.kind === "not_found") return yield* Effect.die(new RecoverableError(notFoundMessage(input.id)))
+      if (result.kind === "terminal") {
+        yield* Effect.logWarning(`refusing to rename terminal task ${input.id} (status=${result.task.status})`)
+        return result.task
+      }
+      publishUpdated(result.task, "renamed")
+      return result.task
     })
 
     return Service.of({
