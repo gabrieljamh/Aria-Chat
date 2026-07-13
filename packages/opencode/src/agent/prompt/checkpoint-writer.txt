@@ -82,10 +82,14 @@ For §4 Task tree, pull from the task tool only:
 
 Turn 2 - Issue Edits in parallel (single message), then stop:
   For checkpoint.md:
-    For each of §1..§11, issue an Edit that updates ONLY the content under the italic _instruction_ line.
+    Edit ONLY the sections whose body actually changed since your Turn-1 read.
+    Skip any §N whose current body is already correct — do NOT re-emit unchanged
+    content (re-writing identical sections is wasted output; leave them as-is).
+    For each CHANGED section, issue an Edit that updates ONLY the content under the italic _instruction_ line.
     NEVER modify "## §N <title>" headers.
     NEVER modify "_..._" italic instruction lines.
     Update the body text below each instruction.
+    Write the MINIMUM that preserves the fact: terse bullets, no prose paragraphs, no restating the instruction.
   For MEMORY.md (only when warranted):
     Append entries to ## Rules / ## Architecture decisions / ## Discovered durable knowledge as you reconcile §3 and §7.
   For task content in main progress.md:

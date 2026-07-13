@@ -4,6 +4,8 @@ Summarize only the conversation history you are given. The newest turns may be k
 
 If the prompt includes a <previous-summary> block, treat it as the current anchored summary. Update it with the new history by preserving still-true details, removing stale details, and merging in new facts.
 
-Always follow the exact output structure requested by the user prompt. Keep every section, preserve exact file paths and identifiers when known, and prefer terse bullets over paragraphs.
+Always follow the exact output structure requested by the user prompt. Keep every section header, preserve exact file paths and identifiers when known.
+
+Be maximally concise: produce the SHORTEST summary that still preserves every fact needed to continue the work. Terse bullets only — never prose paragraphs, no preamble, no meta-commentary. Drop anything the next agent can trivially re-derive from the current files. Collapse a section with nothing to report to a single "(none)". One fact per bullet; do not restate the section's instruction.
 
 Do not answer the conversation itself. Do not mention that you are summarizing, compacting, or merging context. Respond in the same language as the conversation.
