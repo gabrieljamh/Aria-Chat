@@ -77,14 +77,33 @@ export type InferDef<T> =
       ? Def<P, M>
       : never
 
+// Parse a string that should have been a JSON object/array. Tolerates the
+// common model quirks: surrounding whitespace and markdown code fences.
+function parseEmbeddedJson(val: string): unknown | undefined {
+  let s = val.trim()
+  const fence = s.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/)
+  if (fence) s = fence[1].trim()
+  if (!s.startsWith("{") && !s.startsWith("[")) return undefined
+  try {
+    return JSON.parse(s)
+  } catch {
+    return undefined
+  }
+}
+
 /**
- * Models frequently paste raw JSON where a string parameter is expected —
- * e.g. `write({ content: { "key": … } })` instead of a JSON *string* — because
- * the payload they're working with is itself JSON. Instead of bouncing the
- * call with "expected string, received object" (which they tend to repeat),
- * use zod's own issue report to find exactly which paths got the wrong type
- * and coerce: objects/arrays are stringified (pretty-printed, matching what
- * the model meant to write), numbers/booleans become their string form.
+ * Models frequently mismatch JSON-vs-string in tool arguments, in BOTH
+ * directions:
+ *  - raw JSON where a string parameter is expected — e.g.
+ *    `write({ content: { "key": … } })` instead of a JSON *string*;
+ *  - a STRINGIFIED object where an object is expected — e.g. the actor tool's
+ *    `operation` arriving as '{"action":"run",…}' (this made every
+ *    general-subagent spawn fail on some models).
+ * Instead of bouncing the call (which they tend to repeat verbatim), use
+ * zod's own issue report to find exactly which paths got the wrong type and
+ * coerce: objects/arrays are stringified when a string was expected, and
+ * JSON-looking strings are parsed when an object/array was expected. A
+ * coercion is only accepted when it makes the args validate.
  * Returns the coerced args, or undefined when nothing applied.
  */
 export function coerceStringArgs(parameters: z.ZodType, args: unknown): unknown | undefined {
@@ -98,24 +117,55 @@ export function coerceStringArgs(parameters: z.ZodType, args: unknown): unknown 
     return undefined
   }
   for (const issue of res.error.issues) {
-    if (issue.code !== "invalid_type" || (issue as { expected?: string }).expected !== "string") continue
+    if (issue.code !== "invalid_type") continue
+    const expected = (issue as { expected?: string }).expected
     if (!issue.path.length) continue
     let parent: any = next
     for (let i = 0; i < issue.path.length - 1 && parent != null; i++) parent = parent[issue.path[i] as any]
     if (parent == null) continue
     const key = issue.path[issue.path.length - 1] as any
     const val = parent[key]
-    if (val !== null && (typeof val === "object" || Array.isArray(val))) {
-      parent[key] = JSON.stringify(val, null, 2)
-      changed = true
-    } else if (typeof val === "number" || typeof val === "boolean") {
-      parent[key] = String(val)
-      changed = true
+    if (expected === "string") {
+      if (val !== null && (typeof val === "object" || Array.isArray(val))) {
+        parent[key] = JSON.stringify(val, null, 2)
+        changed = true
+      } else if (typeof val === "number" || typeof val === "boolean") {
+        parent[key] = String(val)
+        changed = true
+      }
+    } else if ((expected === "object" || expected === "array") && typeof val === "string") {
+      const parsed = parseEmbeddedJson(val)
+      if (parsed !== undefined && typeof parsed === "object" && Array.isArray(parsed) === (expected === "array")) {
+        parent[key] = parsed
+        changed = true
+      }
     }
   }
-  if (!changed) return undefined
-  // Only accept the coercion when it actually makes the args valid.
-  return parameters.safeParse(next).success ? next : undefined
+  if (changed && parameters.safeParse(next).success) return next
+  // Fallback pass: union/discriminated schemas (like the actor tool's
+  // operation union) report failures as invalid_union WITHOUT a clean
+  // invalid_type at the offending key, so the issue-driven loop above never
+  // fires for them. Parse any top-level string value that LOOKS like embedded
+  // JSON and accept the result only if the whole args then validate.
+  if (args !== null && typeof args === "object" && !Array.isArray(args)) {
+    let fallback: Record<string, unknown>
+    try {
+      fallback = structuredClone(args) as Record<string, unknown>
+    } catch {
+      return undefined
+    }
+    let fbChanged = false
+    for (const [key, val] of Object.entries(fallback)) {
+      if (typeof val !== "string") continue
+      const parsed = parseEmbeddedJson(val)
+      if (parsed !== undefined && typeof parsed === "object") {
+        fallback[key] = parsed
+        fbChanged = true
+      }
+    }
+    if (fbChanged && parameters.safeParse(fallback).success) return fallback
+  }
+  return undefined
 }
 
 // Builds the agent-facing message for an argument-validation failure. zod v4's
