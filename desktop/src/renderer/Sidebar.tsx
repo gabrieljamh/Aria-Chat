@@ -31,6 +31,7 @@ export function Sidebar(props: Props) {
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const [confirmDelete, setConfirmDelete] = useState<ChatRef | null>(null)
+  const [query, setQuery] = useState("")
   const renameInput = useRef<HTMLInputElement>(null)
   const contextRef = useRef<HTMLDivElement>(null)
 
@@ -46,8 +47,12 @@ export function Sidebar(props: Props) {
     setRenameId(null)
   }
 
-  const favorites = props.items.filter((r) => props.favoriteIds.has(r.id))
-  const recents = props.items.filter((r) => !props.favoriteIds.has(r.id))
+  const q = query.trim().toLowerCase()
+  const visible = q
+    ? props.items.filter((r) => (r.title || "Untitled").toLowerCase().includes(q))
+    : props.items
+  const favorites = visible.filter((r) => props.favoriteIds.has(r.id))
+  const recents = visible.filter((r) => !props.favoriteIds.has(r.id))
 
   if (props.collapsed) {
     return (
@@ -80,6 +85,20 @@ export function Sidebar(props: Props) {
         </button>
       </div>
 
+      <div className="sidebar-search">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search sessions…"
+          spellCheck={false}
+          onKeyDown={(e) => { if (e.key === "Escape") setQuery("") }}
+        />
+        {query && (
+          <button className="sidebar-search-clear" title="Clear search" onClick={() => setQuery("")}>✕</button>
+        )}
+      </div>
+
       <div className="sidebar-scroll">
       {favorites.length > 0 && (
         <>
@@ -92,7 +111,7 @@ export function Sidebar(props: Props) {
       <div className="section-label">Recents</div>
       {recents.length === 0 && favorites.length === 0 && (
         <div className="recent" style={{ color: "var(--text-faint)" }}>
-          {props.emptyText ?? "Nothing yet"}
+          {q ? "No matches." : props.emptyText ?? "Nothing yet"}
         </div>
       )}
       {recents.map((ref) => renderItem(ref))}

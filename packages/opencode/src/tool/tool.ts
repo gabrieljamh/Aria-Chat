@@ -41,6 +41,11 @@ export interface Def<Parameters extends z.ZodType = z.ZodType, M extends Metadat
   parameters: Parameters
   execute(args: z.infer<Parameters>, ctx: Context): Effect.Effect<ExecuteResult<M>>
   formatValidationError?(error: z.ZodError): string
+  // Tool-specific arg salvage for malformed shapes the generic coercion can't
+  // know about (e.g. the actor tool's flattened operation envelope). Runs only
+  // when validation would fail; the returned shape is used only if it then
+  // validates. Return undefined when nothing applies.
+  normalizeArgs?(args: unknown): unknown | undefined
   shell?: {
     description: string
     parse(script: string): Effect.Effect<z.infer<Parameters>[], unknown>
@@ -79,7 +84,7 @@ export type InferDef<T> =
 
 // Parse a string that should have been a JSON object/array. Tolerates the
 // common model quirks: surrounding whitespace and markdown code fences.
-function parseEmbeddedJson(val: string): unknown | undefined {
+export function parseEmbeddedJson(val: string): unknown | undefined {
   let s = val.trim()
   const fence = s.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/)
   if (fence) s = fence[1].trim()
@@ -198,10 +203,17 @@ function wrap<Parameters extends z.ZodType, Result extends Metadata>(
           ...(ctx.callID ? { "tool.call_id": ctx.callID } : {}),
         }
         return Effect.gen(function* () {
-          // Salvage "expected string, received object" calls (raw JSON pasted
-          // into string params) before validation instead of bouncing them.
+          // Salvage mistyped calls (raw JSON pasted into string params,
+          // stringified objects, ...) before validation instead of bouncing them.
           const coerced = coerceStringArgs(toolInfo.parameters, args)
           if (coerced !== undefined) args = coerced as typeof args
+          else if (toolInfo.normalizeArgs && !toolInfo.parameters.safeParse(args).success) {
+            // Generic coercion didn't apply — give the tool's own normalizer a
+            // shot at recurring malformed shapes it knows about.
+            const normalized = toolInfo.normalizeArgs(args)
+            if (normalized !== undefined && toolInfo.parameters.safeParse(normalized).success)
+              args = normalized as typeof args
+          }
           yield* Effect.try({
             try: () => toolInfo.parameters.parse(args),
             catch: (error) => {

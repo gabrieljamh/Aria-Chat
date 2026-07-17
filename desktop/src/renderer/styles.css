@@ -3055,6 +3055,45 @@ button {
   gap: 6px;
   margin-bottom: 4px;
 }
+
+/* Session/project search field under the sidebar header. */
+.sidebar-search {
+  position: relative;
+  margin: 2px 0 6px;
+}
+.sidebar-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 26px 6px 10px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  outline: none;
+}
+.sidebar-search input::placeholder {
+  color: var(--text-faint);
+}
+.sidebar-search input:focus {
+  border-color: var(--accent);
+}
+.sidebar-search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 11px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.sidebar-search-clear:hover {
+  color: var(--text);
+}
 .sidebar-head .new-btn {
   flex: 1;
   margin-bottom: 0;

@@ -789,9 +789,49 @@ export const ActorTool = Tool.define(
         }
       })
 
+      // Models — small ones especially — mangle the {operation:{...}} envelope
+      // in recurring ways the generic string/JSON coercion can't fix:
+      //  1. flattened:  { operation: "run", prompt, subagent_type, ... }
+      //  2. no envelope: { action: "run", prompt, ... }
+      //  3. stray siblings: { operation: {...}, prompt } (fields left outside)
+      //  4. stringified operation + stray siblings (generic pass alone fails
+      //     because the leftover siblings still hit the strict root)
+      // Regroup those into the canonical envelope. The wrapper only uses the
+      // result if it validates, so this can't corrupt a well-formed call.
+      const ACTOR_ACTIONS = ["run", "spawn", "status", "wait", "cancel", "send"]
+      const normalizeArgs = (args: unknown): unknown | undefined => {
+        if (!args || typeof args !== "object" || Array.isArray(args)) return undefined
+        const { operation, ...extras } = args as Record<string, unknown>
+        // Case 2: no operation key, but a recognizable action at the root.
+        if (operation === undefined) {
+          const rec = args as Record<string, unknown>
+          if (typeof rec.action === "string" && ACTOR_ACTIONS.includes(rec.action)) return { operation: rec }
+          return undefined
+        }
+        // Case 1: operation is a bare action token, fields flattened beside it.
+        if (typeof operation === "string" && ACTOR_ACTIONS.includes(operation.trim())) {
+          return { operation: { action: operation.trim(), ...extras } }
+        }
+        // Case 4: operation is stringified JSON; fold stray siblings in too.
+        if (typeof operation === "string") {
+          const parsed = Tool.parseEmbeddedJson(operation)
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return { operation: { ...extras, ...(parsed as object) } }
+          }
+          return undefined
+        }
+        // Case 3: proper operation object with stray siblings — fold them in
+        // (explicit operation fields win over strays).
+        if (operation && typeof operation === "object" && !Array.isArray(operation) && Object.keys(extras).length > 0) {
+          return { operation: { ...extras, ...(operation as object) } }
+        }
+        return undefined
+      }
+
       return {
         description: DESCRIPTION,
         parameters,
+        normalizeArgs,
         execute: (input: z.infer<typeof parameters>, ctx: Tool.Context) => run(input, ctx).pipe(Effect.orDie),
         shell: {
           description: SHELL_DESCRIPTION,

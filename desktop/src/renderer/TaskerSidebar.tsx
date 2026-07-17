@@ -33,6 +33,7 @@ function basename(p: string): string {
 
 export function TaskerSidebar(props: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [query, setQuery] = useState("")
   const [refreshing, setRefreshing] = useState<Set<string>>(new Set())
   const [renameTarget, setRenameTarget] = useState<{ projectID: string; name: string } | null>(null)
   const [projMenu, setProjMenu] = useState<{ dir: string; name: string; x: number; y: number } | null>(null)
@@ -111,15 +112,29 @@ export function TaskerSidebar(props: Props) {
     } as ProjectInfo)
   }
 
+  // Search: a project stays visible when its name/folder matches OR any of its
+  // (already loaded) sessions match. Session search only covers dirs whose
+  // sessions have been fetched — expand/refresh a project to index it.
+  const q = query.trim().toLowerCase()
+  const projectNameMatches = (p: ProjectInfo) => {
+    const nm = (p.name || basename(p.worktree)).toLowerCase()
+    return nm.includes(q) || basename(p.worktree).toLowerCase().includes(q)
+  }
+  const matchingSessions = (dir: string) =>
+    (props.sessionsByDir.get(dir) ?? []).filter((s) => (s.title || "Untitled").toLowerCase().includes(q))
+  const projectVisible = (p: ProjectInfo) => !q || projectNameMatches(p) || matchingSessions(p.worktree).length > 0
+
   // Split into pinned + unpinned
-  const pinnedProjects = allProjects.filter((p) => props.pinnedDirs.has(p.worktree))
-  const unpinnedProjects = allProjects.filter((p) => !props.pinnedDirs.has(p.worktree))
+  const pinnedProjects = allProjects.filter((p) => props.pinnedDirs.has(p.worktree) && projectVisible(p))
+  const unpinnedProjects = allProjects.filter((p) => !props.pinnedDirs.has(p.worktree) && projectVisible(p))
 
   const renderProjectNode = (proj: ProjectInfo) => {
     const dir = proj.worktree
     const name = proj.name || basename(dir)
-    const isExpanded = expanded.has(dir)
-    const sessions = props.sessionsByDir.get(dir) ?? []
+    // While searching: force-expand matches; projects matched via a session
+    // title show only the matching sessions, name-matched ones show all.
+    const isExpanded = q ? true : expanded.has(dir)
+    const sessions = q && !projectNameMatches(proj) ? matchingSessions(dir) : props.sessionsByDir.get(dir) ?? []
     const isLoading = props.loadingDirs.has(dir)
     const isRefreshing = refreshing.has(dir)
     const isActiveProject = props.activeProjectDir === dir
@@ -268,10 +283,29 @@ export function TaskerSidebar(props: Props) {
         </button>
       </div>
 
+      <div className="sidebar-search">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search projects & sessions…"
+          spellCheck={false}
+          onKeyDown={(e) => { if (e.key === "Escape") setQuery("") }}
+        />
+        {query && (
+          <button className="sidebar-search-clear" title="Clear search" onClick={() => setQuery("")}>✕</button>
+        )}
+      </div>
+
       <div className="sidebar-scroll">
         {allProjects.length === 0 && (
           <div className="recent" style={{ color: "var(--text-faint)", padding: "12px 10px" }}>
             No projects yet. Click "New task" or add a project.
+          </div>
+        )}
+        {q !== "" && allProjects.length > 0 && pinnedProjects.length === 0 && unpinnedProjects.length === 0 && (
+          <div className="recent" style={{ color: "var(--text-faint)", padding: "12px 10px" }}>
+            No matches.
           </div>
         )}
         {pinnedProjects.length > 0 && (
