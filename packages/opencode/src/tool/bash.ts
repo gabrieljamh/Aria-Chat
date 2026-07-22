@@ -15,6 +15,7 @@ import { Flag } from "@/flag/flag"
 import { Shell } from "@/shell/shell"
 
 import { SessionCwd } from "./session-cwd"
+import { assertNotDestructive } from "./destructive-guard"
 import { BashArity } from "@/permission/arity"
 import * as Truncate from "./truncate"
 import { Plugin } from "@/plugin"
@@ -640,6 +641,10 @@ export const BashTool = Tool.define(
           parameters: Parameters,
           execute: (params: z.infer<typeof Parameters>, ctx: Tool.Context) =>
             Effect.gen(function* () {
+              // Hard safety backstop: block catastrophic ("PC-extinction") commands
+              // deterministically, before permission checks or execution. Runs
+              // first so no destructive command can slip through on any code path.
+              assertNotDestructive(params.command, "bash command")
               const effectiveCwd = SessionCwd.get(ctx.sessionID)
               const cwd = params.workdir
                 ? yield* resolvePath(params.workdir, effectiveCwd, shell)

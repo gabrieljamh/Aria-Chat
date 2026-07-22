@@ -2276,6 +2276,20 @@ button {
 .approval .actions .deny {
   color: var(--danger);
 }
+.approval .actions .dismiss {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.approval .actions .dismiss:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.approval-error {
+  color: var(--danger);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
 
 /* ----------------------------- Question card ----------------------------- */
 .question-card {

@@ -3064,16 +3064,22 @@ Build the plan in SECTIONS, never one giant call: one \`write\` for the first se
           let iterVisionBy: string | undefined = lastUser.visionRedirect
             ? `${lastUser.model.providerID}/${lastUser.model.modelID}`
             : undefined
-          // Vision auto-swap: if the user configured a vision model override and
-          // the active model can't read images, swap to the vision model for this
-          // iteration whenever the conversation history contains an image-bearing
-          // tool result (e.g. browser.screenshot just taken this turn). Without
-          // this, transform.ts:supportsImageInput would silently replace those
-          // images with "ERROR: Cannot read image..." — the model would report
-          // it can't see the screenshot. The swap is per-iteration; the next
-          // iteration re-resolves from lastUser.model unless another image is
-          // present, so a non-vision model still drives non-visual turns.
-          if ((visionModel || visionModels?.length) && !ProviderTransform.supportsImageInput(model)) {
+          // Vision auto-swap: ONLY when the user configured an explicit swap
+          // target (`visionModel`, gated behind the "Vision redirect" setting) and
+          // the active model can't read images, hand the iteration to that vision
+          // model whenever the current turn has an image-bearing tool result (e.g.
+          // browser.screenshot).
+          //
+          // IMPORTANT: this must NOT trigger on `visionModels` (the DESCRIBER
+          // priority list). visionModels means "describe screenshots as text via
+          // describe-and-inject so my chosen model stays in control" — the desktop
+          // always sends it. Conflating the two here made a text-only main model
+          // (e.g. AgentBridge) hard-swap to a vision model on every screenshot and
+          // never hand control back — a webagent screenshots every turn, so the
+          // swap re-fired perpetually. With `visionModel` alone gating the swap,
+          // Vision-redirect OFF now correctly falls through to describe-and-inject
+          // (ensureImageDescriptions below), keeping the user's model driving.
+          if (visionModel && !ProviderTransform.supportsImageInput(model)) {
             // Trigger scope: image-bearing tool results of the CURRENT turn
             // only (assistant messages after the last user message). The old
             // findLast over the WHOLE history meant a single ancient
@@ -3081,18 +3087,29 @@ Build the plan in SECTIONS, never one giant call: one \`write\` for the first se
             // model — the entire (large) conversation flowed into a usually
             // smaller-context VL model and overflowed it. Old screenshots are
             // served by describe-and-inject instead.
+            // Additionally: only a FRESH, unseen image warrants the swap — the
+            // image-bearing tool result must sit on the LAST assistant message
+            // (the stream the processor just cut via needsVisionSwap). The old
+            // scan over every assistant message of the turn meant one webagent
+            // screenshot re-triggered the swap on ALL later iterations of the
+            // turn, so the vision model never handed back to the main model.
+            // Screenshots from earlier iterations are already delivered (the
+            // vision iteration consumed them) or reach the main model as text
+            // via describe-and-inject (ensureImageDescriptions) — same
+            // fallback that serves user-attached images.
             const lastUserIdxForSwap = msgs.findLastIndex((m) => m.info.role === "user")
-            const currentTurnImgs = msgs.slice(lastUserIdxForSwap + 1).find(
-              (m) =>
-                m.info.role === "assistant" &&
-                m.parts.some(
-                  (p) =>
-                    p.type === "tool" &&
-                    p.state?.status === "completed" &&
-                    Array.isArray(p.state.attachments) &&
-                    p.state.attachments.some((a) => typeof a.mime === "string" && a.mime.startsWith("image/")),
-                ),
-            )
+            const lastAssistantForSwap = msgs.slice(lastUserIdxForSwap + 1).findLast((m) => m.info.role === "assistant")
+            const currentTurnImgs =
+              lastAssistantForSwap &&
+              lastAssistantForSwap.parts.some(
+                (p) =>
+                  p.type === "tool" &&
+                  p.state?.status === "completed" &&
+                  Array.isArray(p.state.attachments) &&
+                  p.state.attachments.some((a) => typeof a.mime === "string" && a.mime.startsWith("image/")),
+              )
+                ? lastAssistantForSwap
+                : undefined
             if (currentTurnImgs) {
               // Honor the describer priority list for the swap target too —
               // the single legacy setting was used even when the user had an

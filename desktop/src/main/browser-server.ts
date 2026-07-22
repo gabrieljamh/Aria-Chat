@@ -3,6 +3,8 @@ import { createServer, IncomingMessage, ServerResponse } from "node:http"
 import { randomBytes } from "node:crypto"
 import { browserManager } from "./browser-manager"
 import { DOM_EXTRACTION_SCRIPT } from "./browser-inject"
+import * as cdp from "./browser-cdp"
+import { FIXED_VIEWPORT_ENABLED } from "./browser-cdp"
 import { basename } from "node:path"
 import { getRegisteredApps, resolveApp, launchApp, isProtocolUri, launchProtocol } from "./app-launcher"
 
@@ -237,6 +239,20 @@ async function handleScreenshot(res: ServerResponse, sessionId: string) {
     sendJson(res, 404, { error: "No browser view for session" })
     return
   }
+  // Fixed-viewport mode: capture the emulated viewport through CDP. The image is
+  // exactly the logical viewport size (dsf 1), so pixels map 1:1 to click/drag
+  // coordinates — none of the dpr/displayScale normalization below is needed.
+  if (FIXED_VIEWPORT_ENABLED) {
+    const zoom = browserManager.getZoom(sessionId)
+    const shot = await cdp.capture(view.webContents, zoom)
+    if (!shot) {
+      sendJson(res, 500, { error: "CDP screenshot failed (fixed-viewport mode)" })
+      return
+    }
+    await clearClickMarkers(view)
+    sendJson(res, 200, { dataUrl: shot.dataUrl, width: shot.width, height: shot.height, dpr: 1, zoom })
+    return
+  }
   try {
     const image = await view.webContents.capturePage()
     // capturePage() returns PHYSICAL pixels (view-DIP size × display scale). Clicks
@@ -313,9 +329,11 @@ async function handleClick(res: ServerResponse, sessionId: string, body: any) {
           sendJson(res, 400, { error: `Element ${body.elementId} is offscreen — use browser_scroll to bring it into view, then re-screenshot and retry. (rect center: x=${Math.round(coords.x)}, y=${Math.round(coords.y)}, negative/out-of-range y means above/below the viewport.)` })
           return
         }
-        // getBoundingClientRect is in page CSS px; input events are in view-DIP.
-        // At page zoom Z, view-DIP = pageCSS × Z, so scale the resolved center.
-        const zoom = view.webContents.getZoomFactor() || 1
+        // Legacy: getBoundingClientRect is page CSS px, input events are view-DIP,
+        // and at page zoom Z view-DIP = pageCSS × Z, so scale the resolved center.
+        // Fixed-viewport: CDP mouse shares the emulated CSS space with
+        // getBoundingClientRect, so no scaling (factor stays 1).
+        const zoom = FIXED_VIEWPORT_ENABLED ? 1 : view.webContents.getZoomFactor() || 1
         x = coords.x * zoom
         y = coords.y * zoom
       } else {
@@ -335,9 +353,9 @@ async function handleClick(res: ServerResponse, sessionId: string, body: any) {
 
   browserManager.sendClick(view, x, y, body.button)
   // Paint a persistent marker at the click location so the next screenshot shows
-  // exactly where the (x,y) landed. Input events use view-DIP; the marker lives
-  // in page-CSS space, so divide by zoom to convert back.
-  const zoom = view.webContents.getZoomFactor() || 1
+  // exactly where the (x,y) landed. Marker lives in page-CSS space; divide by the
+  // same factor used above (1 in fixed-viewport mode) to convert back.
+  const zoom = FIXED_VIEWPORT_ENABLED ? 1 : view.webContents.getZoomFactor() || 1
   await injectClickMarker(view, (x as number) / zoom, (y as number) / zoom, `click ${body.button ?? "left"}`)
   sendJson(res, 200, { ok: true, navigated: false })
 }
@@ -360,7 +378,7 @@ async function handleType(res: ServerResponse, sessionId: string, body: any) {
         sendJson(res, 400, { error: `Element ${body.elementId} is offscreen — use browser_scroll to bring it into view, then re-screenshot and retry.` })
         return
       }
-      const zoom = view.webContents.getZoomFactor() || 1
+      const zoom = FIXED_VIEWPORT_ENABLED ? 1 : view.webContents.getZoomFactor() || 1
       browserManager.sendClick(view, coords.x * zoom, coords.y * zoom)
       await injectClickMarker(view, coords.x, coords.y, "type-focus")
       await new Promise((r) => setTimeout(r, 80))
@@ -407,7 +425,7 @@ async function handleDrag(res: ServerResponse, sessionId: string, body: any) {
   let fromY = body.fromY
   let toX = body.toX
   let toY = body.toY
-  const zoom = view.webContents.getZoomFactor() || 1
+  const zoom = FIXED_VIEWPORT_ENABLED ? 1 : view.webContents.getZoomFactor() || 1
   try {
     if (body.fromElementId) {
       const c = await elementCenter(view, body.fromElementId)

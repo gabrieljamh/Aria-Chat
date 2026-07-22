@@ -13,6 +13,7 @@ import { AppFileSystem } from "@mimo-ai/shared/filesystem"
 import { Instance } from "../project/instance"
 import { SessionCwd } from "./session-cwd"
 import { trimDiff } from "./edit"
+import { assertNotDestructive } from "./destructive-guard"
 import { assertWriteAllowed, askEditUnlessMemory } from "./external-directory"
 
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
@@ -36,6 +37,11 @@ export const WriteTool = Tool.define(
           const filepath = path.isAbsolute(params.file_path)
             ? params.file_path
             : path.join(SessionCwd.get(ctx.sessionID), params.file_path)
+          // Scan file CONTENT for catastrophic payloads embedded in a script the
+          // model writes now and runs later (e.g. os.system("rm -rf ~/") in a .py).
+          // A command-only filter never sees this, since the later run is just
+          // "python calc.py". This is the port of the guard to the write boundary.
+          assertNotDestructive(params.content, "file content")
           yield* assertWriteAllowed(ctx, filepath)
 
           const exists = yield* fs.existsSafe(filepath)

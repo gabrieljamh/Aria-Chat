@@ -87,6 +87,7 @@ When making changes to files, first understand the file's code conventions. Mimi
 # Code style
 - IMPORTANT: DO NOT ADD ***ANY*** COMMENTS unless asked
 - Don't add features, refactor, or introduce abstractions beyond what the task requires. A bug fix doesn't need surrounding cleanup; a one-shot operation doesn't need a helper. Three similar lines is better than a premature abstraction.
+- Scope discipline is not workaround license: when something is broken, fix the ROOT CAUSE by correcting the existing logic — never append patch lines around broken code until the output happens to look right. If the same fix fails twice, re-read the code instead of trying another workaround.
 - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
 - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code. If something is unused, delete it completely.
 

@@ -556,6 +556,11 @@ export function App() {
 
   // Fetch sessions for a specific project directory (used by sidebar tree expand + refresh)
   const fetchSessions = useCallback(async (directory: string) => {
+    // The server rejects a filesystem/drive root as a project directory
+    // (assertSafeDirectory → 500). A "global" project (opened at home/root) can
+    // carry such a worktree, so calling listProjectSessions on it just produces a
+    // caught-but-noisy 500 every startup. Skip it — a root has no project sessions.
+    if (!directory || /^([A-Za-z]:[\\/]?|\/)$/.test(directory)) return
     setLoadingDirs((prev) => {
       const n = new Set(prev)
       n.add(directory)
@@ -947,7 +952,10 @@ export function App() {
   // restart, when restored sessions were never re-created there).
   const replyPermission = useCallback(
     (permissionID: string, reply: PermissionReply) => {
-      window.mimo.replyPermission(permissionID, reply, activeDir ?? undefined).catch(() => {})
+      // Return the promise (do NOT swallow) so ApprovalCard can await it and
+      // recover on failure. Silently catching here was half of the freeze bug:
+      // a failed reply left the card latched with no error and no retry.
+      return window.mimo.replyPermission(permissionID, reply, activeDir ?? undefined)
     },
     [activeDir],
   )

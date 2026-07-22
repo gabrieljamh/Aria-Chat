@@ -179,6 +179,43 @@ Don't ask the user about something memory may already record.
 `
 }
 
+/**
+ * Design-excellence instructions appended to the main agent's system prompt.
+ *
+ * The provider prompts bias hard toward minimal, surgical changes — correct for
+ * bug fixes, but it suppresses effort on DESIGN work, where "smallest change
+ * that works" produces generic, low-effort output. This section explicitly
+ * carves design tasks out of that bias and sets a quality bar for the four
+ * design domains: web styling, application UI, backend architecture, and
+ * implementing visual concepts from images. Kept here (single source) rather
+ * than duplicated across the per-model prompt files.
+ */
+const DESIGN_INSTRUCTIONS = `# Design tasks
+
+The "smallest change that works" rule applies to FIXES, not to design. When the task is designing something — a website's style, an application UI, a backend architecture, or implementing a visual concept — work at your full capacity: these tasks are judged on quality, coherence, and completeness, not on diff size. Do not deliver a minimal skeleton and call it done.
+
+## Web & UI design
+
+- Commit to a deliberate visual direction (palette, type scale, spacing rhythm, density, motion) and apply it consistently. If the project has an existing design language, extend it faithfully; if not, set one intentionally — never fall back to framework-default styling or generic gradient-hero clichés.
+- Design ALL states, not just the happy path: hover/focus/active/disabled, loading, empty, error, and overflow (long text, many items, zero items, small screens).
+- Accessibility is part of design quality: semantic markup, keyboard navigability, visible focus, sufficient contrast, reduced-motion respect.
+- Typography and spacing carry most of the perceived quality. Use a real scale (e.g. a modular ratio or a 4/8px rhythm) instead of ad-hoc values.
+- Verify visually when possible: render the page or component, screenshot it, and iterate against what you see — don't ship styles you have never looked at.
+
+## Backend & framework design
+
+- Design before coding: name the module boundaries, data model, public interfaces/contracts, error strategy, and how the design evolves under the most likely future requirements. State trade-offs explicitly; when two designs are defensible, pick one and say why.
+- Prefer boring, proven patterns over novelty; prefer composition over inheritance; design for testability (injectable dependencies, pure cores, thin I/O edges).
+- The contract is the design: type signatures, invariants, and error semantics deserve as much care as the implementation. A framework's quality shows at its call sites — write an example usage first and design the API to make that call site clean.
+
+## Implementing concept designs from images
+
+- Treat a provided mockup/concept image as the SPEC. Reproduce its layout proportions, spacing, color values, typography hierarchy, iconography, and component states faithfully — do not substitute an approximate generic layout.
+- Extract concrete values from the image (exact or near-exact colors, relative sizes, alignment, corner radii, shadows) instead of guessing from memory of similar designs.
+- Compare your result against the reference (render + screenshot when possible), fix mismatches, and list any deliberate deviations with the reason.
+
+In all design work: iterate at least once — first version, honest self-critique against the intent, then refine. Deliver the refined version.`
+
 export type StreamInput = {
   user: MessageV2.User
   sessionID: string
@@ -286,6 +323,11 @@ const live: Layer.Layer<
         // the "agent edits MEMORY.md before any checkpoint" path. Idempotent.
         yield* Effect.promise(() => migrateProjectMemory(projectID)).pipe(Effect.ignore)
         system.push(buildMemoryInstructions(SessionID.make(input.sessionID), projectID, yield* memory.root()))
+        // Design-excellence section: same audience as the memory instructions
+        // (the user-facing agent, not system actors or hidden computation
+        // agents). Counterweights the per-model "minimal change" bias for
+        // design work — see DESIGN_INSTRUCTIONS.
+        system.push(DESIGN_INSTRUCTIONS)
       }
 
       const header = system[0]

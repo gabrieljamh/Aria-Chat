@@ -19,6 +19,7 @@ import { SessionCwd } from "./session-cwd"
 import { Snapshot } from "@/snapshot"
 import { assertWriteAllowed, askEditUnlessMemory } from "./external-directory"
 import { assertFileRead } from "./read-state"
+import { assertNotDestructive } from "./destructive-guard"
 import { AppFileSystem } from "@mimo-ai/shared/filesystem"
 
 function normalizeLineEndings(text: string): string {
@@ -77,6 +78,9 @@ export const EditTool = Tool.define(
           const filePath = path.isAbsolute(params.file_path)
             ? params.file_path
             : path.join(SessionCwd.get(ctx.sessionID), params.file_path)
+          // Scan incoming content for catastrophic payloads (same backstop as
+          // write); this also covers multiedit, which delegates here per entry.
+          assertNotDestructive(params.new_string, "file content")
           yield* assertWriteAllowed(ctx, filePath)
 
           // The "create new file" branch (oldString === "") is effectively a
@@ -195,7 +199,7 @@ export const EditTool = Tool.define(
 export type Replacer = (content: string, find: string) => Generator<string, void, unknown>
 
 // Similarity thresholds for block anchor fallback matching
-const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD = 0.0
+const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD = 0.6
 const MULTIPLE_CANDIDATES_SIMILARITY_THRESHOLD = 0.3
 
 /**

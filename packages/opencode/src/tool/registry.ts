@@ -405,7 +405,7 @@ export const layer = Layer.effect(
         if (tool.id === ApplyPatchTool.id) return usePatch
         if (tool.id === EditTool.id || tool.id === WriteTool.id) return !usePatch
 
-        if (tool.id.startsWith("browser.") && input.agent.name !== "webagent") return false
+        if (tool.id.startsWith("browser_") && input.agent.name !== "webagent") return false
 
         return true
       })

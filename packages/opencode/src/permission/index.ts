@@ -171,6 +171,16 @@ export const layer = Layer.effect(
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {
             for (const item of state.pending.values()) {
+              // Emit a terminal event so the UI clears the card. Without this,
+              // tearing down the instance leaves every open approval card frozen
+              // in the renderer (its removal is driven solely by Event.Replied).
+              yield* bus
+                .publish(Event.Replied, {
+                  sessionID: item.info.sessionID,
+                  requestID: item.info.id,
+                  reply: "reject",
+                })
+                .pipe(Effect.ignore)
               yield* Deferred.fail(item.deferred, new RejectedError())
             }
             state.pending.clear()
@@ -240,6 +250,18 @@ export const layer = Layer.effect(
             Effect.callback<never, RejectedError>((resume) => {
               const onAbort = () => {
                 Effect.runPromise(Deferred.fail(deferred, new RejectedError())).catch(() => {})
+                // Tell the UI to clear the card. An aborted turn otherwise leaves
+                // the approval card orphaned (backend already resolved, but no
+                // Event.Replied was ever published), so it sits there with dead
+                // buttons forever. Reply value is irrelevant to removal — the
+                // reducer clears by requestID.
+                Effect.runPromise(
+                  bus.publish(Event.Replied, {
+                    sessionID: info.sessionID,
+                    requestID: info.id,
+                    reply: "reject",
+                  }),
+                ).catch(() => {})
                 resume(Effect.fail(new RejectedError()))
               }
               if (abortSignal.aborted) {
@@ -304,8 +326,16 @@ export const layer = Layer.effect(
         })
       }
 
+      // Cross-session cascade: an "always" reply appends instance-GLOBAL rules to
+      // `approved` (persisted per project, shared by every session in it), so any
+      // pending request now satisfied by those rules should auto-clear —
+      // regardless of which session raised it. This is the fix for the
+      // subagent-duplicate hang: 4 concurrent requests where granting one
+      // "always" for a directory used to leave the child-session (subagent)
+      // requests for that same, now-granted directory dangling as stuck
+      // "duplicate" cards. (The reject cascade above stays same-session on
+      // purpose — rejecting one rejects that session's batch.)
       for (const [id, item] of pending.entries()) {
-        if (item.info.sessionID !== existing.info.sessionID) continue
         const ok = item.info.patterns.every(
           (pattern) => evaluate(item.info.permission, pattern, approved).action === "allow",
         )

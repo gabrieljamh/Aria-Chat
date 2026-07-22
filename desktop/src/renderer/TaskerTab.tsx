@@ -30,7 +30,7 @@ interface Props {
   state: State
   onSend: (text: string, files?: FileAttachment[]) => void
   onAbort: () => void
-  onReply: (requestID: string, reply: PermissionReply) => void
+  onReply: (requestID: string, reply: PermissionReply) => void | Promise<void>
   onQuestionReply: (requestID: string, answers: string[][]) => void
   onQuestionReject: (requestID: string) => void
   onDeleteMessage: (messageID: string) => void

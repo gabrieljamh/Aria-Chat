@@ -1,5 +1,7 @@
 import { BrowserView, BrowserWindow, ipcMain } from "electron"
 import { randomBytes } from "node:crypto"
+import * as cdp from "./browser-cdp"
+import { FIXED_VIEWPORT_ENABLED, logicalViewport } from "./browser-cdp"
 
 const MAX_VIEWS = 5
 
@@ -100,6 +102,11 @@ class BrowserManager {
 
     view.webContents.on("did-navigate", (_e, navUrl) => {
       sv.url = navUrl
+      // A cross-process navigation can clear the emulation override — re-apply
+      // the fixed viewport for the session's current zoom.
+      if (FIXED_VIEWPORT_ENABLED) {
+        cdp.setViewport(sv.view.webContents, sv.zoom).catch(() => {})
+      }
       this.emitNavigate(sessionId, navUrl)
     })
     view.webContents.on("did-navigate-in-page", (_e, navUrl) => {
@@ -117,9 +124,13 @@ class BrowserManager {
     })
 
     view.webContents.on("did-finish-load", () => {
-      // Zoom resets across (cross-origin) navigations — re-apply the session's
-      // remembered factor so it persists as the user/agent expect.
-      if (sv.zoom !== 1) {
+      if (FIXED_VIEWPORT_ENABLED) {
+        // Fixed-viewport mode folds zoom into the emulated viewport size, so
+        // (re)apply the device-metrics override here instead of setZoomFactor.
+        cdp.setViewport(sv.view.webContents, sv.zoom).catch(() => {})
+      } else if (sv.zoom !== 1) {
+        // Legacy: zoom resets across (cross-origin) navigations — re-apply the
+        // session's remembered factor so it persists as the user/agent expect.
         try {
           sv.view.webContents.setZoomFactor(sv.zoom)
         } catch {}
@@ -207,6 +218,7 @@ class BrowserManager {
       } catch {}
     }
 
+    if (FIXED_VIEWPORT_ENABLED) cdp.release(sv.view.webContents)
     ;(sv.view.webContents as any).destroy()
     this.views.delete(sessionId)
 
@@ -267,6 +279,13 @@ class BrowserManager {
   }
 
   sendClick(view: BrowserView, x: number, y: number, button: string = "left"): void {
+    if (FIXED_VIEWPORT_ENABLED) {
+      // Emulated-space click via CDP (coordinates line up 1:1 with
+      // getBoundingClientRect and the CDP screenshot). Fire-and-forget to keep
+      // the synchronous signature callers rely on.
+      void cdp.click(view.webContents, x, y, (button as any) === "right" || (button as any) === "middle" ? button : "left")
+      return
+    }
     view.webContents.sendInputEvent({
       type: "mouseDown",
       x,
@@ -344,6 +363,10 @@ class BrowserManager {
   async sendDraw(view: BrowserView, points: Array<{ x: number; y: number }>, duration: number): Promise<void> {
     if (points.length < 2) return
     const total = Math.max(0, Math.min(20_000, duration))
+    if (FIXED_VIEWPORT_ENABLED) {
+      await cdp.dragPath(view.webContents, points, total)
+      return
+    }
     const wc = view.webContents
     const first = points[0]
     wc.sendInputEvent({ type: "mouseDown", x: Math.round(first.x), y: Math.round(first.y), button: "left", clickCount: 1 } as any)
@@ -378,9 +401,16 @@ class BrowserManager {
     else if (typeof opts.factor === "number") z = opts.factor
     z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100))
     sv.zoom = z
-    try {
-      sv.view.webContents.setZoomFactor(z)
-    } catch {}
+    if (FIXED_VIEWPORT_ENABLED) {
+      // Zoom is the emulated viewport size (base / zoom), not a page zoom factor —
+      // re-issue the device-metrics override so coordinates, capture, and layout
+      // all move together in one space.
+      cdp.setViewport(sv.view.webContents, z).catch(() => {})
+    } else {
+      try {
+        sv.view.webContents.setZoomFactor(z)
+      } catch {}
+    }
     // Notify the renderer so the toolbar reflects agent-driven zoom too.
     if (this.win && !this.win.isDestroyed()) {
       this.win.webContents.send("webagent:event", { sessionId, type: "zoom", zoom: z })
@@ -390,6 +420,16 @@ class BrowserManager {
 
   getZoom(sessionId: string): number {
     return this.views.get(sessionId)?.zoom ?? 1
+  }
+
+  // Current logical viewport size for a session. In fixed-viewport mode this is
+  // BASE / zoom (the emulated CSS space that clicks & screenshots share); in
+  // legacy mode there is no fixed size so this returns null.
+  getViewportSize(sessionId: string): { width: number; height: number } | null {
+    if (!FIXED_VIEWPORT_ENABLED) return null
+    const sv = this.views.get(sessionId)
+    if (!sv) return null
+    return logicalViewport(sv.zoom)
   }
 
   // Scroll the page by an exact pixel delta. Electron's synthetic `mouseWheel`
@@ -441,6 +481,16 @@ class BrowserManager {
   }
 
   async sendDrag(view: BrowserView, fromX: number, fromY: number, toX: number, toY: number, duration: number): Promise<void> {
+    if (FIXED_VIEWPORT_ENABLED) {
+      const steps = Math.max(10, Math.ceil(duration / 16))
+      const path = [{ x: fromX, y: fromY }]
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps
+        path.push({ x: fromX + (toX - fromX) * t, y: fromY + (toY - fromY) * t })
+      }
+      await cdp.dragPath(view.webContents, path, duration)
+      return
+    }
     view.webContents.sendInputEvent({ type: "mouseDown", x: fromX, y: fromY, button: "left", clickCount: 1 } as any)
     const steps = Math.max(10, Math.ceil(duration / 16))
     for (let i = 1; i <= steps; i++) {
